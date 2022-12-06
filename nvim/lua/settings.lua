@@ -48,5 +48,6 @@ cmd [[au FileType * set fo-=c fo-=r fo-=o]] -- Disable auto comment on next line
 cmd [[ au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif ]] --Jump to the last position when reopening a file
 
 -- [[ FileType ]]
+cmd [[au BufNewFile,BufRead Jenkinsfile setf groovy]]
 cmd [[au FileType bash,lua,yaml,json,html setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]]
-cmd [[au FileType python,go setlocal tabstop=4 expandtab shiftwidth=4 softtabstop=4]]
+cmd [[au FileType python,go,groovy setlocal tabstop=4 expandtab shiftwidth=4 softtabstop=4]]
