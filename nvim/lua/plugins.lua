@@ -90,6 +90,12 @@ return require("packer").startup(function(use)
     end,
   })
 
+  -- Jenkins
+  use({
+    'ckipp01/nvim-jenkinsfile-linter',
+    requires = { "nvim-lua/plenary.nvim" }
+  })
+
   ------------------------------------------------------------
   -- [[ IDE ]]
   ------------------------------------------------------------

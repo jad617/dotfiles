@@ -34,8 +34,8 @@ export AWS_DEFAULT_REGION=ca-central-1
 # export VAULT_TOKEN=$(cat ~/.vault_token)
 
 #ssh auto passphrase
-eval "$(ssh-agent)" &>/dev/null
-cat ~/.ssh/id_rsa | SSH_ASKPASS="$HOME/.passphrase" ssh-add - &>/dev/null
+# eval "$(ssh-agent)" &>/dev/null
+# cat ~/.ssh/id_rsa | SSH_ASKPASS="$HOME/.passphrase" ssh-add - &>/dev/null
 # ssh-add -K > /dev/null 2>/dev/null
 
 #Functions
