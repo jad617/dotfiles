@@ -18,7 +18,22 @@ export GO_ENV=local
 # Load GOlang bin
 [ -d ~/go/bin ] && export PATH="$HOME/go/bin:$PATH"
 
+# Load node
 [ -d ~/node_modules ] && export PATH="$HOME/node_modules:$PATH"
+
+# Load Ruby/Gem
+if [ -d /usr/local/opt/ruby/bin ]
+  then
+  export PATH="/usr/local/opt/ruby/bin:$PATH"
+
+  GEM_BIN=$(which gem)
+
+  if [ -f "$GEM_BIN" ]
+  then
+    BIN_VERSION=$(find -d  ~/.gem/ruby -depth 1 | rev | cut -d"/" -f1 | rev | head -n 1)
+    [ -d ~/.gem/ruby/${BIN_VERSION}/bin ] && export PATH="${HOME}/.gem/ruby/${BIN_VERSION}/bin:${PATH}"
+  fi
+fi
 
 #Load MacOs Python
 # [ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"

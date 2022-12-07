@@ -44,8 +44,9 @@ require('lspconfig')['sumneko_lua'].setup{
   flags = lsp_flags,
   capabilities = capabilities,
   settings = {
-      Lua = {
-        diagnostics = { globals = {  'vim' }  -- removes warning: 'Global vim is undefined'
+    Lua = {
+      diagnostics = {
+        globals = {'vim'},  -- removes warning: 'Global vim is undefined'
       }
     }
   }
