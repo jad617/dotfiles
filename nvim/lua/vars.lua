@@ -23,6 +23,7 @@ M.linter = {
   "pylint",
   "shellcheck",
   "staticcheck",
+  "rubocop",
   "tflint",
   "yamllint"
 }

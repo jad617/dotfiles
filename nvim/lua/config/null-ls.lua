@@ -17,6 +17,10 @@ require("null-ls").setup({
       b.formatting.markdownlint,
       b.diagnostics.markdownlint,
 
+      -- Ruby
+      b.formatting.rubocop,
+      b.diagnostics.rubocop,
+
       -- Terraform
       b.formatting.terraform_fmt,
 
