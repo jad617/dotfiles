@@ -1,4 +1,4 @@
--- local lsp_servers = require("vars").lsp
+local lsp_servers = require("vars").lsp
 
 require("mason").setup({
   ui = {
@@ -11,8 +11,7 @@ require("mason").setup({
 })
 
 require("mason-lspconfig").setup({
-  -- ensure_installed = { "sumneko_lua", "golangci_lint_ls", "gopls", "bashls", "jsonls", "gofumpt", "goimports", "gilangci-lint" },
   -- ensure_installed = { "sumneko_lua", "golangci_lint_ls", "gopls", "bashls", "jsonls" },
-  -- ensure_installed = lsp
+  ensure_installed = lsp_servers,
   automatic_installation = true,
 })

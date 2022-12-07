@@ -31,4 +31,3 @@ require('config.cmp')                       -- Lua
 require('config.autopairs')                 -- Lua
 require('config.telescope')                 -- Lua
 require('config.null-ls')                   -- Lua
--- require('config.barbar')                 -- Tab buffer line
