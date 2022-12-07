@@ -35,10 +35,6 @@ if [ -d /usr/local/opt/ruby/bin ]
   fi
 fi
 
-#Load MacOs Python
-# [ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"
-
-
 # export AWS_PROFILE=default
 export AWS_DEFAULT_REGION=ca-central-1
 
@@ -187,3 +183,8 @@ alias apt='sudo apt'
 # AWS
 export AWS_PAGER=""
 # alias aws='aws --no-verify-ssl'
+
+# Extras
+alias cdwork='cd ~/work'
+alias cdtransaction='cd ~/work/transaction/'
+alias cdaccount='cd ~/work/account/'
