@@ -112,6 +112,17 @@ return require("packer").startup(function(use)
   use({ "nvim-treesitter/nvim-treesitter" })
   -- use { 'nvim-treesitter/nvim-treesitter', run = ':TSUpdate' }
 
+  -- GoToDefinition in floating window
+  use ('rmagatti/goto-preview')
+
+  -- Rename word on cursor
+  use ({
+    "smjonas/inc-rename.nvim",
+    requires = {
+      'stevearc/dressing.nvim',
+    },
+  })
+
   -- LSP Autocomplete
   use({
     "hrsh7th/nvim-cmp",
