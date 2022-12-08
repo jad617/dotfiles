@@ -30,8 +30,6 @@ map('n', '˙', ':silent !sensible-browser %<CR>', options)                      
 map('n', '<A-h>', ':silent !sensible-browser %<CR>', options)                   -- Open HTML in default browser
 
 -- Replace word
-map('n', '<A-l>',':lua require("functions.renamer").open()<CR>', options)       -- Replace all
-map('n', '¬',':lua require("functions.renamer").open()<CR>', options)           -- Replace all
 map('n', '<leader>l','*``cgn', options)                                         -- Replace 1 by 1
 ------------------------------------------------------------
 -- [[ Navigation ]]
