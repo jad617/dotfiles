@@ -45,7 +45,7 @@ bo.smartindent = true                       -- Do smart autoindenting when start
 
 -- [[ Autocmd ]]
 cmd [[au FileType * set fo-=c fo-=r fo-=o]] -- Disable auto comment on next line
-cmd [[ au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif ]] --Jump to the last position when reopening a file
+cmd [[au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif ]] --Jump to the last position when reopening a file
 
 -- [[ FileType ]]
 cmd [[au BufNewFile,BufRead Jenkinsfile setf groovy]]
