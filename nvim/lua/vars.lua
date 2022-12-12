@@ -1,7 +1,6 @@
 M = {}
 
-M.lsp = {
-  "bashls",               -- bash
+M.lsp_old = {
   "dockerls",             -- docker
   "jsonls",               -- json
   "gopls",                -- golang
@@ -9,10 +8,31 @@ M.lsp = {
   "groovyls",             -- groovy
   "pyright",              -- python
   "solargraph",           -- ruby
-  "sumneko_lua",          -- lua
-  "terraformls",          -- terraform
   "tflint",               -- terraform docs
   "tsserver",             -- javascript
+}
+
+M.lsp = {
+  bashls = {},
+  dockerls = {},             -- docker
+  jsonls = {},               -- json
+  gopls = {},                -- golang
+  golangci_lint_ls = {},     -- golangci
+  groovyls = {},             -- groovy
+  pyright = {},              -- python
+  solargraph = {},           -- ruby
+  sumneko_lua = {            -- lua
+    settings = {
+      Lua = {
+        diagnostics = {
+          globals = {'vim'},  -- removes warning: 'Global vim is undefined'
+        }
+      }
+    }
+  },
+  tflint = {},               -- terraform docs
+  tsserver = {},             -- javascript
+  terraformls = {},          -- terraform
 }
 
 M.linter = {

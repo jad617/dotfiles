@@ -41,8 +41,10 @@ export AWS_DEFAULT_REGION=ca-central-1
 
 # export TERM=xterm-256color
 
-#Hashivault token
-# export VAULT_TOKEN=$(cat ~/.vault_token)
+# Hashivault token
+ # export VAULT_SKIP_VERIFY=true
+ # export VAULT_TOKEN=$(cat ~/.vault_token)
+ # export TF_VAR_VAULT_TOKEN=${VAULT_TOKEN}
 
 #ssh auto passphrase
 # eval "$(ssh-agent)" &>/dev/null

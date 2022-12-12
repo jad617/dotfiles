@@ -39,44 +39,39 @@ local lsp_flags = {
 
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
-require('lspconfig')['sumneko_lua'].setup{
-  on_attach = on_attach,
-  flags = lsp_flags,
-  capabilities = capabilities,
-  settings = {
-    Lua = {
-      diagnostics = {
-        globals = {'vim'},  -- removes warning: 'Global vim is undefined'
-      }
-    }
-  }
-}
-
-local lsp_servers = require("vars").lsp
-
-for _, lsp in ipairs(lsp_servers) do
-  require('lspconfig')[lsp].setup{
+-- Loop on M.lsp in vars.lua
+-- initialize all LSPs with their config
+local lsp = require("vars").lsp
+for lsp_name, lsp_config in pairs(lsp) do
+  require('lspconfig')[lsp_name].setup{
     on_attach = on_attach,
     flags = lsp_flags,
     capabilities = capabilities,
-    -- settings = {},
+    settings = lsp_config.settings
   }
 end
 
--- require('lspconfig')['pyright'].setup{
---   on_attach = on_attach,
---   flags = lsp_flags,
---   capabilities = capabilities
--- }
+-- local lsp_servers = require("vars").lsp
 
--- require'lspconfig'.gopls.setup{
---   on_attach = on_attach,
---   flags = lsp_flags,
---   capabilities = capabilities
--- }
+-- for _, lsp in ipairs(lsp_servers) do
+--   require('lspconfig')[lsp].setup{
+--     on_attach = on_attach,
+--     flags = lsp_flags,
+--     capabilities = capabilities,
+--     -- settings = {},
+--   }
+-- end
 
--- require'lspconfig'.golangci_lint_ls.setup{
+-- require('lspconfig')['sumneko_lua'].setup{
 --   on_attach = on_attach,
 --   flags = lsp_flags,
---   capabilities = capabilities
---}
+--   capabilities = capabilities,
+--   settings = vars.lsp2.sumneko_lua.settings
+--   -- settings = {
+--   --   Lua = {
+--   --     diagnostics = {
+--   --       globals = {'vim'},  -- removes warning: 'Global vim is undefined'
+--   --     }
+--   --   }
+--   -- }
+-- }
