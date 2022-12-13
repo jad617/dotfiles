@@ -8,6 +8,9 @@
 # Nvim default EDITOR
 export EDITOR=nvim
 
+# Bash
+export SHELLCHECK_OPTS="-e SC2086"
+
 # Golang
 export GO_ENV=local
 [ -d ~/go ] && export PATH="$HOME/go/bin:$PATH"
@@ -35,8 +38,10 @@ if [ -d /usr/local/opt/ruby/bin ]
   fi
 fi
 
+# AWS
 # export AWS_PROFILE=default
 export AWS_DEFAULT_REGION=ca-central-1
+export AWS_PAGER=""
 
 
 # export TERM=xterm-256color
@@ -182,8 +187,6 @@ alias ssu='sudo su -'
 alias mtr='sudo mtr'
 alias apt='sudo apt'
 
-# AWS
-export AWS_PAGER=""
 # alias aws='aws --no-verify-ssl'
 
 # Extras

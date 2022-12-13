@@ -31,7 +31,10 @@ M.linter = {
     "goimports-reviser",
     "markdownlint",
     "rubocop",
-    -- "terraform-fmt",
+    "beautysh",
+    -- "shellharden",       -- Requires Cargo
+    "shfmt",
+    -- "terraform-fmt",     -- Not found by Mason
     "yamlfmt"
   },
   diagnostics = {
