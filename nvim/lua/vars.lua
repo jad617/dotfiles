@@ -26,6 +26,9 @@ M.lsp = {
 M.linter = {
   "flake8",
   "golangci-lint",
+  "gofumpt",
+  "goimports",
+  "goimports_reviser",
   "jsonlint",
   "markdownlint",
   "pylint",
