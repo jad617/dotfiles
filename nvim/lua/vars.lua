@@ -24,19 +24,28 @@ M.lsp = {
 }
 
 M.linter = {
-  "flake8",
-  "golangci-lint",
-  "gofumpt",
-  "goimports",
-  "goimports_reviser",
-  "jsonlint",
-  "markdownlint",
-  "pylint",
-  "shellcheck",
-  "staticcheck",
-  "rubocop",
-  "tflint",
-  "yamllint"
+  formatting = {
+    "stylua",
+    "gofumpt",
+    "goimports",
+    "goimports-reviser",
+    "markdownlint",
+    "rubocop",
+    -- "terraform-fmt",
+    "yamlfmt"
+  },
+  diagnostics = {
+    "flake8",
+    "golangci-lint",
+    "jsonlint",
+    "markdownlint",
+    "pylint",
+    "rubocop",
+    "shellcheck",
+    "staticcheck",
+    "tflint",
+    "yamllint"
+  },
 }
 
 return M
