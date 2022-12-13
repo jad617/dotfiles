@@ -61,6 +61,7 @@ return require("packer").startup(function(use)
 
   -- Add Comments
   use("tpope/vim-commentary")
+  use("dstein64/vim-startuptime")
 
   -- Tmux Split navigator
   use("christoomey/vim-tmux-navigator")

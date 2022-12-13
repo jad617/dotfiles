@@ -3,6 +3,11 @@ local b = require("null-ls").builtins
 require("null-ls").setup({
     debug = true,
     sources = {
+      -- Bash
+      b.formatting.beautysh,
+      b.formatting.shfmt,
+      -- b.diagnostics.shellcheck,
+
       -- Lua
       b.formatting.stylua,
       -- b.completion.spell,
