@@ -1,17 +1,5 @@
 M = {}
 
-M.lsp_old = {
-  "dockerls",             -- docker
-  "jsonls",               -- json
-  "gopls",                -- golang
-  "golangci_lint_ls",     -- golangci
-  "groovyls",             -- groovy
-  "pyright",              -- python
-  "solargraph",           -- ruby
-  "tflint",               -- terraform docs
-  "tsserver",             -- javascript
-}
-
 M.lsp = {
   bashls = {},
   dockerls = {},             -- docker
