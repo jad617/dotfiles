@@ -66,6 +66,9 @@ return require("packer").startup(function(use)
   -- Tmux Split navigator
   use("christoomey/vim-tmux-navigator")
 
+  -- Vim run command in Tmux split
+  use('preservim/vimux')
+
   -- Smooth Scrolling
   -- use 'karb94/neoscroll.nvim'
   -- use 'psliwka/vim-smoothie'
