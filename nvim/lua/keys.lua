@@ -31,6 +31,7 @@ map('n', '<A-h>', ':silent !sensible-browser %<CR>', options)                   
 
 -- Replace word
 map('n', '<leader>l','*``cgn', options)                                         -- Replace 1 by 1
+
 ------------------------------------------------------------
 -- [[ Navigation ]]
 ------------------------------------------------------------
