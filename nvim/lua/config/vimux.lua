@@ -9,11 +9,12 @@ local options = { noremap = true }
 ------------------------------------------------------------
 -- Run code on Alt-c
 -- [[ MacOs ]]
-map('n', 'ç', ":VimuxRunLastCommand<CR>", options)
-map('n', 'ƒ', ":VimuxPromptCommand<CR>", options)
+map('n', 'ƒ', ":w<CR>:VimuxRunLastCommand<CR>", options)
+map('i', 'ƒ', "<C-c>:w<CR>:VimuxRunLastCommand<CR>", options)
+-- map('n', 'ƒ', ":VimuxPromptCommand<CR>", options)
 -- [[ Linux ]]
-map('n', '<A-c>', "VimuxRunLastCommand<CR>", options)
-map('n', '<A-f>', "VimuxPromptCommand<CR>", options)
+-- map('n', '<A-f>', "<C-c>:w<CR>VimuxRunLastCommand<CR>", options)
+-- map('n', '<A-f>', "VimuxPromptCommand<CR>", options)
 
 -- FOR PYTHON
 -- [[ MacOs ]]

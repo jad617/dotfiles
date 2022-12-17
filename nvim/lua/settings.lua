@@ -47,6 +47,9 @@ bo.smartindent = true                       -- Do smart autoindenting when start
 cmd [[au FileType * set fo-=c fo-=r fo-=o]] -- Disable auto comment on next line
 cmd [[au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif ]] --Jump to the last position when reopening a file
 
+-- Auto Format on save
+cmd [[autocmd BufWritePre * lua vim.lsp.buf.format({ async = true })]]
+
 -- [[ FileType ]]
 cmd [[au BufNewFile,BufRead Jenkinsfile setf groovy]]
 cmd [[au FileType bash,lua,yaml,json,html setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]]

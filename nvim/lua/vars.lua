@@ -35,7 +35,9 @@ M.linter = {
     -- "shellharden",       -- Requires Cargo
     "shfmt",
     -- "terraform-fmt",     -- Not found by Mason
-    "yamlfmt"
+    "yamlfmt",
+    "black",
+    "isort"
   },
   diagnostics = {
     "flake8",

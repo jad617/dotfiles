@@ -22,6 +22,11 @@ require("null-ls").setup({
       b.formatting.markdownlint,
       b.diagnostics.markdownlint,
 
+      -- Python
+      b.formatting.black,
+      b.formatting.isort,
+      -- b.diagnostics.flake8,
+
       -- Ruby
       b.formatting.rubocop,
       b.diagnostics.rubocop,
