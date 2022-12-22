@@ -25,17 +25,15 @@ export GO_ENV=local
 [ -d ~/node_modules ] && export PATH="$HOME/node_modules:$PATH"
 
 # Load Ruby/Gem
-if [ -d /usr/local/opt/ruby/bin ]
-  then
-  export PATH="/usr/local/opt/ruby/bin:$PATH"
+if [ -d /usr/local/opt/ruby/bin ]; then
+	export PATH="/usr/local/opt/ruby/bin:$PATH"
 
-  GEM_BIN=$(which gem)
+	GEM_BIN=$(which gem)
 
-  if [ -f "$GEM_BIN" ]
-  then
-    BIN_VERSION=$(find -d  ~/.gem/ruby -depth 1 | rev | cut -d"/" -f1 | rev | head -n 1)
-    [ -d ~/.gem/ruby/${BIN_VERSION}/bin ] && export PATH="${HOME}/.gem/ruby/${BIN_VERSION}/bin:${PATH}"
-  fi
+	if [ -f "$GEM_BIN" ]; then
+		BIN_VERSION=$(find -d ~/.gem/ruby -depth 1 | rev | cut -d"/" -f1 | rev | head -n 1)
+		[ -d ~/.gem/ruby/${BIN_VERSION}/bin ] && export PATH="${HOME}/.gem/ruby/${BIN_VERSION}/bin:${PATH}"
+	fi
 fi
 
 # AWS
@@ -43,13 +41,12 @@ fi
 export AWS_DEFAULT_REGION=ca-central-1
 export AWS_PAGER=""
 
-
 # export TERM=xterm-256color
 
 # Hashivault token
- # export VAULT_SKIP_VERIFY=true
- # export VAULT_TOKEN=$(cat ~/.vault_token)
- # export TF_VAR_VAULT_TOKEN=${VAULT_TOKEN}
+# export VAULT_SKIP_VERIFY=true
+# export VAULT_TOKEN=$(cat ~/.vault_token)
+# export TF_VAR_VAULT_TOKEN=${VAULT_TOKEN}
 
 #ssh auto passphrase
 # eval "$(ssh-agent)" &>/dev/null
@@ -58,60 +55,61 @@ export AWS_PAGER=""
 
 #Functions
 
-pyenv_create(){
-  python3 -m venv ~/intact/virtual_envs/$1
+pyenv_create() {
+	python3 -m venv ~/intact/virtual_envs/$1
 }
 
-pyenv_delete(){
-  rm -rf ~/intact/virtual_envs/$1
+pyenv_delete() {
+	rm -rf ~/intact/virtual_envs/$1
 }
 
-pyenv_source(){
-  if [ -z "$1" ]
-  then
-    exa  ~/intact/virtual_envs/
-  else
-    source ~/intact/virtual_envs/$1/bin/activate
-    export VIM_PYTHON_VENV=~/intact/virtual_envs/$1/bin
-  fi
+pyenv_source() {
+	if [ -z "$1" ]; then
+		exa ~/intact/virtual_envs/
+	else
+		source ~/intact/virtual_envs/$1/bin/activate
+		export VIM_PYTHON_VENV=~/intact/virtual_envs/$1/bin
+	fi
 }
 
-tolower(){
-  echo "$1" | awk '{print tolower($0)}'
+tolower() {
+	echo "$1" | awk '{print tolower($0)}'
 }
 
-toupper(){
-  echo "$1" | awk '{print toupper($0)}'
+toupper() {
+	echo "$1" | awk '{print toupper($0)}'
 }
 
-vimpy(){
-  file=$1
-  is_python=$(file $file | grep -o python > /dev/null; echo $?)
+vimpy() {
+	file=$1
+	is_python=$(
+		file $file | grep -o python >/dev/null
+		echo $?
+	)
 
-  if [ $is_python -eq 0 ]
-  then
-    tmux split-window -h -c '#{pane_current_path}' \; resize-pane -x 50
-    tmux select-pane -L
-    tmux split-window -v -c '#{pane_current_path}'
-    tmux select-pane -U
-    tmux resize-pane -y 50
-    nvim $file
-  fi
+	if [ $is_python -eq 0 ]; then
+		tmux split-window -h -c '#{pane_current_path}' \; resize-pane -x 50
+		tmux select-pane -L
+		tmux split-window -v -c '#{pane_current_path}'
+		tmux select-pane -U
+		tmux resize-pane -y 50
+		nvim $file
+	fi
 }
 
-gitjpush(){
-  git add -A && git commit -m "$1" && git push
+gitjpush() {
+	git add -A && git commit -m "$1" && git push
 }
 
-deploy_java(){
-  export JAVA_HOME=$(/usr/libexec/java_home -v 1.8.0_201)
-  mvn clean package
-  mvn exec:java -Dexec.mainClass=""
+deploy_java() {
+	export JAVA_HOME=$(/usr/libexec/java_home -v 1.8.0_201)
+	mvn clean package
+	mvn exec:java -Dexec.mainClass=""
 }
 
 #Code
 alias vedit='ansible-vault edit '
-alias git='git --no-pager'
+alias git='git'
 alias gitadd='git add -A'
 alias gitcommit='git add -A && git commit -m'
 alias gitcheckout='git checkout'
@@ -122,6 +120,7 @@ alias gitorigin='git checkout develop'
 alias gitproduction='git checkout production'
 alias gitpush='git push'
 alias gitdiff='git --no-pager diff'
+alias gitlog='git --no-pager log'
 alias gitpull='git pull'
 alias gitsubpull='ls | xargs -P10 -I{} git -C {} pull'
 alias gitundoall='git reset --hard HEAD'
