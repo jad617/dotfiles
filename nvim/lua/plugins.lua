@@ -104,7 +104,7 @@ return require("packer").startup(function(use)
   -- [[ IDE ]]
   ------------------------------------------------------------
   -- LSP
-  use({ "fatih/vim-go" })
+  -- use({ "fatih/vim-go" })
   use({ "williamboman/mason.nvim" }) -- LSP/Linter installer
   use({ "williamboman/mason-lspconfig.nvim" }) -- Mason config
   use({ "neovim/nvim-lspconfig" }) -- Configurations for Nvim LSP

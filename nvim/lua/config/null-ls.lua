@@ -17,6 +17,7 @@ require("null-ls").setup({
 		b.formatting.goimports,
 		b.formatting.goimports_reviser,
 		b.diagnostics.golangci_lint,
+		-- b.diagnostics.revive,
 
 		-- Markdown
 		b.formatting.markdownlint,
