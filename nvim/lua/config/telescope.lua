@@ -14,4 +14,8 @@ vim.keymap.set('n', 'fb', builtin.buffers, {})
 vim.keymap.set('n', '<C-b>', builtin.buffers, {})
 vim.keymap.set('n', 'fh', builtin.help_tags, {})
 
-map ('n', "gv", '<cmd>lua require"telescope.builtin".lsp_definitions({jump_type="vsplit"})<CR>', {noremap=true, silent=true})
+map('n', "gv", '<cmd>lua require"telescope.builtin".lsp_definitions({jump_type="vsplit"})<CR>',
+  { noremap = true, silent = true })
+
+map('n', "<leader>g", ":execute 'Telescope live_grep default_text=' . expand('<cword>')<cr>",
+  { noremap = true, silent = true })
