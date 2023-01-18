@@ -9,7 +9,7 @@ require("null-ls").setup({
 		-- b.diagnostics.shellcheck,
 
 		-- Lua
-		b.formatting.stylua,
+		-- b.formatting.stylua,
 		-- b.completion.spell,
 
 		-- Golang

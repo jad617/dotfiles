@@ -24,6 +24,9 @@ export GO_ENV=local
 # Load node
 [ -d ~/node_modules ] && export PATH="$HOME/node_modules:$PATH"
 
+# Load Postgresql client
+[ -d /usr/local/opt/libpq/bin ] && export PATH="/usr/local/opt/libpq/bin:$PATH"
+
 # Load Ruby/Gem
 if [ -d /usr/local/opt/ruby/bin ]; then
 	export PATH="/usr/local/opt/ruby/bin:$PATH"
