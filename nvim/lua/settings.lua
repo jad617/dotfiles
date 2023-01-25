@@ -40,6 +40,7 @@ wo.foldcolumn = "2" -- Left Margin
 bo.expandtab = true -- In Insert mode: Use the appropriate number of spaces to insert a
 bo.tabstop = 2 -- Converted tabs now jump 4 spaces
 bo.fixendofline = false
+bo.fixeol = false
 -- bo.softtabstop = 2
 bo.shiftwidth = 2 -- When indenting with '>', use 2 spaces width
 bo.smartindent = true -- Do smart autoindenting when starting a new line

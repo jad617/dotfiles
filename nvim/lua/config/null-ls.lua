@@ -38,7 +38,7 @@ require("null-ls").setup({
 		b.formatting.terraform_fmt,
 
 		-- Yaml
-		b.formatting.yamlfmt,
+		-- b.formatting.yamlfmt,
 		b.diagnostics.yamllint,
 	},
 })
