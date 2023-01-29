@@ -7,8 +7,8 @@ local options = { noremap = true }
 ------------------------------------------------------------
 
 -- [[ Linux ]]
-map('n', '<A-m>', ':MarkdownPreview<CR>', options)
+map("n", "<A-m>", ":MarkdownPreview<CR>", options)
 
 -- [[ MacOs ]]
 -- Alt + m
-map('n', 'µ', ':MarkdownPreview<CR>', options)
+map("n", "µ", ":MarkdownPreview<CR>", options)
