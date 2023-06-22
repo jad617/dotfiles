@@ -162,6 +162,9 @@ alias cdswap='cd ~/.vim/tmp'
 alias cdnodestack='cd ~/nodestack'
 alias cdzim='cd ~/nodestack/zim'
 
+# Alias K8S
+alias kubectl='kubectl 2>/dev/null'
+
 #Shortcut VIM
 # alias mynvimrc='vim ~/.config/nvim/init.vim'
 alias myvimlua='cd ~/.config/nvim && vim init.lua'
