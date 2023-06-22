@@ -8,7 +8,7 @@ M.lsp = {
   golangci_lint_ls = {}, -- golangci
   groovyls = {}, -- groovy
   pyright = {}, -- python
-  solargraph = {}, -- ruby
+  -- solargraph = {}, -- ruby
   sumneko_lua = { -- lua
     settings = {
       Lua = {
@@ -30,7 +30,7 @@ M.linter = {
     "goimports",
     "goimports-reviser",
     "markdownlint",
-    "rubocop",
+    -- "rubocop",
     -- "beautysh",
     -- "shellharden",       -- Requires Cargo
     "shfmt",
@@ -47,7 +47,7 @@ M.linter = {
     "jsonlint",
     "markdownlint",
     "pylint",
-    "rubocop",
+    -- "rubocop",
     "shellcheck",
     "staticcheck",
     "tflint",
