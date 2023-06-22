@@ -31,8 +31,8 @@ require("null-ls").setup({
     -- b.diagnostics.flake8,
 
     -- Ruby
-    b.formatting.rubocop,
-    b.diagnostics.rubocop,
+    -- b.formatting.rubocop,
+    -- b.diagnostics.rubocop,
 
     -- Terraform
     b.formatting.terraform_fmt,
