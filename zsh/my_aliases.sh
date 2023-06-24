@@ -41,7 +41,8 @@ fi
 
 # AWS
 # export AWS_PROFILE=default
-export AWS_DEFAULT_REGION=ca-central-1
+# export AWS_DEFAULT_REGION=ca-central-1
+export AWS_DEFAULT_REGION=us-east-1
 export AWS_PAGER=""
 
 # export TERM=xterm-256color
@@ -160,6 +161,7 @@ alias cdold='cd $OLDPWD'
 alias cddotfiles='cd ~/nodestack/dotfiles/'
 alias cdswap='cd ~/.vim/tmp'
 alias cdnodestack='cd ~/nodestack'
+alias cdmgmt='cd ~/nodestack/nodeai/mgmt'
 alias cdzim='cd ~/nodestack/zim'
 
 # Alias K8S
