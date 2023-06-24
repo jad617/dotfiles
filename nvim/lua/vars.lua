@@ -6,7 +6,7 @@ M.lsp = {
   jsonls = {}, -- json
   gopls = {}, -- golang
   golangci_lint_ls = {}, -- golangci
-  groovyls = {}, -- groovy
+  -- groovyls = {}, -- groovy
   pyright = {}, -- python
   -- solargraph = {}, -- ruby
   sumneko_lua = { -- lua
@@ -20,6 +20,7 @@ M.lsp = {
   },
   tflint = {}, -- terraform docs
   tsserver = {}, -- javascript
+
   terraformls = {}, -- terraform
 }
 
@@ -30,8 +31,8 @@ M.linter = {
     "goimports",
     "goimports-reviser",
     "markdownlint",
-    -- "rubocop",
     -- "beautysh",
+    -- "rubocop",
     -- "shellharden",       -- Requires Cargo
     "shfmt",
     -- "terraform-fmt",     -- Not found by Mason
