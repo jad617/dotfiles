@@ -26,6 +26,8 @@ o.linebreak = true -- Wrap on word boundary
 o.termguicolors = true -- Enable 24-bit RGB colors
 -- o.scrolloff = 10         -- Minimal number to keep above and below cursor: Set to 999 for cursor to always be in the middle
 
+vim.o.undofile = false
+
 o.mouse = "a" -- Mouse configs
 o.mousemodel = "extend"
 map("n", "<LeftMouse>", "<nop>", options)
