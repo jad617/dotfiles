@@ -4,6 +4,14 @@ return {
   -- comfortable-motion
   { "yuttie/comfortable-motion.vim", enabled = true },
 
+  -- Rename word on cursor
+  {
+    "smjonas/inc-rename.nvim",
+    requires = {
+      'stevearc/dressing.nvim',
+    },
+  },
+
   -- Markdown
   {
     "iamcco/markdown-preview.nvim",
