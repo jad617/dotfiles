@@ -44,12 +44,23 @@ return {
   },
 
   -- Nvim-tree: nerdtree in lua
+  -- {
+  --   "kyazdani42/nvim-tree.lua",
+  --   requires = {
+  --     "kyazdani42/nvim-web-devicons", -- optional, for file icons
+  --   },
+  --   tag = "nightly", -- optional, updated every week. (see issue #1193)
+  -- },
   {
-    "kyazdani42/nvim-tree.lua",
-    requires = {
-      "kyazdani42/nvim-web-devicons", -- optional, for file icons
+    "nvim-tree/nvim-tree.lua",
+    version = "*",
+    lazy = false,
+    dependencies = {
+      "nvim-tree/nvim-web-devicons",
     },
-    tag = "nightly", -- optional, updated every week. (see issue #1193)
+    config = function()
+      require("nvim-tree").setup {}
+    end,
   },
 
   -- Statusline, is used for tabline feature only
