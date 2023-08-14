@@ -1,6 +1,8 @@
 -- bootstrap lazy.nvim, LazyVim and your plugins
 require("config.lazy")
 
+-- require("onedark").setup() -- Lua
+
 -- custom plugins config
 require("config.plugins.comfortable-motion")
 require("config.plugins.nvim-tree")
