@@ -1,14 +1,38 @@
 -- stylua: ignore
 
 return {
+  ------------------------------------------------------------
+  -- [[ Themes ]]
+  ------------------------------------------------------------
   -- Onedark
   {
     "monsonjeremy/onedark.nvim",
     name = "onedark",
-    priority = 1000
+    priority = 1000,
   },
 
-    -- comfortable-motion
+  ------------------------------------------------------------
+  -- [[ Languages ]]
+  ------------------------------------------------------------
+  -- Markdown
+  {
+    "iamcco/markdown-preview.nvim",
+    build = function()
+      vim.fn["mkdp#util#install"]()
+    end,
+  },
+
+  -- Terraform Syntaxt
+  {
+    "hashivim/vim-terraform",
+    ft = {'terraform'},
+  },
+
+  ------------------------------------------------------------
+  -- [[ Utils ]]
+  ------------------------------------------------------------
+
+  -- comfortable-motion
   { "yuttie/comfortable-motion.vim", enabled = true },
 
   -- Rename word on cursor
@@ -17,14 +41,6 @@ return {
     requires = {
       'stevearc/dressing.nvim',
     },
-  },
-
-  -- Markdown
-  {
-    "iamcco/markdown-preview.nvim",
-    build = function()
-      vim.fn["mkdp#util#install"]()
-    end,
   },
 
   -- Nvim-tree: nerdtree in lua
