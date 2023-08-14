@@ -1,7 +1,14 @@
 -- stylua: ignore
 
 return {
-  -- comfortable-motion
+  -- Onedark
+  {
+    "monsonjeremy/onedark.nvim",
+    name = "onedark",
+    priority = 1000
+  },
+
+    -- comfortable-motion
   { "yuttie/comfortable-motion.vim", enabled = true },
 
   -- Rename word on cursor
@@ -29,10 +36,9 @@ return {
     tag = "nightly", -- optional, updated every week. (see issue #1193)
   },
 
-  -- Statusline
-  { "beauwilliams/statusline.lua" }, -- Statusline, is used for tabline feature only
+  -- Statusline, is used for tabline feature only
+  { "beauwilliams/statusline.lua" },
 
   -- Tmux Split navigator
   { "christoomey/vim-tmux-navigator" },
-
 }
