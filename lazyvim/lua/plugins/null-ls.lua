@@ -10,6 +10,11 @@ return {
         null_ls.builtins.formatting.gofumpt,
         null_ls.builtins.formatting.goimports_reviser,
 
+        -- Python
+        null_ls.builtins.formatting.black,
+        null_ls.builtins.formatting.isort,
+        null_ls.builtins.formatting.autopep8,
+
         -- terraform
         null_ls.builtins.formatting.terraform_fmt,
         null_ls.builtins.diagnostics.terraform_validate,
