@@ -41,9 +41,6 @@ return {
     opts = { use_diagnostic_signs = true },
   },
 
-  -- disable trouble
-  { "folke/trouble.nvim", enabled = false },
-
   -- add symbols-outline
   {
     "simrat39/symbols-outline.nvim",
@@ -95,37 +92,6 @@ return {
       config = function()
         require("telescope").load_extension("fzf")
       end,
-    },
-  },
-
-  -- add more treesitter parsers
-  {
-    "nvim-treesitter/nvim-treesitter",
-    opts = {
-      ensure_installed = {
-        "bash",
-        "dockerfile",
-        "gitignore",
-        "go",
-        "gomod",
-        "gosum",
-        "html",
-        "javascript",
-        "json",
-        "lua",
-        "make",
-        "markdown",
-        "markdown_inline",
-        "python",
-        "query",
-        "regex",
-        "terraform",
-        "hcl",
-        "tsx",
-        "typescript",
-        "vim",
-        "yaml",
-      },
     },
   },
 
