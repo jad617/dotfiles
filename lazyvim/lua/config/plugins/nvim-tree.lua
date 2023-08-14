@@ -1,22 +1,32 @@
 ------------------------------------------------------------
--- [[ local vars ]]
-------------------------------------------------------------
-local map = vim.api.nvim_set_keymap -- set keys
-local options = { noremap = true, silent = true }
-
-------------------------------------------------------------
 -- [[ Setup ]]
 ------------------------------------------------------------
+local function my_on_attach(bufnr)
+  local api = require("nvim-tree.api")
+
+  local function opts(desc)
+    return { desc = "nvim-tree: " .. desc, buffer = bufnr, noremap = true, silent = true, nowait = true }
+  end
+
+  -- default mappings
+  api.config.mappings.default_on_attach(bufnr)
+
+  -- custom mappings
+  vim.keymap.set("n", "u", api.tree.change_root_to_parent, opts("Up"))
+  vim.keymap.set("n", "c", api.tree.change_root_to_node, opts("CD"))
+  vim.keymap.set("n", "?", api.tree.toggle_help, opts("Help"))
+end
+
+-- pass to setup along with your other options
 require("nvim-tree").setup({
+  on_attach = my_on_attach,
+
   sort_by = "case_sensitive",
   view = {
-    adaptive_size = true,
-    mappings = {
-      list = {
-        { key = "u", action = "dir_up" },
-        { key = "c", action = "cd" },
-        { key = "cp", action = "copy" },
-      },
+    width = {
+      min = 30,
+      max = 60,
+      padding = 2,
     },
   },
   renderer = {
@@ -26,6 +36,17 @@ require("nvim-tree").setup({
     dotfiles = true,
   },
 })
+
+------------------------------------------------------------
+-- [[ local vars ]]
+------------------------------------------------------------
+local map = vim.api.nvim_set_keymap -- set keys
+local options = { noremap = true, silent = true }
+
+------------------------------------------------------------
+-- [[ Key Bindings ]]
+------------------------------------------------------------
+map("n", "<C-n>", "<C-c>:NvimTreeToggle<CR>", options)
 
 ------------------------------------------------------------
 -- [[ Auto Close ]]
@@ -45,8 +66,3 @@ vim.api.nvim_create_autocmd("BufEnter", {
     end
   end,
 })
-
-------------------------------------------------------------
--- [[ Key Bindings ]]
-------------------------------------------------------------
-map("n", "<C-n>", "<C-c>:NvimTreeToggle<CR>", options)
