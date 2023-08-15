@@ -34,6 +34,12 @@ return {
   -- disable neo-tree
   { "nvim-neo-tree/neo-tree.nvim", enabled = false },
 
+  -- add nvim-dap
+  {
+    "leoluz/nvim-dap-go",
+    config = true,
+  },
+
   -- Persistence
   { "folke/persistence.nvim", enabled = false },
 
@@ -131,9 +137,6 @@ return {
       }
     end,
   },
-
-  -- use mini.starter instead of alpha
-  -- { import = "lazyvim.plugins.extras.ui.mini-starter" },
 
   -- add jsonls and schemastore packages, and setup treesitter for json, json5 and jsonc
   { import = "lazyvim.plugins.extras.lang.json" },
