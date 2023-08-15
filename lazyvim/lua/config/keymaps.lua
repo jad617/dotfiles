@@ -58,33 +58,33 @@ map("n", "<A-b>", ":b#<CR>", options) -- Jump back from definition
 ------------------------------------------------------------
 -- [[ MacOs ]]
 -- Alt + =
-map("n", "≠", ":vertical resize +10<CR>", options)
-map("i", "≠", "<C-c>:vertical resize +10<CR>", options)
+map("n", "≠", ":vertical resize +10<CR>", options_silent)
+map("i", "≠", "<C-c>:vertical resize +10<CR>", options_silent)
 
 -- Alt + -
-map("n", "–", ":vertical resize -10<CR>", options)
-map("i", "–", "<C-c>:vertical resize -10<CR>", options)
+map("n", "–", ":vertical resize -10<CR>", options_silent)
+map("i", "–", "<C-c>:vertical resize -10<CR>", options_silent)
 
 -- Alt + .
-map("n", "≥", ":resize +10<CR>", options)
-map("i", "≥", "<C-c>:resize +10<CR>", options)
+map("n", "≥", ":resize +10<CR>", options_silent)
+map("i", "≥", "<C-c>:resize +10<CR>", options_silent)
 
 -- Alt + ,
-map("n", "≤", ":resize -10<CR>", options)
-map("i", "≤", "<C-c>:resize -10<CR>", options)
+map("n", "≤", ":resize -10<CR>", options_silent)
+map("i", "≤", "<C-c>:resize -10<CR>", options_silent)
 
 -- [[ Linux ]]
-map("n", "<A-=>", ":vertical resize +10<CR>", options)
-map("i", "<A-=>", "<C-c>:vertical resize +10<CR>", options)
+map("n", "<A-=>", ":vertical resize +10<CR>", options_silent)
+map("i", "<A-=>", "<C-c>:vertical resize +10<CR>", options_silent)
 
-map("n", "<A-->", ":vertical resize -10<CR>", options)
-map("i", "<A-->", "<C-c>:vertical resize -10<CR>", options)
+map("n", "<A-->", ":vertical resize -10<CR>", options_silent)
+map("i", "<A-->", "<C-c>:vertical resize -10<CR>", options_silent)
 
-map("n", "<A-.>", ":resize +10<CR>", options)
-map("i", "<A-.>", "<C-c>:resize +10<CR>", options)
+map("n", "<A-.>", ":resize +10<CR>", options_silent)
+map("i", "<A-.>", "<C-c>:resize +10<CR>", options_silent)
 
-map("n", "<A-,>", ":resize -10<CR>", options)
-map("i", "<A-,>", "<C-c>:resize -10<CR>", options)
+map("n", "<A-,>", ":resize -10<CR>", options_silent)
+map("i", "<A-,>", "<C-c>:resize -10<CR>", options_silent)
 
 ------------------------------------------------------------
 -- [[ CODE ]]
