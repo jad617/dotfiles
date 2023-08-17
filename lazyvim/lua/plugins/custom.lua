@@ -32,6 +32,9 @@ return {
   -- [[ Utils ]]
   ------------------------------------------------------------
 
+  -- Colorizer
+  { "norcalli/nvim-colorizer.lua", enabled = true },
+
   -- comfortable-motion
   { "yuttie/comfortable-motion.vim", enabled = true },
 
