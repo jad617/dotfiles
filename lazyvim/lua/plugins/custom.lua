@@ -38,6 +38,14 @@ return {
   -- comfortable-motion
   { "yuttie/comfortable-motion.vim", enabled = true },
 
+  -- Indent
+  {
+    'nmac427/guess-indent.nvim',
+    config = function()
+      require('guess-indent').setup {}
+    end,
+  },
+
   -- Rename word on cursor
   {
     "smjonas/inc-rename.nvim",

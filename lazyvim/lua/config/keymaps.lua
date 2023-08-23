@@ -17,6 +17,11 @@ vim.g.mapleader = " " -- 'vim.g' sets global variables
 ------------------------------------------------------------
 -- [[ Shortcuts ]]
 ------------------------------------------------------------
+
+-- Jump to words Right|Left with Ctrl
+map("n", "<C-Right>", "e", {})
+map("n", "<C-Left>", "ge", {})
+
 -- Exit without saving: C-q
 map("n", "<C-d>", ":q!<CR>", {})
 map("i", "<C-d>", "<C-c>:q!<CR>", {})
