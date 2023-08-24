@@ -37,7 +37,8 @@ map("n", "\\", ":noh<return>", options_silent)
 -- [[ MacOs ]]
 map("n", "˙", ":silent !sensible-browser %<CR>", options) -- Open HTML in default browser
 -- [[ Linux ]]
-map("n", "<A-h>", ":silent !sensible-browser %<CR>", options) -- Open HTML in default browser
+-- map("n", "<A-h>", ":silent !sensible-browser %<CR>", options) -- Open HTML in default browser
+map("n", "<A-h>", ":LiveServerStart<CR>", options) -- Open HTML in default browser
 
 -- Replace word
 map("n", "<leader>l", "*``cgn", options) -- Replace 1 by 1

@@ -37,6 +37,7 @@ M.linter = {
     "isort",
     "autopep8",
     "mypy",
+    "prettierd",
   },
   diagnostics = {
     "flake8",
