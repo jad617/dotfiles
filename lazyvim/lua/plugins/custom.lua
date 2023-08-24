@@ -34,6 +34,15 @@ return {
 
   -- Colorizer
   { "norcalli/nvim-colorizer.lua", enabled = true },
+  -- html auto reload
+  {
+    'barrett-ruth/live-server.nvim',
+    build = {
+      'sudo npm install -g live-server', 
+      'yarn global add live-server'
+    },
+    config = true,
+  },
 
   -- comfortable-motion
   { "yuttie/comfortable-motion.vim", enabled = true },
@@ -74,5 +83,15 @@ return {
   {
     "christoomey/vim-tmux-navigator",
     lazy = false,
+  },
+
+  -- Vim Screenshot
+  -- Install CMAKE + Cargo
+  -- https://cmake.org/install/
+  {
+    'segeljakt/vim-silicon',
+    build = {
+      'cargo install silicon'
+    },
   },
 }

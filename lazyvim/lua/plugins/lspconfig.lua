@@ -5,7 +5,9 @@ return
   opts = {
     servers = {
       bashls = {},
+      cssls = {},
       dockerls = {}, -- docker
+      html = {},
       jsonls = {}, -- json
       golangci_lint_ls = {}, -- golangci
       pyright = {},

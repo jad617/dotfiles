@@ -4,6 +4,9 @@ return {
     if type(opts.sources) == "table" then
       local null_ls = require("null-ls")
       vim.list_extend(opts.sources, {
+        -- html
+        null_ls.builtins.formatting.prettierd,
+
         -- golang
         null_ls.builtins.code_actions.gomodifytags,
         null_ls.builtins.code_actions.impl,
