@@ -47,8 +47,8 @@ map("n", "<leader>l", "*``cgn", options) -- Replace 1 by 1
 -- [[ Navigation ]]
 ------------------------------------------------------------
 -- [[ MacOs ]]
-map("n", "t<up>", ":tabprevious<CR>", options)
-map("n", "t<down>", ":tabnext<CR>", options)
+map("n", "<M-up>", ":tabprevious<CR>", options)
+map("n", "<M-down>", ":tabnext<CR>", options)
 
 -- Alt + b
 map("n", "∫", ":b#<CR>", options) -- Jump back from definition
