@@ -26,7 +26,7 @@ require("nvim-tree").setup({
     width = {
       min = 30,
       max = 60,
-      padding = 2,
+      -- padding = "2",
     },
   },
   renderer = {
