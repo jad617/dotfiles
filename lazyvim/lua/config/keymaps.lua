@@ -102,20 +102,6 @@ map("n", "<A-c>", ":ColorizerToggle<CR>", options)
 -- [[ MacOs ]]
 map("n", "ç", ":ColorizerToggle<CR>", options)
 
----- TMUX
------------------------------------------
-----"""""""""""""""""""""""""""""""""Runs last Vimux Command""""""""""""""""""""""""""""""""""""""
---"Will launch a popup window with the slected word
---"
---
---map('n', '<A-s>', ':CocCommand git.chunkInfo<CR>', options)
---noremap ƒ :VimuxRunLastCommand<CR>
---noremap ∂ :VimuxPromptCommand<CR>
---
---noremap <A-f> :VimuxRunLastCommand<CR>
---noremap <A-d> :VimuxPromptCommand<CR>
---
-
 ------------------------------------------------------------
 -- [[ VIM TROUBLESHOOT ]]
 ------------------------------------------------------------
