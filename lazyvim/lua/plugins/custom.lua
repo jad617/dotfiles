@@ -80,11 +80,11 @@ return {
   { "beauwilliams/statusline.lua" },
 
   -- Tmux Split navigator
-  {
-    "christoomey/vim-tmux-navigator",
-    lazy = false,
-  },
-
+  -- {
+  --   "christoomey/vim-tmux-navigator",
+  --   lazy = false,
+  -- },
+  --
   -- Tmux split run command
   { 'preservim/vimux' },
 
