@@ -85,6 +85,10 @@ return {
     lazy = false,
   },
 
+  -- Tmux split run command
+  { 'preservim/vimux' },
+
+
   -- Vim Screenshot
   -- Install CMAKE + Cargo
   -- https://cmake.org/install/
