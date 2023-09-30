@@ -14,3 +14,4 @@ map("n", "<A-0>", ":VimuxPromptCommand<CR>", options)
 -- [[ MacOs ]]
 --noremap ƒ :VimuxRunLastCommand<CR>
 --noremap ∂ :VimuxPromptCommand<CR>
+-- local nvim_tmux_nav = require("nvim-tmux-navigation")
