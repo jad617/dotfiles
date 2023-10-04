@@ -11,6 +11,7 @@ vim.keymap.set("n", "fg", builtin.live_grep, {})
 vim.keymap.set("n", "<C-g>", builtin.live_grep, {})
 vim.keymap.set("n", "fb", builtin.buffers, {})
 vim.keymap.set("n", "<C-b>", builtin.buffers, {})
+vim.keymap.set("n", "<leader>fb", builtin.buffers, {})
 vim.keymap.set("n", "fh", builtin.help_tags, {})
 
 map(
