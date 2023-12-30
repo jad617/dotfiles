@@ -92,10 +92,10 @@ return {
   -- Vim Screenshot
   -- Install CMAKE + Cargo
   -- https://cmake.org/install/
-  {
-    'segeljakt/vim-silicon',
-    build = {
-      'cargo install silicon'
-    },
-  },
+  -- {
+  --   'segeljakt/vim-silicon',
+  --   build = {
+  --     'cargo install silicon'
+  --   },
+  -- },
 }
