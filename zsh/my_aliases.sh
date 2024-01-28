@@ -11,6 +11,9 @@ export EDITOR=nvim
 # Bash
 export SHELLCHECK_OPTS="-e SC2086"
 
+#Github
+export GITHUB_TOKEN=$(cat ~/.github_popos)
+
 # Golang
 export GO_ENV=local
 [ -d ~/go ] && export PATH="$HOME/go/bin:$PATH"
