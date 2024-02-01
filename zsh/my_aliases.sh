@@ -44,8 +44,7 @@ fi
 
 # AWS
 # export AWS_PROFILE=default
-# export AWS_DEFAULT_REGION=ca-central-1
-export AWS_DEFAULT_REGION=us-east-1
+export AWS_DEFAULT_REGION=ca-central-1
 export AWS_PAGER=""
 
 # export TERM=xterm-256color
