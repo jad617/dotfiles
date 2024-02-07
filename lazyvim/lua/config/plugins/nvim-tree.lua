@@ -49,6 +49,20 @@ local options = { noremap = true, silent = true }
 map("n", "<C-n>", "<C-c>:NvimTreeToggle<CR>", options)
 
 ------------------------------------------------------------
+-- [[ Auto Open ]]
+------------------------------------------------------------
+-- https://github.com/nvim-tree/nvim-tree.lua/wiki/Open-At-Startup
+
+vim.api.nvim_create_autocmd({ "VimEnter" }, {
+  callback = function()
+    require("nvim-tree.api").tree.open()
+
+    -- Jump to next window, this prevents from opening in the nvim-tree window by default
+    vim.cmd([[wincmd w]])
+  end,
+})
+
+------------------------------------------------------------
 -- [[ Auto Close ]]
 ------------------------------------------------------------
 -- https://github.com/nvim-tree/nvim-tree.lua/wiki/Auto-Close
