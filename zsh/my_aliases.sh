@@ -160,7 +160,7 @@ alias vimi3_full='vim ~/.config/i3/config'
 
 #Shortcut CD
 alias cdold='cd $OLDPWD'
-alias cddotfiles='cd ~/nodestack/dotfiles/'
+alias cddotfiles='cd ~/nodestack/github_dotfiles'
 alias cdswap='cd ~/.vim/tmp'
 alias cdnodestack='cd ~/nodestack'
 alias cdopsinc='cd ~/opsinc'
