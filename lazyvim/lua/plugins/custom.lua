@@ -5,11 +5,29 @@ return {
   -- [[ Themes ]]
   ------------------------------------------------------------
   -- Onedark
-  {
-    "monsonjeremy/onedark.nvim",
-    name = "onedark",
-    priority = 1000,
-  },
+  -- { "monsonjeremy/onedark.nvim", name = "onedark", priority = 1000 },
+
+  { "navarasu/onedark.nvim", name = "onedark", priority = 1000 },
+
+  -- Everblush
+  { "Alexis12119/nightly.nvim" },
+
+  { 'Everblush/nvim', name = 'everblush' },
+
+  -- Onedark Pro
+  -- { "olimorris/onedarkpro.nvim", priority = 1000 },
+
+  -- Kanagawa
+  { "rebelot/kanagawa.nvim", name = "kanagawa", priority = 1000 },
+
+  -- Catppuccin
+  { "catppuccin/nvim", name = "catppuccin", priority = 1000 },
+
+  -- OneNord
+  { "rmehri01/onenord.nvim", name = "onenord", priority = 1000 },
+
+  -- Nordic
+  { "AlexvZyl/nordic.nvim", name = "nordic", priority = 1000 },
 
   ------------------------------------------------------------
   -- [[ Languages ]]
