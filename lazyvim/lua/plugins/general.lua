@@ -38,10 +38,10 @@ return {
   { "nvim-neo-tree/neo-tree.nvim", enabled = false },
 
   -- add nvim-dap
-  {
-    "leoluz/nvim-dap-go",
-    config = true,
-  },
+  -- {
+  --   "leoluz/nvim-dap-go",
+  --   config = true,
+  -- },
 
   -- Persistence
   { "folke/persistence.nvim", enabled = false },

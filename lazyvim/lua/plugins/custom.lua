@@ -106,6 +106,20 @@ return {
   -- Tmux split run command
   { 'preservim/vimux' },
 
+  -- Window resizer
+  { "anuvyklack/windows.nvim",
+   dependencies = {
+      "anuvyklack/middleclass",
+      "anuvyklack/animation.nvim"
+   },
+   config = function()
+      vim.o.winwidth = 10
+      vim.o.winminwidth = 10
+      vim.o.equalalways = false
+      require('windows').setup()
+   end
+}
+
 
   -- Vim Screenshot
   -- Install CMAKE + Cargo
