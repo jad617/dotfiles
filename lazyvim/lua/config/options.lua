@@ -25,6 +25,7 @@ o.splitbelow = true -- Go under current buffer when splitting
 o.linebreak = true -- Wrap on word boundary
 o.termguicolors = true -- Enable 24-bit RGB colors
 o.list = false -- Hides the annoying tab space char ex: >> >
+o.equalalways = false
 -- o.scrolloff = 10         -- Minimal number to keep above and below cursor: Set to 999 for cursor to always be in the middle
 
 vim.o.undofile = false
