@@ -28,6 +28,13 @@ map(
   { noremap = true, silent = true }
 )
 
+map(
+  "n",
+  "gl",
+  '<cmd>lua vim.diagnostic.open_float(0, {scope="b", max_width=120})<CR>',
+  { noremap = true, silent = true }
+)
+
 map("n", "<A-n>", ":Telescope buffers<cr>", { noremap = true, silent = false })
 
 map(
