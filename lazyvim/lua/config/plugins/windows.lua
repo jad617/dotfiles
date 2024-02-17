@@ -16,9 +16,8 @@ require("windows").setup({
     -- },
   },
   ignore = {
-    buftype = { "quickfix" },
-    -- filetype = { "NvimTree", "neo-tree", "undotree", "gundo" },
-    filetype = {},
+    filetype = { "NvimTree", "neo-tree", "undotree", "gundo" },
+    -- filetype = {},
   },
   animation = {
     enable = true,
