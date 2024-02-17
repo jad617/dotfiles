@@ -18,6 +18,11 @@ vim.g.mapleader = " " -- 'vim.g' sets global variables
 -- [[ Shortcuts ]]
 ------------------------------------------------------------
 
+------------------------------------------------------------
+-- [[ Neo-tree ]]
+------------------------------------------------------------
+map("n", "<C-n>", "<C-c>:Neotree toggle<CR>", options_silent)
+
 -- Jump to words Right|Left with Ctrl
 map("n", "<C-Right>", "e", {})
 map("n", "<C-Left>", "ge", {})
