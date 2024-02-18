@@ -85,6 +85,9 @@ map("n", "≤", ":resize -10<CR>", options_silent)
 map("i", "≤", "<C-c>:resize -10<CR>", options_silent)
 
 -- [[ Linux ]]
+map("n", "<A-\\>", ":vertical resize -90<CR>", options_silent)
+map("i", "<A-\\>", "<C-c>:vertical resize -90<CR>", options_silent)
+
 map("n", "<A-=>", ":vertical resize +10<CR>", options_silent)
 map("i", "<A-=>", "<C-c>:vertical resize +10<CR>", options_silent)
 
