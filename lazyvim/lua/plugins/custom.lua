@@ -29,6 +29,10 @@ return {
   -- Nordic
   { "AlexvZyl/nordic.nvim", name = "nordic", priority = 1000 },
 
+  { 'glepnir/zephyr-nvim',
+    requires = { 'nvim-treesitter/nvim-treesitter', opt = true },
+  },
+
   ------------------------------------------------------------
   -- [[ Languages ]]
   ------------------------------------------------------------
@@ -51,7 +55,17 @@ return {
   ------------------------------------------------------------
 
   -- Colorizer
-  { "norcalli/nvim-colorizer.lua", enabled = true },
+  { "NvChad/nvim-colorizer.lua",
+    config = function()
+      require('guess-indent').setup {}
+    end,
+  },
+
+  -- color windows
+  -- {
+  -- "nvim-zh/colorful-winsep.nvim", config = true, event = { "WinNew" },
+  -- },
+
   -- html auto reload
   {
     'barrett-ruth/live-server.nvim',
@@ -103,22 +117,39 @@ return {
   --   lazy = false,
   -- },
   --
+
+  -- Terminal float
+  { "numToStr/FTerm.nvim" },
   -- Tmux split run command
   { 'preservim/vimux' },
 
   -- Window resizer
   { "anuvyklack/windows.nvim",
-   dependencies = {
-      "anuvyklack/middleclass",
-      "anuvyklack/animation.nvim"
-   },
-   config = function()
-      vim.o.winwidth = 10
-      vim.o.winminwidth = 10
-      vim.o.equalalways = false
-      require('windows').setup()
-   end
-}
+    dependencies = {
+        "anuvyklack/middleclass",
+        "anuvyklack/animation.nvim"
+    },
+    config = function()
+       vim.o.winwidth = 10
+       vim.o.winminwidth = 10
+       vim.o.equalalways = false
+       require('windows').setup()
+    end
+  },
+
+  -- Window picker works with neo-tree
+  {
+    's1n7ax/nvim-window-picker',
+    name = 'window-picker',
+    event = 'VeryLazy',
+    version = '2.*',
+    config = function()
+        require'window-picker'.setup({
+        selection_chars = 'ABDCEFG',
+      })
+    end,
+  },
+
 
 
   -- Vim Screenshot

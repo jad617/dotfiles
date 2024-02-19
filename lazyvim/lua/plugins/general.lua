@@ -34,7 +34,7 @@ return {
     -- end,
   },
 
-  -- disable neo-tree
+  --  neo-tree
   { "nvim-neo-tree/neo-tree.nvim", enabled = true },
 
   -- add nvim-dap
