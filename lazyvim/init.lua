@@ -5,12 +5,8 @@
 -- bootstrap lazy.nvim, LazyVim and your plugins
 require("config.lazy")
 
--- require("onedark").setup({
---   style = "warmer",
--- })
--- require("onedark").load()
--- require("onedark").setup() -- Lua
--- require("catppuccin").setup() -- Lua
+require("config.plugins.onedark")
+require("onedark").load()
 
 -- custom global configs
 require("config.custom.commands")

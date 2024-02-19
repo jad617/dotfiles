@@ -57,7 +57,7 @@ return {
   -- Colorizer
   { "NvChad/nvim-colorizer.lua",
     config = function()
-      require('guess-indent').setup {}
+      require('colorizer').setup {}
     end,
   },
 

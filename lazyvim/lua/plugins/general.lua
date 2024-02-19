@@ -13,13 +13,13 @@ return {
   -- Configure LazyVim to load gruvbox
   {
     "LazyVim/LazyVim",
-    opts = {
-      colorscheme = "onedark",
+    -- opts = {
+      -- colorscheme = "onedark",
       -- colorscheme = "catppuccin-mocha",
       -- colorscheme = "onenord",
       -- colorscheme = "nordic",
       -- colorscheme = "everblush",
-    },
+    -- },
   },
 
   -- Alpha dashboard for Neovim work projects
