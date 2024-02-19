@@ -21,12 +21,12 @@ require("onedark").setup({
   }, -- Override default colors
   highlights = {
     MiniIndentscopeSymbol = { fg = "#ff8050" },
-    ["@module"]             = { fg = "#ff4d94" },
-    ["@operator"]           = { fg = "#e16d77" },
-    ["@variable"]           = { fg = "#ff9950" },
-    ["@number"]             = { fg = "#23a0a0"},
-    ["@boolean"]            = { fg = "#e16d77"},
-    ["@type.builtin"]       = { fg = "#5fafb9"},
+    ["@module"] = { fg = "#ff4d94" },
+    ["@operator"] = { fg = "#e16d77" },
+    ["@variable"] = { fg = "#ff9950" },
+    ["@number"] = { fg = "#23a0a0" },
+    ["@boolean"] = { fg = "#e16d77" },
+    ["@type.builtin"] = { fg = "#5fafb9" },
   }, -- Override highlight groups
 })
 
