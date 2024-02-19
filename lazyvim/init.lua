@@ -8,7 +8,7 @@ require("config.lazy")
 -- require("onedark").setup({
 --   style = "warmer",
 -- })
-require("onedark").load()
+-- require("onedark").load()
 -- require("onedark").setup() -- Lua
 -- require("catppuccin").setup() -- Lua
 
