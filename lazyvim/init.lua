@@ -5,9 +5,9 @@
 -- bootstrap lazy.nvim, LazyVim and your plugins
 require("config.lazy")
 
-require("onedark").setup({
-  style = "warmer",
-})
+-- require("onedark").setup({
+--   style = "warmer",
+-- })
 require("onedark").load()
 -- require("onedark").setup() -- Lua
 -- require("catppuccin").setup() -- Lua
@@ -24,3 +24,5 @@ require("config.plugins.gitsigns")
 require("config.plugins.inc-rename")
 require("config.plugins.telescope")
 require("config.plugins.vimux")
+-- require("config.plugins.colorful-winseperator")
+require("config.plugins.fterm")
