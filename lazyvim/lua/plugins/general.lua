@@ -204,4 +204,5 @@ return {
       })
     end,
   },
+  {"folke/which-key.nvim", enabled = false },
 }
