@@ -27,6 +27,8 @@ require("onedark").setup({
     ["@number"] = { fg = "#23a0a0" },
     ["@boolean"] = { fg = "#e16d77" },
     ["@type.builtin"] = { fg = "#5fafb9" },
+    ["@constant.builtin"] = { fg = "#ff4d94" },
+    ["@variable.member"] = { fg = "#e16d77" },
   }, -- Override highlight groups
 })
 
