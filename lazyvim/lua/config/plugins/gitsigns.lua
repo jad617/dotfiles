@@ -40,7 +40,6 @@ end
 
 map("n", "<A-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
 map("i", "<A-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
-map("i", "<A-f>", "<C-c>:!git add . && git commit --amend --no-edit && git push -f<CR>", options)
 -- map("n", "<A-f>", ":!git add . && git commit --amend --no-edit && git push -f<CR>", options)
 -- map("i", "<A-f>", "<C-c>:!git add . && git commit --amend --no-edit && git push -f<CR>", options)
 
