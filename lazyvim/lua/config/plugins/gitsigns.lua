@@ -22,6 +22,10 @@ require("gitsigns").setup({
 ------------------------------------------------------------
 
 -- [[ Linux ]]
+
+map("n", "<A-f>", ":!git add . && git commit --amend --no-edit && git push -f<CR>", options)
+map("i", "<A-f>", "<C-c>:!git add . && git commit --amend --no-edit && git push -f<CR>", options)
+
 map("n", "<A-a>", ":Gitsigns preview_hunk<CR>", options)
 map("i", "<A-a>", "<C-c>:Gitsigns preview_hunk<CR>", options)
 
