@@ -18,13 +18,13 @@ return {
         hide_gitignored = true,
         hide_by_name = {
           ".git",
+          ".gitignore",
           ".DS_Store",
           "bootstrap",
           "bootstrap.zip",
           "main.zip",
         },
         always_show = { -- remains visible even if other settings would normally hide it
-          ".gitignore",
           ".github",
           ".terraform-docs.yml",
           ".gitlab-ci.yml",
