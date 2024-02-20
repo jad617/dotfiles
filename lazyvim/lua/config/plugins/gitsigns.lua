@@ -41,8 +41,8 @@ end
 map("n", "<A-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
 map("i", "<A-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
 
-map("n", "<A-/>", ':lua GitCommitAndPush(vim.fn.input("Commit message: "))<CR> ', options)
-map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Commit message: "))<CR> ', options)
+map("n", "<A-/>", ':lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
+map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
 
 map("n", "<A-a>", ":Gitsigns preview_hunk<CR>", options)
 map("i", "<A-a>", "<C-c>:Gitsigns preview_hunk<CR>", options)
