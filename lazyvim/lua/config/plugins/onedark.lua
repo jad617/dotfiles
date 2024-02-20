@@ -20,7 +20,15 @@ require("onedark").setup({
     bright_orange = "#ff9950", -- define a new color
   }, -- Override default colors
   highlights = {
+    -- [ Indent line ]
     MiniIndentscopeSymbol = { fg = "#ff8050" },
+    -- [ NeoTree ]
+    NeoTreeIndentMarker = { fg = "#ff8050" },
+    NeoTreeWinSeparator = { fg = "#c27fd7" },
+    NeoTreeNormal = { fg = "#99bc80" },
+    NeoTreeNormalNC = { fg = "#99bc80" },
+    NeoTreeRootName = { fg = "#e16d77" },
+    -- [ LSP ]
     ["@module"] = { fg = "#ff4d94" },
     ["@operator"] = { fg = "#e16d77" },
     ["@variable"] = { fg = "#ff9950" },
@@ -29,6 +37,10 @@ require("onedark").setup({
     ["@type.builtin"] = { fg = "#5fafb9" },
     ["@constant.builtin"] = { fg = "#ff4d94" },
     ["@variable.member"] = { fg = "#e16d77" },
+    -- [ Telescope ]
+    TelescopePromptBorder = { fg = "#ff8050" },
+    TelescopeResultsBorder = { fg = "#ff8050" },
+    TelescopePreviewBorder = { fg = "#ff8050" },
   }, -- Override highlight groups
 })
 

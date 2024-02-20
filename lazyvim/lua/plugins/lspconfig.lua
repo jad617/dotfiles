@@ -18,11 +18,20 @@ return
       pyright = {},
       tflint = {}, -- terraform docs
       terraformls = {}, -- terraform
-      gopls = {
-        keys = {
-          -- Workaround for the lack of a DAP strategy in neotest-go: https://github.com/nvim-neotest/neotest-go/issues/12
-          { "<leader>td", "<cmd>lua require('dap-go').debug_test()<CR>", desc = "Debug Nearest (Go)" },
+      lua_ls = { -- lua
+        settings = {
+          Lua = {
+            diagnostics = {
+              globals = { "vim" }, -- removes warning: 'Global vim is undefined'
+            },
+          },
         },
+      },
+      gopls = {
+        -- keys = {
+        --   -- Workaround for the lack of a DAP strategy in neotest-go: https://github.com/nvim-neotest/neotest-go/issues/12
+        --   { "<leader>td", "<cmd>lua require('dap-go').debug_test()<CR>", desc = "Debug Nearest (Go)" },
+        -- },
         settings = {
           gopls = {
             -- gofumpt = true,
@@ -61,27 +70,27 @@ return
         },
       },
     },
-    setup = {
-      gopls = function(_, opts)
-        -- workaround for gopls not supporting semanticTokensProvider
-        -- https://github.com/golang/go/issues/54531#issuecomment-1464982242
-        require("lazyvim.util").lsp.on_attach(function(client, _)
-          if client.name == "gopls" then
-            if not client.server_capabilities.semanticTokensProvider then
-              local semantic = client.config.capabilities.textDocument.semanticTokens
-              client.server_capabilities.semanticTokensProvider = {
-                full = true,
-                legend = {
-                  tokenTypes = semantic.tokenTypes,
-                  tokenModifiers = semantic.tokenModifiers,
-                },
-                range = true,
-              }
-            end
-          end
-        end)
-        -- end workaround
-      end,
-    },
+    -- setup = {
+      -- gopls = function(_, opts)
+      --   -- workaround for gopls not supporting semanticTokensProvider
+      --   -- https://github.com/golang/go/issues/54531#issuecomment-1464982242
+      --   require("lazyvim.util").lsp.on_attach(function(client, _)
+      --     if client.name == "gopls" then
+      --       if not client.server_capabilities.semanticTokensProvider then
+      --         local semantic = client.config.capabilities.textDocument.semanticTokens
+      --         client.server_capabilities.semanticTokensProvider = {
+      --           full = true,
+      --           legend = {
+      --             tokenTypes = semantic.tokenTypes,
+      --             tokenModifiers = semantic.tokenModifiers,
+      --           },
+      --           range = true,
+      --         }
+      --       end
+      --     end
+      --   end)
+      --   -- end workaround
+      -- end,
+    -- },
   },
 }
