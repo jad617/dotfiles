@@ -2,6 +2,8 @@
 -- [[ Locals ]]
 ------------------------------------------------------------
 local linters = require("config.custom.vars").linter
+local map = vim.api.nvim_set_keymap -- set keys
+local options = { noremap = true }
 
 ------------------------------------------------------------
 -- [[ MasonLinterInstall ]]

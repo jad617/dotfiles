@@ -31,7 +31,7 @@ require("onedark").setup({
     -- [ LSP ]
     ["@module"] = { fg = "#ff4d94" },
     ["@operator"] = { fg = "#e16d77" },
-    ["@variable"] = { fg = "#ff9950" },
+    ["@variable"] = { fg = "#ffa666" },
     ["@number"] = { fg = "#23a0a0" },
     ["@boolean"] = { fg = "#c27fd7" },
     ["@type.builtin"] = { fg = "#5fafb9" },
