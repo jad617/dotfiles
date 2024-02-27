@@ -20,30 +20,6 @@ require("gitsigns").setup({
 ------------------------------------------------------------
 -- [[ Key Bindings ]]
 ------------------------------------------------------------
-function GitCommitAndPush(commit_message)
-  local command = 'git add -A && git commit -m "' .. commit_message .. '" && git push'
-  vim.fn.system(command)
-end
-
-function GitCommitAmendAndForcePush()
-  local confirm = vim.fn.input("Are you sure you want to amend the last commit and force push? (y/n): ")
-  if confirm == "y" then
-    local command = "git add . && git commit --amend --no-edit && git push -f"
-    print("Force Push Done")
-    vim.fn.system(command)
-  else
-    print("Force Push Canceled")
-  end
-end
-
--- [[ Linux ]]
-
-map("n", "<A-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
-map("i", "<A-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
-
-map("n", "<A-/>", ':lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
-map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
-
 map("n", "<A-a>", ":Gitsigns preview_hunk<CR>", options)
 map("i", "<A-a>", "<C-c>:Gitsigns preview_hunk<CR>", options)
 

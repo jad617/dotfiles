@@ -10,6 +10,11 @@ return {
         ["u"] = "navigate_up",
       },
     },
+    buffers = {
+      follow_current_file = {
+        enabled = false, -- This will find and focus the file in the active buffer every time
+      },
+    },
     filesystem = {
       filtered_items = {
         visible = false,
@@ -29,6 +34,9 @@ return {
           ".terraform-docs.yml",
           ".gitlab-ci.yml",
         },
+      },
+      follow_current_file = {
+        enabled = false,
       },
     },
     default_component_configs = {
