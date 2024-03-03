@@ -17,7 +17,7 @@ return {
         -- Python
         null_ls.builtins.formatting.black,
         null_ls.builtins.formatting.isort,
-        null_ls.builtins.formatting.autopep8,
+        -- null_ls.builtins.formatting.autopep8,
 
         -- terraform
         null_ls.builtins.formatting.terraform_fmt,
