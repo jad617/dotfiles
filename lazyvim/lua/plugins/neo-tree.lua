@@ -1,6 +1,7 @@
 return {
   "nvim-neo-tree/neo-tree.nvim",
   opts = {
+    enable_diagnostics = false,
     close_if_last_window = true,
     window = {
       mappings = {
