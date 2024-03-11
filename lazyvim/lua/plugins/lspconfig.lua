@@ -2,7 +2,7 @@
 return
 {
   "neovim/nvim-lspconfig",
-  enabled = false,
+  enabled = true,
   opts = {
     -- autoformat = false,
     -- format = {
