@@ -12,7 +12,7 @@ export EDITOR=nvim
 export SHELLCHECK_OPTS="-e SC2086"
 
 #Github
-export GITHUB_TOKEN=$(cat ~/.github_popos)
+[ -f ~/.github_token ] && export GITHUB_TOKEN=$(cat ~/.github_token)
 
 # Golang
 export GO_ENV=local
@@ -43,7 +43,7 @@ if [ -d /usr/local/opt/ruby/bin ]; then
 fi
 
 # AWS
-# export AWS_PROFILE=default
+export AWS_PROFILE=$(cat ~/.aws_default_profile)
 export AWS_DEFAULT_REGION=ca-central-1
 export AWS_PAGER=""
 
@@ -161,8 +161,8 @@ alias vimi3_full='vim ~/.config/i3/config'
 #Shortcut CD
 alias cdold='cd $OLDPWD'
 alias cddotfiles='cd ~/nodestack/github_dotfiles'
-alias cdlazyvim='cd ~/nodestack/github_dotfiles/lazyvim/'
-alias vimlazyvim='cd ~/nodestack/github_dotfiles/lazyvim && vim init.lua'
+alias cdlazyvim='cd ~/nodestack/dotfiles/lazyvim/gk'
+alias vimlazyvim='cd ~/nodestack/dotfiles/lazyvim && vim init.lua'
 alias cdswap='cd ~/.vim/tmp'
 alias cdnodestack='cd ~/nodestack'
 alias cdopsinc='cd ~/opsinc'
@@ -170,7 +170,7 @@ alias cdmgmt='cd ~/nodestack/nodeai/mgmt'
 alias cdzim='cd ~/nodestack/zim'
 
 # Alias K8S
-alias kubectl='kubectl 2>/dev/null'
+# alias kubectl='kubectl 2>/dev/null'
 
 #Shortcut VIM
 # alias mynvimrc='vim ~/.config/nvim/init.vim'

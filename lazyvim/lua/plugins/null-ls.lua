@@ -6,7 +6,7 @@ return {
       local null_ls = require("null-ls")
       vim.list_extend(opts.sources, {
         -- html
-        null_ls.builtins.formatting.prettierd,
+        -- null_ls.builtins.formatting.prettierd,
 
         -- golang
         null_ls.builtins.code_actions.gomodifytags,
@@ -23,6 +23,10 @@ return {
         -- terraform
         null_ls.builtins.formatting.terraform_fmt,
         null_ls.builtins.diagnostics.terraform_validate,
+
+        -- yaml
+        -- null_ls.builtins.formatting.yamlfmt,
+        -- null_ls.builtins.diagnostics.yamllint,
       })
     end
   end,

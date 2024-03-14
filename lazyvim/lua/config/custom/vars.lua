@@ -3,6 +3,7 @@ M = {}
 M.lsp = {
   bashls = {},
   dockerls = {}, -- docker
+  helm_ls = {},
   jsonls = {}, -- json
   gopls = {}, -- golang
   golangci_lint_ls = {}, -- golangci
@@ -22,6 +23,7 @@ M.lsp = {
   tsserver = {}, -- javascript
 
   terraformls = {}, -- terraform
+  yamlls = {},
 }
 
 M.linter = {

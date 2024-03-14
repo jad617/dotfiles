@@ -44,6 +44,14 @@ return {
     end,
   },
 
+  -- Helm
+  { 'towolf/vim-helm' },
+
+  -- Mustace tpl
+  { "mustache/vim-mustache-handlebars" },
+
+
+
   -- Terraform Syntaxt
   {
     "hashivim/vim-terraform",
@@ -70,8 +78,8 @@ return {
   {
     'barrett-ruth/live-server.nvim',
     build = {
-      'sudo npm install -g live-server', 
-      'yarn global add live-server'
+      'sudo npm install -g live-server',
+      'sudo yarn global add live-server'
     },
     config = true,
   },
