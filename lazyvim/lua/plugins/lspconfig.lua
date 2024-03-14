@@ -13,6 +13,7 @@ return
       bashls = {},
       cssls = {},
       dockerls = {}, -- docker
+      helm_ls = {},
       html = {},
       jsonls = {}, -- json
       golangci_lint_ls = {}, -- golangci

@@ -10,7 +10,7 @@ vim.keymap.set("n", "<C-w>=", cmd("WindowsEqualize"))
 require("windows").setup({
   autowidth = {
     enable = true,
-    winwidth = 80,
+    winwidth = 50,
     -- filetype = {
     --   help = 2,
     -- },
