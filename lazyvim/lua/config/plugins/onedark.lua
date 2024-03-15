@@ -25,9 +25,9 @@ require("onedark").setup({
     -- [ NeoTree ]
     NeoTreeIndentMarker = { fg = "#ff8050" },
     NeoTreeWinSeparator = { fg = "#c27fd7" },
-    -- NeoTreeNormal = { fg = "#99bc80" },
-    -- NeoTreeNormalNC = { fg = "#99bc80" },
-    NeoTreeRootName = { fg = "#e16d77" },
+    NeoTreeNormal = { fg = "#99bc80" },
+    NeoTreeNormalNC = { fg = "#99bc80" },
+    -- NeoTreeRootName = { fg = "#e16d77" },
     -- [ LSP ]
     ["@module"] = { fg = "#ff4d94" },
     ["@operator"] = { fg = "#e16d77" },

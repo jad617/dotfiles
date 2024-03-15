@@ -63,6 +63,9 @@ cmd([[autocmd BufWritePre *\(.lua\)\@<! lua vim.lsp.buf.format({ async = true })
 -- [[ Set FileType ]]
 cmd([[au BufNewFile,BufRead Jenkinsfile setf groovy]])
 cmd([[au BufNewFile,BufRead *.tpl setf mustache]])
+cmd([[au BufNewFile,BufRead *.tftpl setf yaml]])
+cmd([[au BufNewFile,BufRead *.tfvars setf terraform]])
+cmd([[au BufNewFile,BufRead *.tf setf terraform]])
 -- cmd([[au BufNewFile,BufRead version setf text]])
 
 -- [[ FileType ]]

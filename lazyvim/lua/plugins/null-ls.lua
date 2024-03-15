@@ -23,10 +23,11 @@ return {
         -- terraform
         null_ls.builtins.formatting.terraform_fmt,
         null_ls.builtins.diagnostics.terraform_validate,
+        -- null_ls.builtins.diagnostics.tflint,
 
         -- yaml
         -- null_ls.builtins.formatting.yamlfmt,
-        -- null_ls.builtins.diagnostics.yamllint,
+        -- null_ls.builtins.formatting.yamllint,
       })
     end
   end,
