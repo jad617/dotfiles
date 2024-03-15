@@ -53,11 +53,11 @@ return {
 
 
   -- Terraform Syntaxt
-  {
-    "hashivim/vim-terraform",
-    ft = {'terraform'},
-  },
-
+  -- {
+  --   "hashivim/vim-terraform",
+  --   ft = {'terraform'},
+  -- },
+  --
   ------------------------------------------------------------
   -- [[ Utils ]]
   ------------------------------------------------------------
