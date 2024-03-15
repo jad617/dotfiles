@@ -19,7 +19,9 @@ return
       golangci_lint_ls = {}, -- golangci
       pyright = {},
       tflint = {}, -- terraform docs
-      terraformls = {}, -- terraform
+      terraformls = {
+          pattern = {"*.tf", "*.tfvars"},
+        }, -- terraform
       lua_ls = { -- lua
         settings = {
           Lua = {
