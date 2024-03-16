@@ -124,7 +124,15 @@ return {
   --   "christoomey/vim-tmux-navigator",
   --   lazy = false,
   -- },
-  --
+
+  -- scrollEOF
+  {
+    'Aasim-A/scrollEOF.nvim',
+    event = { 'CursorMoved', 'WinScrolled' },
+    opts = {
+      insert_mode = true,
+    },
+  },
 
   -- Terminal float
   { "numToStr/FTerm.nvim" },
