@@ -15,6 +15,9 @@ return {
         null_ls.builtins.formatting.goimports_reviser,
         null_ls.builtins.formatting.goimports,
 
+        -- Markdown
+        null_ls.builtins.formatting.markdownlint,
+
         -- Python
         null_ls.builtins.formatting.black,
         null_ls.builtins.formatting.isort,
