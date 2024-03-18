@@ -31,10 +31,13 @@ return {
           "main.zip",
         },
         always_show = { -- remains visible even if other settings would normally hide it
-          ".github",
           ".env",
-          ".terraform-docs.yml",
+          ".github",
           ".gitlab-ci.yml",
+          ".gitlab-ci.yaml",
+          ".helmignore",
+          ".terraform-docs.yml",
+          ".terraform-docs.yaml",
         },
       },
       follow_current_file = {
