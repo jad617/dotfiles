@@ -1,3 +1,21 @@
+#===========Custom run after running cd ============
+
+# gitGlobal() {
+# 	workdir=$(tail -n 1 ~/.git_work_profile 2>/dev/null | cut -d'=' -f2)
+#
+# 	if [ -f ~/.git_work_profile ] && [[ $PWD == *"$workdir"* ]]; then
+# 		for i in $(head -n 2 ~/.git_work_profile); do
+# 			git config --global $(echo $i | sed -e 's/=/ /g')
+# 			done
+# 	else
+# 		for i in $(head -n 2 ~/.git_perso_profile); do
+# 			git config --global $(echo $i | sed -e 's/=/ /g')
+# 		done
+# 	fi
+# }
+#
+# chpwd_functions+=(gitGlobal)
+
 #===========Custom============
 
 # if [ -n "$WSL_DISTRO_NAME" ]
