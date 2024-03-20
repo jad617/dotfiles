@@ -61,7 +61,7 @@ if [ -d /usr/local/opt/ruby/bin ]; then
 fi
 
 # AWS
-export AWS_PROFILE=$(cat ~/.aws_default_profile)
+export AWS_PROFILE=$(cat ~/.aws_default_profile 2>/dev/null || echo "default")
 export AWS_DEFAULT_REGION=ca-central-1
 export AWS_PAGER=""
 
@@ -178,8 +178,8 @@ alias vimi3_full='vim ~/.config/i3/config'
 
 #Shortcut CD
 alias cdold='cd $OLDPWD'
-alias cddotfiles='cd ~/nodestack/github_dotfiles'
-alias cdlazyvim='cd ~/nodestack/dotfiles/lazyvim/gk'
+alias cddotfiles='cd ~/nodestack/dotfiles'
+alias cdlazyvim='cd ~/nodestack/dotfiles/lazyvim/'
 alias vimlazyvim='cd ~/nodestack/dotfiles/lazyvim && vim init.lua'
 alias cdswap='cd ~/.vim/tmp'
 alias cdnodestack='cd ~/nodestack'

@@ -21,7 +21,7 @@ fi
 #ZSH_THEME="robbyrussell"
 #ZSH_THEME="pygmalion"
 #ZSH_THEME="bira"
-#ZSH_THEME="powerlevel10k/powerlevel10k"
+ZSH_THEME="powerlevel10k/powerlevel10k"
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -86,7 +86,7 @@ fi
 #   git
 #   zsh-syntax-highlighting
 # )
-source ~/powerlevel10k/powerlevel10k.zsh-theme
+# source ~/powerlevel10k/powerlevel10k.zsh-theme
 
 plugins=(
   ansible
@@ -112,6 +112,7 @@ setopt share_history
 
 #Custom
 [ -f ~/.my_aliases.sh ] && source ~/.my_aliases.sh
+[ -f ~/.my_aliases_non_git.sh ] && source ~/.my_aliases_non_git.sh
 
 #FZF
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
