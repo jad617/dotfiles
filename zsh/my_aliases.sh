@@ -34,13 +34,15 @@ export SHELLCHECK_OPTS="-e SC2086"
 
 # Golang
 export GO_ENV=local
-[ -d ~/go ] && export PATH="$HOME/go/bin:$PATH"
+# [ -d ~/go ] && export PATH="$HOME/go/bin:$PATH"
+
+[ -d ~/usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
 
 # Load RUST/Cargo apps
 [ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"
 
-# Load GOlang bin
-[ -d ~/go/bin ] && export PATH="$HOME/go/bin:$PATH"
+# Load Golang bin
+[ -d /usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
 
 # Load node
 [ -d ~/node_modules ] && export PATH="$HOME/node_modules:$PATH"
@@ -61,7 +63,7 @@ if [ -d /usr/local/opt/ruby/bin ]; then
 fi
 
 # AWS
-export AWS_PROFILE=$(cat ~/.aws_default_profile 2>/dev/null || echo "default")
+# export AWS_PROFILE=$(cat ~/.aws_default_profile 2>/dev/null || echo "default")
 export AWS_DEFAULT_REGION=ca-central-1
 export AWS_PAGER=""
 

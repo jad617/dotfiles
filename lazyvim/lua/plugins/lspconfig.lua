@@ -10,7 +10,7 @@ return
     --   timeout_ms = nil,
     -- },
     servers = {
-      bashls = {},
+      -- bashls = {},
       cssls = {},
       dockerls = {}, -- docker
       helm_ls = {},
@@ -20,8 +20,9 @@ return
       pyright = {},
       tflint = {}, -- terraform docs
       terraformls = {
-          pattern = {"*.tf", "*.tfvars"},
-        }, -- terraform
+          filetypes = {"terraform"},
+          pattern = {"*.tf"},
+      }, -- terraform
       lua_ls = { -- lua
         settings = {
           Lua = {
