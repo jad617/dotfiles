@@ -113,9 +113,22 @@ return {
     event = "VeryLazy",
     dependencies = { 'nvim-tree/nvim-web-devicons' },
     opts = function()
+      
+      local lualine_require = require("lualine_require")
+      lualine_require.require = require
+      local icons = require("lazyvim.config").icons
+      local Util = require("lazyvim.util")
+
       return {
         options = {
           theme = "onedark",
+        },
+        sections = {
+          lualine_c = {
+            -- Util.lualine.root_dir({cwd = true}),
+            Util.lualine.root_dir( { cwd = true} ),
+            { Util.lualine.pretty_path() },
+          },
         }
       }
     end,
