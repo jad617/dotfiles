@@ -1,7 +1,7 @@
 M = {}
 
 M.lsp = {
-  bashls = {},
+  -- bashls = {},
   dockerls = {}, -- docker
   helm_ls = {},
   jsonls = {}, -- json
@@ -22,7 +22,7 @@ M.lsp = {
   tflint = {}, -- terraform docs
   tsserver = {}, -- javascript
 
-  terraformls = {}, -- terraform
+  -- terraformls = {}, -- terraform
   yamlls = {},
 }
 
@@ -33,10 +33,11 @@ M.linter = {
     "goimports",
     "goimports-reviser",
     "markdownlint",
-    "shfmt",
+    -- "shfmt",
     "yamlfmt",
     "black",
     "isort",
+    "hclfmt",
     "autopep8",
     "mypy",
     "prettierd",

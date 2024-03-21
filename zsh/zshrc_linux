@@ -99,16 +99,14 @@ plugins=(
   zsh-syntax-highlighting
 )
 
-setopt rm_star_silent
-
 source ~/.oh-my-zsh/oh-my-zsh.sh
 [ -f $(which kubectl) ] && source <(kubectl completion zsh)
 
-bindkey -e
-bindkey '\e\e[C' forward-word
-bindkey '\e\e[D' backward-word
-
+export HISTSIZE=10000
+setopt hist_ignore_all_dups
+setopt hist_ignore_space
 setopt share_history
+setopt rm_star_silent
 
 #Custom
 [ -f ~/.my_aliases.sh ] && source ~/.my_aliases.sh
