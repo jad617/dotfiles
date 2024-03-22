@@ -14,6 +14,9 @@ local options_silent = { noremap = true, silent = true }
 map("n", "<Space>", "", {})
 vim.g.mapleader = " " -- 'vim.g' sets global variables
 
+-- Remove lazyvim default key maps
+vim.keymap.del({ "t", "n" }, "<c-l>")
+
 ------------------------------------------------------------
 -- [[ Shortcuts ]]
 ------------------------------------------------------------
