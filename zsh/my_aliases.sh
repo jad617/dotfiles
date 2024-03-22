@@ -173,6 +173,12 @@ alias myzsh='mybash'
 alias mybash='vim ~/.my_aliases.sh'
 alias sshr='ssh -l root '
 
+# Vim shortcuts
+alias vimzsh='vim ~/.zshrc'
+alias vimkitty='vim ~/.config/kitty/kitty.conf'
+alias vimtmux='vim ~/.tmux.conf'
+alias mytmux='vim ~/.tmux.conf'
+
 #i3
 alias vimi3='vim ~/.config/i3/initial_config'
 alias vimi3_outputs='vim ~/.config/i3/ouput_config'
