@@ -34,15 +34,16 @@ export SHELLCHECK_OPTS="-e SC2086"
 
 # Golang
 export GO_ENV=local
+[ -d ~/go ] && export PATH="$HOME/go/bin:$PATH"
 # [ -d ~/go ] && export PATH="$HOME/go/bin:$PATH"
 
-[ -d ~/usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
+# [ -d ~/usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
 
 # Load RUST/Cargo apps
 [ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"
 
 # Load Golang bin
-[ -d /usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
+# [ -d /usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
 
 # Load node
 [ -d ~/node_modules ] && export PATH="$HOME/node_modules:$PATH"
