@@ -64,7 +64,6 @@ if [ -d /usr/local/opt/ruby/bin ]; then
 fi
 
 # AWS
-# export AWS_PROFILE=$(cat ~/.aws_default_profile 2>/dev/null || echo "default")
 export AWS_DEFAULT_REGION=ca-central-1
 export AWS_PAGER=""
 
