@@ -10,28 +10,28 @@ return {
   { "navarasu/onedark.nvim", name = "onedark", priority = 1000 },
 
   -- Everblush
-  { "Alexis12119/nightly.nvim" },
+  -- { "Alexis12119/nightly.nvim" },
 
-  { 'Everblush/nvim', name = 'everblush' },
+  -- { 'Everblush/nvim', name = 'everblush' },
 
   -- Onedark Pro
   -- { "olimorris/onedarkpro.nvim", priority = 1000 },
 
   -- Kanagawa
-  { "rebelot/kanagawa.nvim", name = "kanagawa", priority = 1000 },
+  -- { "rebelot/kanagawa.nvim", name = "kanagawa", priority = 1000 },
 
   -- Catppuccin
-  { "catppuccin/nvim", name = "catppuccin", priority = 1000 },
+  -- { "catppuccin/nvim", name = "catppuccin", priority = 1000 },
 
   -- OneNord
-  { "rmehri01/onenord.nvim", name = "onenord", priority = 1000 },
+  -- { "rmehri01/onenord.nvim", name = "onenord", priority = 1000 },
 
   -- Nordic
-  { "AlexvZyl/nordic.nvim", name = "nordic", priority = 1000 },
+  -- { "AlexvZyl/nordic.nvim", name = "nordic", priority = 1000 },
 
-  { 'glepnir/zephyr-nvim',
-    requires = { 'nvim-treesitter/nvim-treesitter', opt = true },
-  },
+  -- { 'glepnir/zephyr-nvim',
+  --   requires = { 'nvim-treesitter/nvim-treesitter', opt = true },
+  -- },
 
   ------------------------------------------------------------
   -- [[ Languages ]]

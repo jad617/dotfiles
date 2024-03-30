@@ -2,3 +2,5 @@
 **/nvim/plugin
 **/lazyvim/lazy-lock.json
 ./lazyvim/lazy-lock.json
+**/lazyvim.json
+**/lazyvim/lazyvim.json

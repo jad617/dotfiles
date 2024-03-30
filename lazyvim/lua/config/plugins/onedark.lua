@@ -2,7 +2,7 @@ require("onedark").setup({
 
   -- main
 
-  style = "warm",
+  style = "warmer",
 
   -- Change code style ---
   -- Options are italic, bold, underline, none
