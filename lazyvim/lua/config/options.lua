@@ -4,11 +4,15 @@
 -- [[ local vars ]]
 --
 local o = vim.o -- global
+local opt = vim.opt -- global
 local wo = vim.wo -- window
 local bo = vim.bo -- buffer
 local cmd = vim.cmd -- cmd
 local map = vim.api.nvim_set_keymap -- set keys
 local options = { noremap = true }
+
+-- [[ options ]]
+opt.iskeyword:append("-")
 
 -- [[ global options ]]
 o.clipboard = "unnamedplus"
