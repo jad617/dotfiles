@@ -43,6 +43,7 @@ M.linter = {
     "prettierd",
   },
   diagnostics = {
+    "ansible-lint",
     "flake8",
     "golangci-lint",
     "jsonlint",

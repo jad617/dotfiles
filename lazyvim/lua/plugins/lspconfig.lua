@@ -11,6 +11,7 @@ return
     -- },
     servers = {
       -- bashls = {},
+      ansiblels = {},
       cssls = {},
       dockerls = {}, -- docker
       helm_ls = {},
