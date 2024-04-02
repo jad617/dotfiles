@@ -26,6 +26,9 @@
 # Nvim default EDITOR
 export EDITOR=nvim
 
+# Local bin
+[ -d ~/.local/bin/ ] && export PATH="$HOME/.local/bin:$PATH"
+
 # Bash
 export SHELLCHECK_OPTS="-e SC2086"
 
