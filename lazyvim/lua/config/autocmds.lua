@@ -23,3 +23,29 @@ vim.api.nvim_create_autocmd("LspAttach", {
     client.server_capabilities.semanticTokensProvider = nil
   end,
 })
+
+-- Ansible file pattern
+vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
+  group = vim.api.nvim_create_augroup("Ansible", { clear = true }),
+  pattern = {
+    "*/roles/*/*/*.yaml",
+    "*/roles/*/*/.yml",
+    "*/inventory/*/group_vars/*",
+    "*/inventory/*/host_vars/*",
+    "main.yml",
+    "main.yaml",
+    "*/playbooks/*.yaml",
+    "*/playbooks/*.yml",
+    "group_vars/*.yml",
+    "group_vars/*.yaml",
+    "host_vars/*.yml",
+    "host_vars/*.yaml",
+    "files/*.yaml",
+    "files/*.yml",
+    "environments/*.yaml",
+    "environments/*.yml,",
+  },
+  callback = function()
+    vim.opt.filetype = "yaml.ansible"
+  end,
+})
