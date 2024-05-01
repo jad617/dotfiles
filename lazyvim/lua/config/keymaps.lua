@@ -112,6 +112,15 @@ map("i", "<A-,>", "<C-c>:resize -10<CR>", options_silent)
 -- [[ CODE ]]
 ------------------------------------------------------------
 
+-- [[ Copy current word ]]
+-- Select word between double quote
+map("n", "<C-y>", 'yi"', options)
+map("i", "<C-y>", '<C-c>yi"', options)
+
+-- Select word between single quote
+map("n", "<C-u>", "yi'", options)
+map("n", "<C-u>", "<C-c>yi'", options)
+
 -- [[ Git ]]
 function GitCommitAndPush(commit_message)
   local command = 'git add -A && git commit -m "' .. commit_message .. '" && git push'
