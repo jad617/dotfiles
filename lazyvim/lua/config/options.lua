@@ -32,6 +32,7 @@ o.list = false -- Hides the annoying tab space char ex: >> >
 o.equalalways = false
 o.textwidth = 120
 o.scrolloff = 20 -- Minimal number to keep above and below cursor: Set to 999 for cursor to always be in the middle
+o.foldenable = false
 
 vim.o.undofile = false
 
@@ -44,7 +45,7 @@ map("i", "<LeftMouse>", "<nop>", options)
 wo.number = true -- Enable line Numbers
 wo.relativenumber = true -- Relative numbers for easier jumps
 wo.wrap = true -- When on, lines longer than the width of the window will wrap and displaying continues on the next line.
-wo.foldcolumn = "2" -- Left Margin
+-- wo.foldcolumn = "2" -- Left Margin
 
 -- [[ buffer-local options ]]
 bo.expandtab = true -- In Insert mode: Use the appropriate number of spaces to insert a
