@@ -12,7 +12,7 @@ local map = vim.api.nvim_set_keymap -- set keys
 local options = { noremap = true }
 
 -- [[ options ]]
-opt.iskeyword:append("-")
+opt.iskeyword:append({ "-", "." })
 
 -- [[ global options ]]
 o.clipboard = "unnamedplus"
