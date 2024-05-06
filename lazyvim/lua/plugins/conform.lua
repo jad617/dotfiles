@@ -26,8 +26,8 @@ return {
       python = { "isort", "black" },
 
       -- terraform
-      hcl = { "terraform_fmt", "tflint" },
-      terraform = { "terraform_fmt", "tflint" },
+      hcl = { "terraform_fmt" },
+      terraform = { "terraform_fmt" },
     },
   },
 }
