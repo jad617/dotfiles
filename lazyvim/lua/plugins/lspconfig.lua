@@ -14,9 +14,18 @@ return
       ansiblels = {},
       cssls = {},
       dockerls = {}, -- docker
-      helm_ls = {},
+      helm_ls = {
+        settings = {
+          ['helm-ls'] = {
+            yamlls = {
+              path = "yaml-language-server",
+            }
+          }
+        }
+      },
+      yamlls = {},
       html = {},
-      jsonls = {}, -- json
+      -- jsonls = {}, -- json
       golangci_lint_ls = {}, -- golangci
       pyright = {},
       tflint = {}, -- terraform docs
