@@ -20,6 +20,15 @@ vim.keymap.del({ "t", "n" }, "<c-l>")
 ------------------------------------------------------------
 -- [[ Shortcuts ]]
 ------------------------------------------------------------
+-- Jump to begining of line
+map("n", "<c-q>", "^", options_silent)
+map("v", "<c-q>", "^", options_silent)
+map("i", "<c-q>", "<C-c>^", options_silent)
+
+-- Jump to end of line
+map("n", "<c-e>", "$", options_silent)
+map("v", "<c-e>", "$", options_silent)
+map("i", "<c-e>", "<C-c>$", options_silent)
 ------------------------------------------------------------
 -- [[ Float Terminal]]
 ------------------------------------------------------------
