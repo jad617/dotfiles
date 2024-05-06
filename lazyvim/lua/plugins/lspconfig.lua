@@ -25,7 +25,6 @@ return
       },
       yamlls = {},
       html = {},
-      golangci_lint_ls = {}, -- golangci
       pyright = {},
       tflint = {
           filetypes = {"terraform"},
