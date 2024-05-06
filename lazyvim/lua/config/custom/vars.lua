@@ -8,6 +8,7 @@ M.linter = {
     "markdownlint",
     "black",
     "isort",
+    "shfmt",
   },
   diagnostics = {
     "ansible-lint",
