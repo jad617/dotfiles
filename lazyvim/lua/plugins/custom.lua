@@ -136,7 +136,7 @@ return {
 
   -- Terminal float
   -- { "numToStr/FTerm.nvim" },
-  -- {'voldikss/vim-floaterm'},
+  {'voldikss/vim-floaterm'},
   
   -- Tmux split run command
   { 'preservim/vimux' },
