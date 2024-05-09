@@ -35,7 +35,7 @@ return {
         end,
       },
       mapping = cmp.mapping.preset.insert({
-        ["<TAB>"] = cmp.mapping.confirm({ select = true }), 
+        ["<TAB>"] = cmp.mapping.confirm({ select = true }),
         ["<CR>"] = cmp.mapping.abort(),
         -- ["<C-k>"] = cmp.mapping.select_prev_item(), -- previous suggestion
         -- ["<C-j>"] = cmp.mapping.select_next_item(), -- next suggestion
@@ -47,9 +47,10 @@ return {
       }),
       -- sources for autocompletion
       sources = cmp.config.sources({
-        { name = "nvim_lsp"},
+        { name = "nvim_lsp" },
         { name = "luasnip" }, -- snippets
-        { name = "buffer",
+        {
+          name = "buffer",
           -- https://github.com/hrsh7th/cmp-buffer#get_bufnrs-type-fun-number
           option = {
             get_bufnrs = function()
@@ -59,7 +60,7 @@ return {
         },
         { name = "path" }, -- file system paths
       }),
-       
+
       -- configure lspkind for vs-code like pictograms in completion menu
       formatting = {
         -- expandable_indicator = true,
