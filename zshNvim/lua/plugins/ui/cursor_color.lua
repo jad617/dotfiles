@@ -6,7 +6,7 @@ return {
         copy = "#f5c359",
         delete = "#c75c6a",
         insert = "#99bc80",
-        visual = "#ff4d94",
+        visual = "#c27fd7",
       },
 
       -- Set opacity for cursorline and number background
@@ -27,7 +27,7 @@ return {
       ignore_filetypes = { "NvimTree", "TelescopePrompt", "neo-tree" },
     })
 
-    vim.api.nvim_create_autocmd({ "InsertLeave" }, {
+    vim.api.nvim_create_autocmd({ "InsertLeave", "ModeChanged" }, {
       callback = function()
         vim.cmd([[hi nCursor guibg=#FFFFFF ]])
         vim.opt.guicursor:append("n-c-v:block-nCursor")
