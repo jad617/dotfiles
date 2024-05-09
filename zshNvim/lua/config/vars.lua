@@ -85,6 +85,7 @@ M.linter = {
   "pylint",
   "tflint",
   "stylua",
+  "yamllint",
 }
 
 return M
