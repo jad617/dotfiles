@@ -20,6 +20,26 @@ vim.api.nvim_create_autocmd({ "VimEnter" }, {
   end,
 })
 
+vim.api.nvim_create_autocmd({ "TabEnter", "TabNew" }, {
+  callback = function()
+    vim.api.nvim_command("Neotree")
+  end,
+})
+
+-- vim.api.nvim_create_autocmd("VimEnter", {
+--   desc = "Open Neo-Tree on startup with directory",
+--   callback = function()
+--     local stats = vim.loop.fs_stat(vim.api.nvim_buf_get_name(0))
+--     if stats and stats.type == "directory" then
+--       -- require("neo-tree.setup.netrw").hijack()
+--       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
+--     else
+--       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
+--       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
+--     end
+--   end,
+-- })
+
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(args)
     local client = vim.lsp.get_client_by_id(args.data.client_id)
