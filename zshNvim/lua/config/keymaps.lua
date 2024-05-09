@@ -53,8 +53,8 @@ map("n", "<C-d>", ":q!<CR>", {})
 map("i", "<C-d>", "<C-c>:q!<CR>", {})
 
 -- Save only: C-x
-map("n", "<C-x>", ":w<CR>", options)
-map("i", "<C-x>", "<C-c>:w<CR>", options)
+map("n", "<C-x>", ":w<CR>", options_silent)
+map("i", "<C-x>", "<C-c>:w<CR>", options_silent)
 
 -- Disable search highlight
 map("n", "\\", ":noh<return>", options_silent)

@@ -14,7 +14,7 @@ return {
     require("windows").setup({
       autowidth = {
         enable = true,
-        winwidth = 50,
+        winwidth = 4,
       },
       ignore = {
         filetype = { "NvimTree", "neo-tree", "undotree", "gundo" },
