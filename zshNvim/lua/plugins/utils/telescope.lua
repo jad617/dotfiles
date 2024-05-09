@@ -1,17 +1,17 @@
 return {
   "nvim-telescope/telescope.nvim",
-  dependencies = { 'nvim-lua/plenary.nvim' },
+  dependencies = { "nvim-lua/plenary.nvim" },
 
   config = function()
-    require('telescope').setup{
+    require("telescope").setup({
       defaults = {
         layout_strategy = "horizontal",
         layout_config = { prompt_position = "top" },
         sorting_strategy = "ascending",
         winblend = 0,
       },
-    }
-      
+    })
+
     ------------------------------------------------------------
     -- [[ local vars ]]
     ------------------------------------------------------------
@@ -30,9 +30,9 @@ return {
     vim.keymap.set("n", "<leader>fb", builtin.buffers, {})
     vim.keymap.set("n", "fh", builtin.help_tags, {})
 
-    map("n", "gv",'<cmd>lua require"telescope.builtin".lsp_definitions({jump_type="vsplit"})<CR>', options_silent)
+    map("n", "gv", '<cmd>lua require"telescope.builtin".lsp_definitions({jump_type="vsplit"})<CR>', options_silent)
 
-    map("n", "gt",'<cmd>lua require"telescope.builtin".lsp_definitions({jump_type="tab"})<CR>', options_silent)
+    map("n", "gt", '<cmd>lua require"telescope.builtin".lsp_definitions({jump_type="tab"})<CR>', options_silent)
 
     map(
       "n",
@@ -51,7 +51,3 @@ return {
     )
   end,
 }
-
-
-
-

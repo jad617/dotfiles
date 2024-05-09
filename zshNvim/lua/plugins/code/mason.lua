@@ -1,4 +1,4 @@
-return  {
+return {
   "williamboman/mason.nvim",
   dependencies = {
     "williamboman/mason-lspconfig.nvim",
@@ -22,11 +22,11 @@ return  {
     LSP_LIST = {}
 
     for key, _ in pairs(lsp) do
-        table.insert(LSP_LIST, key)
+      table.insert(LSP_LIST, key)
     end
 
     mason_lspconfig.setup({
-        ensure_installed =  LSP_LIST
+      ensure_installed = LSP_LIST,
     })
 
     ------------------------------------------------------------
@@ -38,12 +38,11 @@ return  {
     LINTER_FORMATER_LIST = {}
 
     for _, linter in ipairs(linters) do
-        table.insert(LINTER_FORMATER_LIST, linter)
+      table.insert(LINTER_FORMATER_LIST, linter)
     end
 
     mason_tool_installer.setup({
-      ensure_installed = LINTER_FORMATER_LIST
+      ensure_installed = LINTER_FORMATER_LIST,
     })
-
   end,
 }

@@ -26,19 +26,19 @@ return {
     ------------------------------------------------------------
     local map = vim.api.nvim_set_keymap -- set keys
     local options = { noremap = true }
-    
+
     ------------------------------------------------------------
     -- [[ Key Bindings ]]
     ------------------------------------------------------------
     map("n", "<A-a>", ":Gitsigns preview_hunk<CR>", options)
     map("i", "<A-a>", "<C-c>:Gitsigns preview_hunk<CR>", options)
-    
+
     map("n", "<A-g>", ":Gitsigns diffthis<CR>", options)
     map("i", "<A-g>", "<C-c>:Gitsigns diffthis<CR>", options)
-    
+
     map("n", "<A-d>", ":Gitsigns toggle_deleted<CR>", options)
     map("i", "<A-d>", "<C-c>:Gitsigns toggle_deleted<CR>", options)
-    
+
     -- [[ MacOs ]]
     -- Alt + a
     map("n", "å", ":Gitsigns preview_hunk<CR>", options)
