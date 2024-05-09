@@ -8,7 +8,7 @@ require("config.autocmds")
 
 -- Todo: install
 -- lualine,  --> DONE
--- conform,
--- nvim-lint,
+-- conform, --> DONE
+-- nvim-lint, --> DONE
 -- fix hcl tfvars
 -- telescope root dir if .git available else do current dir
