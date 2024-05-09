@@ -12,6 +12,9 @@ vim.api.nvim_create_autocmd({ "VimEnter" }, {
   callback = function()
     require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
     require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
+    vim.wo.number = true -- Enable line Numbers
+    vim.wo.relativenumber = true -- Relative numbers for easier jumps
+    vim.wo.relativenumber = true -- Relative numbers for easier jumps
     -- vim.api.nvim_command("Neotree")
     -- vim.cmd([[wincmd w]])
   end,
