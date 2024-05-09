@@ -3,7 +3,9 @@ return  {
   dependencies = {
     "williamboman/mason-lspconfig.nvim",
     "neovim/nvim-lspconfig",
+    "WhoIsSethDaniel/mason-tool-installer.nvim",
   },
+
   config = function()
     ------------------------------------------------------------
     -- [[ mason config ]]
@@ -16,15 +18,32 @@ return  {
     ------------------------------------------------------------
     local mason_lspconfig = require("mason-lspconfig")
     local lsp = require("config.vars").lsp
-    
-    lsp_list = {}
+
+    LSP_LIST = {}
 
     for key, _ in pairs(lsp) do
-        table.insert(lsp_list, key)
+        table.insert(LSP_LIST, key)
     end
-        
+
     mason_lspconfig.setup({
-        ensure_installed =  lsp_list
+        ensure_installed =  LSP_LIST
     })
-  end
+
+    ------------------------------------------------------------
+    -- [[ mason-lsp config ]]
+    ------------------------------------------------------------
+    local mason_tool_installer = require("mason-tool-installer")
+    local linters = require("config.vars").linter
+
+    LINTER_FORMATER_LIST = {}
+
+    for _, linter in ipairs(linters) do
+        table.insert(LINTER_FORMATER_LIST, linter)
+    end
+
+    mason_tool_installer.setup({
+      ensure_installed = LINTER_FORMATER_LIST
+    })
+
+  end,
 }
