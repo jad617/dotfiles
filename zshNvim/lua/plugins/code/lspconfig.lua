@@ -82,10 +82,10 @@ return {
     -- initialize all LSPs with their config
     local lsp = require("config.vars").lsp
     for lsp_name, lsp_config in pairs(lsp) do
-    	lspconfig[lsp_name].setup({
-    		capabilities = capabilities,
-    		settings = lsp_config.settings,
-    	})
+      lspconfig[lsp_name].setup({
+        capabilities = capabilities,
+        settings = lsp_config.settings,
+      })
     end
   end,
 }

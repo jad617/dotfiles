@@ -6,22 +6,22 @@ M.lsp = {
   dockerls = {},
   helm_ls = {
     settings = {
-      ['helm-ls'] = {
+      ["helm-ls"] = {
         yamlls = {
           path = "yaml-language-server",
-        }
-      }
-    }
+        },
+      },
+    },
   },
   yamlls = {},
   pyright = {},
   tflint = {
-      filetypes = {"terraform"},
-      pattern = {"*.tf"},
-    }, -- terraform docs
+    filetypes = { "terraform" },
+    pattern = { "*.tf" },
+  }, -- terraform docs
   terraformls = {
-      filetypes = {"terraform"},
-      pattern = {"*.tf"},
+    filetypes = { "terraform" },
+    pattern = { "*.tf" },
   }, -- terraform
   lua_ls = { -- lua
     settings = {
@@ -75,7 +75,7 @@ M.lsp = {
 M.linter = {
   "gofumpt",
   "goimports",
-  -- "goimports-reviser",
+  "goimports-reviser",
   "markdownlint",
   "black",
   "isort",
@@ -84,6 +84,7 @@ M.linter = {
   "golangci-lint",
   "pylint",
   "tflint",
+  "stylua",
 }
 
 return M
