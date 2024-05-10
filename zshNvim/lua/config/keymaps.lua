@@ -42,7 +42,7 @@ map("i", "<c-e>", "<C-c>$", options_silent)
 ------------------------------------------------------------
 -- [[ Neo-tree ]]
 ------------------------------------------------------------
--- map("n", "<C-n>", "<C-c>:Neotree toggle<CR>", options_silent)
+map("n", "<C-n>", "<C-c>:Neotree action=show toggle=true<CR>", options_silent)
 -- map(
 --   "n",
 --   "<C-n>",
