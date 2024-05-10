@@ -13,11 +13,18 @@ return {
         sorting_strategy = "ascending",
         winblend = 0,
       },
+
+      extensions = {
+        project = {
+          hidden_files = true, -- default: false
+        },
+      },
     })
 
     -- [[ Extentions ]]
     -- Project viewer
     require("telescope").load_extension("project")
+
     ------------------------------------------------------------
     -- [[ local vars ]]
     ------------------------------------------------------------
