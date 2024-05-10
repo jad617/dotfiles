@@ -6,6 +6,27 @@ local map = vim.api.nvim_set_keymap -- set keys
 local options = { noremap = true }
 
 -- ------------------------------------------------------------
+-- -- [[ Select current word without jumping to next ]]
+-- ------------------------------------------------------------
+-- Define a Lua function to search for the next occurrence of the word under the cursor
+function search_current_word()
+  -- Save the current cursor position
+  local saved_cursor_pos = vim.fn.getpos(".")
+
+  -- Get the word under the cursor
+  local current_word = vim.fn.expand("<cword>")
+
+  -- Search for the word
+  vim.cmd("normal! *")
+
+  -- Restore the cursor position
+  vim.fn.setpos(".", saved_cursor_pos)
+end
+
+-- Map the function to the desired key combination
+vim.api.nvim_set_keymap("n", "<leader>8", "<cmd>lua search_current_word()<CR>", { noremap = true, silent = true })
+
+-- ------------------------------------------------------------
 -- -- [[ MasonLinterInstall ]]
 -- ------------------------------------------------------------
 -- local linter_list = {}
