@@ -4,9 +4,9 @@
 local map = vim.api.nvim_set_keymap -- set keys
 local options = { noremap = true, silent = true }
 
--- ------------------------------------------------------------
--- -- [[ Select current word without jumping to next ]]
--- ------------------------------------------------------------
+------------------------------------------------------------
+-- [[ Select current word without jumping to next ]]
+------------------------------------------------------------
 -- Define a Lua function to search for the next occurrence of the word under the cursor
 function search_current_word()
   -- Save the current cursor position
@@ -25,15 +25,47 @@ end
 -- Map the function to the desired key combination
 vim.api.nvim_set_keymap("n", "<leader>8", "<cmd>lua search_current_word()<CR>", options)
 
--- ------------------------------------------------------------
--- -- [[ Open Notes ]]
--- ------------------------------------------------------------
-
-function open_notes()
+------------------------------------------------------------
+-- [[ Open Notes ]]
+------------------------------------------------------------
+function open_notes(filename)
   local dir = "/home/jelasmar/notes"
   if vim.fn.isdirectory(dir) == 0 then
     vim.fn.mkdir(dir, "p")
   end
-  vim.cmd("cd " .. dir)
-  vim.cmd("tabnew")
+  -- vim.cmd("lcd " .. dir)
+  vim.cmd("tabnew " .. dir .. "/" .. filename)
+  require("neo-tree.command").execute({ action = "show", toggle = true, dir = dir })
 end
+
+map("i", "<A-n>", '<C-c>:lua open_notes(vim.fn.input("Note file to open: "))<CR> ', options)
+map("n", "<A-n>", ':lua open_notes(vim.fn.input("Note file to open:"))<CR> ', options)
+
+------------------------------------------------------------
+-- [[ Git ]]
+------------------------------------------------------------
+function GitCommitAndPush(commit_message)
+  local command = 'git add -A && git commit -m "' .. commit_message .. '" && git push'
+  vim.fn.system(command)
+end
+
+function GitCommitAmendAndForcePush()
+  local confirm = vim.fn.input("Are you sure you want to amend the last commit and force push? (y/n): ")
+  if confirm == "y" then
+    local command = "git add . && git commit --amend --no-edit && git push -f"
+    print("Force Push Done")
+    vim.fn.system(command)
+  else
+    print("Force Push Canceled")
+  end
+end
+
+map("n", "<A-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
+map("i", "<A-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
+
+map("n", "<A-/>", ':lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
+map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
+
+-- [[ Make ]]
+map("n", "<A-'>", ":!make ", options)
+map("i", "<A-'>", "<C-c>:!make ", options)

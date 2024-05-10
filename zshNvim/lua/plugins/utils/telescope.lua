@@ -41,7 +41,7 @@ return {
       { noremap = true, silent = true }
     )
 
-    map("n", "<A-n>", ":Telescope buffers<cr>", { noremap = true, silent = false })
+    -- map("n", "<A-n>", ":Telescope buffers<cr>", { noremap = true, silent = false })
 
     map(
       "n",
