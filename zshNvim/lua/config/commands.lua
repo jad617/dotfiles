@@ -29,13 +29,14 @@ vim.api.nvim_set_keymap("n", "<leader>8", "<cmd>lua search_current_word()<CR>", 
 -- [[ Open Notes ]]
 ------------------------------------------------------------
 function open_notes(filename)
-  local dir = "/home/jelasmar/notes"
-  if vim.fn.isdirectory(dir) == 0 then
-    vim.fn.mkdir(dir, "p")
+  if not (filename == "") then
+    local dir = "/home/jelasmar/notes"
+    if vim.fn.isdirectory(dir) == 0 then
+      vim.fn.mkdir(dir, "p")
+    end
+    vim.cmd("tabnew " .. dir .. "/" .. filename)
+    require("neo-tree.command").execute({ action = "show", toggle = true, dir = dir })
   end
-  -- vim.cmd("lcd " .. dir)
-  vim.cmd("tabnew " .. dir .. "/" .. filename)
-  require("neo-tree.command").execute({ action = "show", toggle = true, dir = dir })
 end
 
 map("i", "<A-n>", '<C-c>:lua open_notes(vim.fn.input("Note file to open: "))<CR> ', options)
