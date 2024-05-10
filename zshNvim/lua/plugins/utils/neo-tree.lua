@@ -33,7 +33,25 @@ return {
       mappings = {
         ["<C-v>"] = "open_vsplit",
         ["<C-x>"] = "open_split",
-        ["<C-t>"] = "open_tabnew",
+        -- ["<C-t>"] = "open_tabnew",
+        ["<C-t>"] = {
+          function()
+            -- Get the current buffer number
+            local bufnr = vim.fn.bufnr("%")
+
+            -- Get the cursor position
+            local cursor = vim.api.nvim_win_get_cursor(0)
+
+            -- Get the line at the cursor position
+            local line = vim.api.nvim_buf_get_lines(bufnr, cursor[1] - 1, cursor[1], false)[1]
+
+            -- Use Lua pattern matching to find the word
+            local word = line:match("%a.*")
+
+            vim.cmd("tabnew " .. word)
+            require("neo-tree.command").execute({ action = "show", toggle = true, dir = dir })
+          end,
+        },
         ["u"] = "navigate_up",
       },
     },
