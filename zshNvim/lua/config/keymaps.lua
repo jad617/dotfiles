@@ -42,7 +42,13 @@ map("i", "<c-e>", "<C-c>$", options_silent)
 ------------------------------------------------------------
 -- [[ Neo-tree ]]
 ------------------------------------------------------------
-map("n", "<C-n>", "<C-c>:Neotree toggle<CR>", options_silent)
+-- map("n", "<C-n>", "<C-c>:Neotree toggle<CR>", options_silent)
+-- map(
+--   "n",
+--   "<C-n>",
+--   '<C-c>:lua require("neo-tree.command").execute({ action = "show", toggle = true, dir = dir })<CR>',
+--   options_silent
+-- )
 
 -- Jump to words Right|Left with Ctrl
 map("n", "<C-Right>", "e", {})
@@ -133,33 +139,6 @@ map("i", "<C-y>", '<C-c>yi"', options)
 -- Select word between single quote
 map("n", "<C-u>", "yi'", options)
 map("n", "<C-u>", "<C-c>yi'", options)
-
--- [[ Git ]]
-function GitCommitAndPush(commit_message)
-  local command = 'git add -A && git commit -m "' .. commit_message .. '" && git push'
-  vim.fn.system(command)
-end
-
-function GitCommitAmendAndForcePush()
-  local confirm = vim.fn.input("Are you sure you want to amend the last commit and force push? (y/n): ")
-  if confirm == "y" then
-    local command = "git add . && git commit --amend --no-edit && git push -f"
-    print("Force Push Done")
-    vim.fn.system(command)
-  else
-    print("Force Push Canceled")
-  end
-end
-
-map("n", "<A-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
-map("i", "<A-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
-
-map("n", "<A-/>", ':lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
-map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
-
--- [[ Make ]]
-map("n", "<A-'>", ":!make ", options)
-map("i", "<A-'>", "<C-c>:!make ", options)
 
 ------------------------------------------------------------
 -- [[ VIM TROUBLESHOOT ]]
