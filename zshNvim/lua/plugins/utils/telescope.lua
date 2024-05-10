@@ -1,6 +1,9 @@
 return {
   "nvim-telescope/telescope.nvim",
-  dependencies = { "nvim-lua/plenary.nvim" },
+  dependencies = {
+    "nvim-lua/plenary.nvim",
+    "nvim-telescope/telescope-project.nvim",
+  },
 
   config = function()
     require("telescope").setup({
@@ -12,6 +15,9 @@ return {
       },
     })
 
+    -- [[ Extentions ]]
+    -- Project viewer
+    require("telescope").load_extension("project")
     ------------------------------------------------------------
     -- [[ local vars ]]
     ------------------------------------------------------------
@@ -49,5 +55,6 @@ return {
       ":execute 'Telescope live_grep default_text=' . expand('<cword>')<cr>",
       { noremap = true, silent = true }
     )
+    map("n", "<C-l>", ":lua require'telescope'.extensions.project.project{}<CR>", { noremap = true, silent = true })
   end,
 }
