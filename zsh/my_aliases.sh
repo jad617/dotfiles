@@ -193,7 +193,7 @@ alias vimi3_full='vim ~/.config/i3/config'
 #Shortcut CD
 alias cdold='cd $OLDPWD'
 alias cddotfiles='cd ~/nodestack/dotfiles'
-alias cdlazyvim='cd ~/nodestack/dotfiles/lazyvim/'
+alias cdlazyvim='cd ~/nodestack/dotfiles/zshNvim/'
 alias vimlazyvim='cd ~/nodestack/dotfiles/zshNvim/ && vim init.lua'
 alias cdswap='cd ~/.vim/tmp'
 alias cdnodestack='cd ~/nodestack'
