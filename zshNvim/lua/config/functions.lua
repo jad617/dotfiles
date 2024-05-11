@@ -77,7 +77,13 @@ vim.api.nvim_set_keymap("n", "<leader>8", "<cmd>lua Search_current_word()<CR>", 
 -- Allows to open Telescope in our notes directory to open or create new notes
 function OpenNotesTelescope()
   local root_dir = "~/notes"
-  vim.api.nvim_set_current_dir(root_dir)
+  local full_path = vim.fn.expand(root_dir)
+  if vim.fn.isdirectory(full_path) == 0 then
+    vim.fn.mkdir(full_path, "p")
+    os.execute("touch " .. full_path .. "/VERSION")
+  end
+
+  vim.api.nvim_set_current_dir(full_path)
   vim.cmd(":Telescope file_browser")
 end
 
