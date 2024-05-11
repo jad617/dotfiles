@@ -12,7 +12,7 @@ vim.api.nvim_create_autocmd({ "VimEnter" }, {
   callback = function()
     if vim.fn.expand("%") == "" then
       require("telescope").extensions.projects.projects({})
-    else
+    elseif not (vim.fn.expand("%") == "dbui") then
       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
       vim.wo.number = true -- Enable line Numbers
@@ -22,12 +22,14 @@ vim.api.nvim_create_autocmd({ "VimEnter" }, {
   end,
 })
 
---vim.api.nvim_create_autocmd({ "WinEnter" }, {
--- callback = function()
--- vim.api.nvim_command("Neotree")
--- require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
--- end,
---})
+-- vim.api.nvim_create_autocmd({ "WinEnter" }, {
+--   callback = function()
+--     if not (vim.fn.expand("%") == "") then
+--       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
+--       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
+--     end
+--   end,
+-- })
 
 -- vim.api.nvim_create_autocmd({ "TabNewEntered" }, {
 --   callback = function()
