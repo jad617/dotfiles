@@ -23,7 +23,14 @@ return {
       -- enable syntax highlighting
       highlight = {
         -- enable = true,
-        enable = file_not_too_big,
+        enable = true,
+        disable = function(lang, buf)
+          local max_filesize = 1000 * 1024 -- 100 KB
+          local ok, stats = pcall(vim.loop.fs_stat, vim.api.nvim_buf_get_name(buf))
+          if ok and stats and stats.size > max_filesize then
+            return true
+          end
+        end,
       },
       -- enable indentation
       indent = { enable = true },
