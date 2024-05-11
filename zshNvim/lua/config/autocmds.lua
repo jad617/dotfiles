@@ -5,23 +5,35 @@
 ------------------------------------------------------------
 -- [[ Auto Open ]]
 ------------------------------------------------------------
--- https://github.com/nvim-tree/nvim-tree.lua/wiki/Open-At-Startup
+-- Neotree + telescope project
+local open_neotree = function()
+  vim.cmd("Neotree action=show toggle=true")
+end
 
--- Neotree
-vim.api.nvim_create_autocmd({ "VimEnter" }, {
+vim.api.nvim_create_autocmd("VimEnter", {
   callback = function()
     if vim.fn.expand("%") == "" then
       require("telescope").extensions.projects.projects({})
+
+      local function check_buffer_id()
+        if vim.fn.bufnr() == 1 then
+          vim.cmd("Neotree action=show toggle=true")
+        else
+          vim.defer_fn(check_buffer_id, 100) -- Retry after 0.5 seconds
+        end
+      end
+
+      -- Start checking buffer ID
+      check_buffer_id()
     elseif not (vim.fn.expand("%") == "dbui") then
-      require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
-      require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
-      vim.wo.number = true -- Enable line Numbers
-      vim.wo.relativenumber = true -- Relative numbers for easier jumps
-      vim.wo.relativenumber = true -- Relative numbers for easier jumps
+      vim.defer_fn(open_neotree, 100) -- Retry after 0.5 seconds
+      -- vim.cmd("Neotree action=show toggle=true")
     end
   end,
 })
 
+-- Disable semanticTokensProvider
+-- This messes up the syntax highlight colorscheme
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(args)
     local client = vim.lsp.get_client_by_id(args.data.client_id)

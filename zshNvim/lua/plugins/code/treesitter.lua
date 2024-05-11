@@ -6,13 +6,24 @@ return {
     "windwp/nvim-ts-autotag",
   },
   config = function()
+    -- Define a function to check if the file size is too big
+    local file_too_big = function()
+      local fsize = vim.fn.getfsize(vim.fn.expand("%:p:f"))
+      return fsize <= 1000000 -- Adjust the threshold as needed
+    end
+
+    local file_not_too_big = file_too_big()
+    ---------------------------
+
     -- import nvim-treesitter plugin
     local treesitter = require("nvim-treesitter.configs")
 
     -- configure treesitter
-    treesitter.setup({ -- enable syntax highlighting
+    treesitter.setup({
+      -- enable syntax highlighting
       highlight = {
-        enable = true,
+        -- enable = true,
+        enable = file_not_too_big,
       },
       -- enable indentation
       indent = { enable = true },
