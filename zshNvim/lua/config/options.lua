@@ -11,12 +11,29 @@ local cmd = vim.cmd -- cmd
 local map = vim.api.nvim_set_keymap -- set keys
 local options = { noremap = true }
 
+------------------------------------------------------------
 -- [[ options ]]
+------------------------------------------------------------
 -- opt.iskeyword:append({ "-", "." })
 opt.iskeyword:append({ "-" })
 
+-- [[ clipboard options ]]
+-- o.clipboard = "unnamedplus"
+
+vim.opt.clipboard = "unnamedplus"
+
+if vim.fn.has("wsl") == 1 then
+  vim.api.nvim_create_autocmd("TextYankPost", {
+
+    group = vim.api.nvim_create_augroup("Yank", { clear = true }),
+
+    callback = function()
+      vim.fn.system("clip.exe", vim.fn.getreg('"'))
+    end,
+  })
+end
+
 -- [[ global options ]]
-o.clipboard = "unnamedplus"
 o.swapfile = true -- Toggle swapfile
 o.dir = "/tmp" -- Swapfile location
 o.laststatus = 2 -- Always enable statusline
@@ -48,7 +65,9 @@ wo.relativenumber = true -- Relative numbers for easier jumps
 wo.wrap = true -- When on, lines longer than the width of the window will wrap and displaying continues on the next line.
 -- wo.foldcolumn = "2" -- Left Margin
 
+------------------------------------------------------------
 -- [[ buffer-local options ]]
+------------------------------------------------------------
 bo.expandtab = true -- In Insert mode: Use the appropriate number of spaces to insert a
 bo.tabstop = 2 -- Converted tabs now jump 4 spaces
 
@@ -59,14 +78,18 @@ bo.tabstop = 2 -- Converted tabs now jump 4 spaces
 bo.shiftwidth = 2 -- When indenting with '>', use 2 spaces width
 bo.smartindent = true -- Do smart autoindenting when starting a new line
 
+------------------------------------------------------------
 -- [[ Autocmd ]]
+------------------------------------------------------------
 cmd([[au FileType * set fo-=c fo-=r fo-=o]]) -- Disable auto comment on next line
 cmd([[au BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif ]]) --Jump to the last position when reopening a file
 
 -- Auto Format on save
 cmd([[autocmd BufWritePre *\(.lua\)\@<! lua vim.lsp.buf.format({ async = true })]])
 
+------------------------------------------------------------
 -- [[ Set FileType ]]
+------------------------------------------------------------
 cmd([[au BufNewFile,BufRead Jenkinsfile setf groovy]])
 cmd([[au BufNewFile,BufRead *.tpl setf mustache]])
 cmd([[au BufNewFile,BufRead *.tftpl setf yaml]])
@@ -75,6 +98,8 @@ cmd([[au BufNewFile,BufRead *.tf setf terraform]])
 cmd([[au BufNewFile,BufRead hosts,all setf yaml]])
 -- cmd([[au BufNewFile,BufRead version setf text]])
 
+------------------------------------------------------------
 -- [[ FileType ]]
+------------------------------------------------------------
 cmd([[au FileType bash,lua,yaml,json,html setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]])
 cmd([[au FileType python,go,groovy setlocal tabstop=4 expandtab shiftwidth=4 softtabstop=4]])

@@ -11,7 +11,7 @@
 vim.api.nvim_create_autocmd({ "VimEnter" }, {
   callback = function()
     if vim.fn.expand("%") == "" then
-      require("telescope").extensions.project.project({})
+      require("telescope").extensions.projects.projects({})
     else
       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
@@ -22,9 +22,17 @@ vim.api.nvim_create_autocmd({ "VimEnter" }, {
   end,
 })
 
--- vim.api.nvim_create_autocmd({ "TabEnter", "TabNew" }, {
+--vim.api.nvim_create_autocmd({ "WinEnter" }, {
+-- callback = function()
+-- vim.api.nvim_command("Neotree")
+-- require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
+-- end,
+--})
+
+-- vim.api.nvim_create_autocmd({ "TabNewEntered" }, {
 --   callback = function()
---     vim.api.nvim_command("Neotree action=show")
+--     vim.api.nvim_command("Neotree")
+--     -- require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
 --   end,
 -- })
 
