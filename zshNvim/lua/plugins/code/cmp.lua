@@ -16,6 +16,9 @@ return {
     "onsails/lspkind.nvim", -- vs-code like pictograms
   },
   config = function()
+    ------------------------------------------------------------
+    -- [[ CMP Config ]]
+    ------------------------------------------------------------
     local cmp = require("cmp")
 
     local luasnip = require("luasnip")
@@ -27,10 +30,12 @@ return {
 
     cmp.setup({
       completion = {
-        completeopt = "menu,menuone,preview,noselect",
+        -- completeopt = "menu,menuone,preview,noselect",
+        completeopt = "menu,menuone,preview",
       },
       snippet = { -- configure how nvim-cmp interacts with snippet engine
         expand = function(args)
+          print("Snippet expand called with body:", args.body)
           luasnip.lsp_expand(args.body)
         end,
       },
@@ -67,6 +72,25 @@ return {
         format = lspkind.cmp_format({
           maxwidth = 50,
           ellipsis_char = "...",
+        }),
+      },
+    })
+
+    ------------------------------------------------------------
+    -- [[ LuaSnip Config ]]
+    ------------------------------------------------------------
+    local checkbox = function()
+      return { "- [ ] " }
+    end
+    -- Define your snippets
+    luasnip.add_snippets(nil, {
+      all = {
+        luasnip.snippet({
+          trig = "box",
+          namr = "Checkbox",
+          dscr = "Checkbox to for notes",
+        }, {
+          luasnip.function_node(checkbox, {}),
         }),
       },
     })
