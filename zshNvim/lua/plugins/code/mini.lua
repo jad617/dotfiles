@@ -4,16 +4,14 @@
 -- [ mini.nvim ]
 ------------------------------------------------------------
 return {
-  {
-    "echasnovski/mini.comment",
+  { "echasnovski/mini.comment",
     version = "*",
     config = function()
       require("mini.comment").setup()
     end,
   },
 
-  {
-    "echasnovski/mini.surround",
+  { "echasnovski/mini.surround",
     config = function()
       require("mini.surround").setup({
         mappings = {
@@ -21,11 +19,22 @@ return {
           delete = "gsd",         -- Delete surrounding
           find = "gsf",           -- Find surrounding (to the right)
           find_left = "gsF",      -- Find surrounding (to the left)
-          highlight = "gsh",      -- Highlight surrounding
+          highlight = "gsh",        -- Highlight surrounding
           replace = "gsr",        -- Replace surrounding
           update_n_lines = "gsn", -- Update `n_lines`
         },
       })
     end,
+  },
+
+  { "echasnovski/mini.indentscope",
+    config =  function ()
+      require('mini.indentscope').setup({
+        options = {
+          try_as_border = true,
+        },
+        symbol = "│",
+      })
+    end
   },
 }

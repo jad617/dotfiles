@@ -38,12 +38,16 @@ return {
         project = {
           hidden_files = true, -- default: false
         },
+
+        file_browser = {
+          select_buffer = true,
+          cwd_to_path = true,
+          hide_parent_dir = true,
+          collapse_dirs = true,
+          auto_depth = true,
+        },
       },
     })
-
-    -- [[ Extentions ]]
-    -- Project viewer "ahmedkhalf/project.nvim",
-    require("telescope").load_extension("projects")
 
     ------------------------------------------------------------
     -- [[ local vars ]]
@@ -84,5 +88,14 @@ return {
     )
     -- map("n", "<C-l>", ":lua require'telescope'.extensions.project.project{}<CR>", { noremap = true, silent = true })
     map("n", "<C-l>", ":lua require'telescope'.extensions.projects.projects{}<CR>", { noremap = true, silent = true })
+
+    ------------------------------------------------------------
+    -- [[ Extentions ]]
+    ------------------------------------------------------------
+    -- Project viewer "ahmedkhalf/project.nvim",
+    require("telescope").load_extension("projects")
+
+    -- File browser + file/folder creation
+    require("telescope").load_extension("file_browser")
   end,
 }
