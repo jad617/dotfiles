@@ -11,6 +11,7 @@ return {
         "Makefile",
         "lazy-lock.json",
         "package.json",
+        "ansible.cfg",
       },
     })
   end,
