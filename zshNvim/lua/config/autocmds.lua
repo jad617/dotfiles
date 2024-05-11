@@ -13,7 +13,7 @@ vim.api.nvim_create_autocmd({ "VimEnter" }, {
     if vim.fn.expand("%") == "" then
       require("telescope").extensions.projects.projects({})
     elseif not (vim.fn.expand("%") == "dbui") then
-      require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd(), reveal = true })
+      require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
       require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
       vim.wo.number = true -- Enable line Numbers
       vim.wo.relativenumber = true -- Relative numbers for easier jumps
