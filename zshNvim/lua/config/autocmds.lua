@@ -19,16 +19,21 @@ vim.api.nvim_create_autocmd("VimEnter", {
         if vim.fn.bufnr() == 1 then
           vim.cmd("Neotree action=show toggle=true")
         else
-          vim.defer_fn(check_buffer_id, 100) -- Retry after 0.5 seconds
+          vim.defer_fn(check_buffer_id, 100)
         end
       end
 
       -- Start checking buffer ID
       check_buffer_id()
     elseif not (vim.fn.expand("%") == "dbui") then
-      vim.defer_fn(open_neotree, 100) -- Retry after 0.5 seconds
-      -- vim.cmd("Neotree action=show toggle=true")
+      vim.defer_fn(open_neotree, 100)
     end
+  end,
+})
+
+vim.api.nvim_create_autocmd({ "TabNewEntered" }, {
+  callback = function()
+    vim.defer_fn(open_neotree, 100)
   end,
 })
 
