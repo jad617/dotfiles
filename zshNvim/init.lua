@@ -4,7 +4,7 @@ require("config.lazy")
 
 require("config.autocmds")
 require("config.keymaps")
-require("config.commands")
+require("config.functions")
 
 -- Todo: install
 -- lualine,  --> DONE

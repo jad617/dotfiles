@@ -5,11 +5,6 @@
 ------------------------------------------------------------
 -- [[ Auto Open ]]
 ------------------------------------------------------------
--- Neotree + telescope project
-local open_neotree = function()
-  vim.cmd("Neotree action=show toggle=true")
-end
-
 vim.api.nvim_create_autocmd("VimEnter", {
   callback = function()
     if vim.fn.expand("%") == "" then
@@ -26,14 +21,14 @@ vim.api.nvim_create_autocmd("VimEnter", {
       -- Start checking buffer ID
       check_buffer_id()
     elseif not (vim.fn.expand("%") == "dbui") then
-      vim.defer_fn(open_neotree, 100)
+      vim.defer_fn(OpenNeotree, 100)
     end
   end,
 })
 
 vim.api.nvim_create_autocmd({ "TabNewEntered" }, {
   callback = function()
-    vim.defer_fn(open_neotree, 100)
+    vim.defer_fn(OpenNeotree, 100)
   end,
 })
 
