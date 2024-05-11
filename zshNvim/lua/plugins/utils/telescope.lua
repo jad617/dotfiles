@@ -2,7 +2,7 @@ return {
   "nvim-telescope/telescope.nvim",
   dependencies = {
     "nvim-lua/plenary.nvim",
-    "nvim-telescope/telescope-project.nvim",
+    -- "nvim-telescope/telescope-project.nvim",
   },
 
   config = function()
@@ -14,6 +14,22 @@ return {
         winblend = 0,
       },
 
+      -- fd command  + find hidden files
+      pickers = {
+        find_files = {
+          find_command = {
+            "fd",
+            "--type",
+            "f",
+            "--color=never",
+            "--hidden",
+            "--follow",
+            "-E",
+            ".git/*",
+          },
+        },
+      },
+
       extensions = {
         project = {
           hidden_files = true, -- default: false
@@ -22,8 +38,8 @@ return {
     })
 
     -- [[ Extentions ]]
-    -- Project viewer
-    require("telescope").load_extension("project")
+    -- Project viewer "ahmedkhalf/project.nvim",
+    require("telescope").load_extension("projects")
 
     ------------------------------------------------------------
     -- [[ local vars ]]
@@ -62,6 +78,7 @@ return {
       ":execute 'Telescope live_grep default_text=' . expand('<cword>')<cr>",
       { noremap = true, silent = true }
     )
-    map("n", "<C-l>", ":lua require'telescope'.extensions.project.project{}<CR>", { noremap = true, silent = true })
+    -- map("n", "<C-l>", ":lua require'telescope'.extensions.project.project{}<CR>", { noremap = true, silent = true })
+    map("n", "<C-l>", ":lua require'telescope'.extensions.projects.projects{}<CR>", { noremap = true, silent = true })
   end,
 }
