@@ -16,7 +16,7 @@ require("commands") -- lua/plugins.lua
 require("onedark").setup() -- Lua
 
 -- Import Conf
-require("config.indent-blankline") -- Lua:       Show index lines
+require("config.indent-blankline") -- Lua:Show index lines
 require("config.nvim-tree") -- Lua:       Nerdtree
 require("config.comfortable-motion") -- VimScript: Scroll
 require("config.vim-better-whitespace") -- VimScript: Whitespace
