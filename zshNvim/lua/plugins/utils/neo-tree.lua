@@ -59,6 +59,7 @@ return {
     buffers = {
       follow_current_file = {
         enabled = false, -- This will find and focus the file in the active buffer every time
+        leave_dirs_open = true,
       },
     },
     filesystem = {
@@ -87,6 +88,7 @@ return {
       },
       follow_current_file = {
         enabled = false,
+        leave_dirs_open = true,
       },
     },
     default_component_configs = {

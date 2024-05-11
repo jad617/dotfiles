@@ -40,6 +40,7 @@ return {
         "terraform",
         "hcl",
         "vim",
+        "vimdoc",
         "yaml",
       },
       incremental_selection = {
