@@ -6,15 +6,6 @@ return {
     "windwp/nvim-ts-autotag",
   },
   config = function()
-    -- Define a function to check if the file size is too big
-    local file_too_big = function()
-      local fsize = vim.fn.getfsize(vim.fn.expand("%:p:f"))
-      return fsize <= 1000000 -- Adjust the threshold as needed
-    end
-
-    local file_not_too_big = file_too_big()
-    ---------------------------
-
     -- import nvim-treesitter plugin
     local treesitter = require("nvim-treesitter.configs")
 
@@ -25,7 +16,7 @@ return {
         -- enable = true,
         enable = true,
         disable = function(lang, buf)
-          local max_filesize = 1000 * 1024 -- 100 KB
+          local max_filesize = 500 * 1024 -- 500 KB
           local ok, stats = pcall(vim.loop.fs_stat, vim.api.nvim_buf_get_name(buf))
           if ok and stats and stats.size > max_filesize then
             return true
