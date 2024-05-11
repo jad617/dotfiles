@@ -12,6 +12,9 @@ return {
         "lazy-lock.json",
         "package.json",
         "ansible.cfg",
+        "Chart.yaml",
+        "README.md",
+        ".git",
       },
     })
   end,
