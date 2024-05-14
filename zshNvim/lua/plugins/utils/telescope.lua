@@ -35,8 +35,12 @@ return {
       },
 
       extensions = {
-        project = {
-          hidden_files = true, -- default: false
+        -- project = {
+        --   hidden_files = true, -- default: false
+        -- },
+        workspaces = {
+          -- keep insert mode after selection in the picker, default is false
+          keep_insert = true,
         },
 
         file_browser = {
@@ -86,14 +90,15 @@ return {
       ":execute 'Telescope live_grep default_text=' . expand('<cword>')<cr>",
       { noremap = true, silent = true }
     )
-    -- map("n", "<C-l>", ":lua require'telescope'.extensions.project.project{}<CR>", { noremap = true, silent = true })
-    map("n", "<C-l>", ":lua require'telescope'.extensions.projects.projects{}<CR>", { noremap = true, silent = true })
+    map("n", "<C-l>", ":Telescope workspaces<CR>", { noremap = true, silent = true })
+    -- map("n", "<C-l>", ":lua require'telescope'.extensions.projects.projects{}<CR>", { noremap = true, silent = true })
 
     ------------------------------------------------------------
     -- [[ Extentions ]]
     ------------------------------------------------------------
     -- Project viewer "ahmedkhalf/project.nvim",
-    require("telescope").load_extension("projects")
+    -- require("telescope").load_extension("projects")
+    require("telescope").load_extension("workspaces")
 
     -- File browser + file/folder creation
     require("telescope").load_extension("file_browser")
