@@ -63,6 +63,7 @@ return {
       },
     },
     filesystem = {
+      bind_to_cwd = true,
       filtered_items = {
         visible = false,
         show_hidden_count = true,
