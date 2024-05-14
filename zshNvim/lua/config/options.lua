@@ -101,5 +101,5 @@ cmd([[au BufNewFile,BufRead hosts,all setf yaml]])
 ------------------------------------------------------------
 -- [[ FileType ]]
 ------------------------------------------------------------
-cmd([[au FileType bash,lua,yaml,json,html setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]])
+cmd([[au FileType bash,lua,yaml,json,html,markdown setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]])
 cmd([[au FileType python,go,groovy setlocal tabstop=4 expandtab shiftwidth=4 softtabstop=4]])

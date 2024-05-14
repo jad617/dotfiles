@@ -8,11 +8,12 @@
 vim.api.nvim_create_autocmd("VimEnter", {
   callback = function()
     if vim.fn.expand("%") == "" then
-      require("telescope").extensions.projects.projects({})
+      -- require("telescope").extensions.projects.projects({})
+      vim.cmd("Telescope workspaces")
 
       local function check_buffer_id()
         if vim.fn.bufnr() == 1 then
-          vim.cmd("Neotree action=show toggle=true")
+          vim.cmd("Neotree action=show toggle=true dir=")
         else
           vim.defer_fn(check_buffer_id, 100)
         end
@@ -66,6 +67,15 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
     vim.opt.filetype = "yaml.ansible"
     vim.cmd("TSDisable highlight")
   end,
+})
+
+--fix terraform and hcl comment string
+vim.api.nvim_create_autocmd("FileType", {
+  group = vim.api.nvim_create_augroup("FixTerraformCommentString", { clear = true }),
+  callback = function(ev)
+    vim.bo[ev.buf].commentstring = "# %s"
+  end,
+  pattern = { "terraform", "hcl" },
 })
 
 -- highlight on yank
