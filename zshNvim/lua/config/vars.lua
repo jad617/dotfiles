@@ -5,15 +5,15 @@ M.lsp = {
   ansiblels = {},
   dockerls = {},
   helm_ls = {
-    settings = {
-      ["helm-ls"] = {
-        yamlls = {
-          path = "yaml-language-server",
-        },
-      },
-    },
+    -- settings = {
+    --   ["helm-ls"] = {
+    --     yamlls = {
+    --       path = "yaml-language-server",
+    --     },
+    --   },
+    -- },
   },
-  yamlls = {},
+  -- yamlls = {},
   pyright = {},
   tflint = {
     filetypes = { "terraform" },
