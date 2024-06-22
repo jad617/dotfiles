@@ -5,7 +5,7 @@
 ------------------------------------------------------------
 -- [[ Auto Open ]]
 ------------------------------------------------------------
-vim.api.nvim_create_autocmd("VimEnter", {
+vim.api.nvim_create_autocmd({ "VimEnter", "TabNewEntered" }, {
   callback = function()
     if vim.fn.expand("%") == "" then
       -- require("telescope").extensions.projects.projects({})
@@ -27,11 +27,37 @@ vim.api.nvim_create_autocmd("VimEnter", {
   end,
 })
 
-vim.api.nvim_create_autocmd({ "TabNewEntered" }, {
-  callback = function()
-    vim.defer_fn(OpenNeotree, 100)
-  end,
+------------------------------------------------------------
+-- [[ Auto Reload if file changed ]]
+------------------------------------------------------------
+vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI", "FocusGained" }, {
+  command = "if mode() != 'c' | checktime | endif",
+  pattern = { "*" },
 })
+-- vim.api.nvim_create_autocmd({ "TabNewEntered" }, {
+--   -- callback = function()
+--   --   vim.defer_fn(OpenNeotree, 100)
+--   -- end,
+--   callback = function()
+--     if vim.fn.expand("%") == "" then
+--       -- require("telescope").extensions.projects.projects({})
+--       vim.cmd("Telescope workspaces")
+--
+--       local function check_buffer_id()
+--         if vim.fn.bufnr() == 1 then
+--           vim.cmd("Neotree action=show toggle=true dir=")
+--         else
+--           vim.defer_fn(check_buffer_id, 100)
+--         end
+--       end
+--
+--       -- Start checking buffer ID
+--       check_buffer_id()
+--     elseif not (vim.fn.expand("%") == "dbui") then
+--       vim.defer_fn(OpenNeotree, 100)
+--     end
+--   end,
+-- })
 
 -- Disable semanticTokensProvider
 -- This messes up the syntax highlight colorscheme
