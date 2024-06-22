@@ -33,6 +33,10 @@ map("i", "<c-q>", "<C-c>^", options_silent)
 map("n", "<c-e>", "$", options_silent)
 map("v", "<c-e>", "$", options_silent)
 map("i", "<c-e>", "<C-c>$", options_silent)
+
+-- Open new empty tab
+map("n", "<C-t>", ":tabnew<CR>", options_silent)
+map("i", "<C-t>", "<C-c>:tabnew<CR>", options_silent)
 ------------------------------------------------------------
 -- [[ Float Terminal]]
 ------------------------------------------------------------
