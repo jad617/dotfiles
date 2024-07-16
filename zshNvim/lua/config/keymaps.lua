@@ -17,6 +17,7 @@ vim.g.mapleader = " " -- 'vim.g' sets global variables
 
 -- Disable recording
 map("n", "q", "<Nop>", options_silent)
+map("n", "<c-z>", "<Nop>", options_silent)
 
 -- Remove lazyvim default key maps
 --vim.keymap.del({ "t", "n" }, "<c-l>")
