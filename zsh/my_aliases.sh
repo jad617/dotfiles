@@ -41,7 +41,8 @@ export SHELLCHECK_OPTS="-e SC2086"
 # Golang
 export GO_ENV=local
 [ -d ~/go ] && export PATH="$HOME/go/bin:$PATH"
-[ -d ~/.local/bin/go ] && export PATH="$HOME/.local/bin/go/bin:$PATH"
+# [ -d ~/.local/bin/go ] && export PATH="$HOME/.local/bin/go/bin:$PATH"
+[ -d /usr/local/go/ ] && export PATH=$PATH:/usr/local/go/bin
 
 # [ -d ~/usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
 

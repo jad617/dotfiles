@@ -35,6 +35,7 @@ M.lsp = {
   gopls = {
     settings = {
       gopls = {
+        gofumpt = false,
         -- gofumpt = true,
         codelenses = {
           gc_details = false,
