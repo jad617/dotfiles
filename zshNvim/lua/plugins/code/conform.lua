@@ -3,7 +3,7 @@ return {
   opts = {
     formatters_by_ft = {
       -- All filetypes
-      -- ["*"] = { "trim_newlines", "trim_whitespace" },
+      ["*"] = { "trim_newlines", "trim_whitespace" },
 
       -- All filetypes that do not have a formatter
       ["_"] = { "trim_newlines", "trim_whitespace" },
