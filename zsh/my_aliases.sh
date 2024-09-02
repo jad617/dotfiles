@@ -231,6 +231,8 @@ alias boss='sudo su -'
 alias ssu='sudo su -'
 alias mtr='sudo mtr'
 alias apt='sudo apt'
+alias podman='sudo podman'
+alias podman-compose='sudo podman-compose'
 
 # alias aws='aws --no-verify-ssl'
 

@@ -32,6 +32,7 @@ return {
         signs = { "󰫎 " },
         -- The 'level' is used to index into the array using a clamp
       },
+
       bullet = {
         -- Turn on / off list bullet rendering
         enabled = false,
