@@ -71,7 +71,8 @@ if [ -d /usr/local/opt/ruby/bin ]; then
 fi
 
 # AWS
-export AWS_DEFAULT_REGION=ca-central-1
+# export AWS_DEFAULT_REGION=ca-central-1
+export AWS_REGION=ca-central-1
 export AWS_PAGER=""
 
 # export TERM=xterm-256color
