@@ -47,6 +47,11 @@ return {
         highlight = "RenderMarkdownBullet",
       },
 
+      checkbox = {
+        enabled = false,
+        position = "overlay",
+      },
+
       code = {
         left_pad = 0,
         border = "thin",

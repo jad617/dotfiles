@@ -51,7 +51,7 @@ o.list = false -- Hides the annoying tab space char ex: >> >
 o.equalalways = false
 o.linebreak = true -- Wrap on word boundary
 o.textwidth = 0
-o.scrolloff = 20 -- Minimal number to keep above and below cursor: Set to 999 for cursor to always be in the middle
+o.scrolloff = 15 -- Minimal number to keep above and below cursor: Set to 999 for cursor to always be in the middle
 o.foldenable = false
 
 vim.o.undofile = false
