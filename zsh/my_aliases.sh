@@ -58,6 +58,9 @@ export GO_ENV=local
 # Load Postgresql client
 [ -d /usr/local/opt/libpq/bin ] && export PATH="/usr/local/opt/libpq/bin:$PATH"
 
+# Load MacOS Brew
+[ -d /opt/homebrew/bin ] && export PATH="/opt/homebrew/bin:$PATH"
+
 # Load Ruby/Gem
 if [ -d /usr/local/opt/ruby/bin ]; then
 	export PATH="/usr/local/opt/ruby/bin:$PATH"
@@ -71,7 +74,7 @@ if [ -d /usr/local/opt/ruby/bin ]; then
 fi
 
 # AWS
-# export AWS_DEFAULT_REGION=ca-central-1
+export AWS_PROFILE="admin-release"
 export AWS_REGION=ca-central-1
 export AWS_PAGER=""
 
@@ -99,7 +102,7 @@ pyenv_delete() {
 
 pyenv_source() {
 	if [ -z "$1" ]; then
-		exa ~/intact/virtual_envs/
+		eza ~/intact/virtual_envs/
 	else
 		source ~/intact/virtual_envs/$1/bin/activate
 		export VIM_PYTHON_VENV=~/intact/virtual_envs/$1/bin
@@ -222,20 +225,20 @@ alias myvimlua='cd ~/.config/nvim && vim init.lua'
 alias mytmux='vim ~/.tmux.conf'
 
 #Alias LS
-alias cll='clear && exa -lgHF'
+alias cll='clear && eza -lgHF'
 alias kk='ll'
-alias ll='exa -lgHF -s type'
-alias lll='exa -lgHF -s type'
-alias lla='exa -lagHF -s type'
-alias clt='clear && exa -lgHF --tree -s type'
-alias clt2='clear && exa -lgHF --tree -L2 -s type'
-alias clt3='clear && exa -lgHF --tree -L3 -s type'
-alias clt4='clear && exa -lgHF --tree -L4 -s type'
-alias lt='exa -lgHF --tree -s type'
-alias ltgit='exa -lgHF --tree --git-ignore -s type'
-alias lt2='exa -lgHF --tree -L2 -s type'
-alias lt3='exa -lgHF --tree -L3 -s type'
-alias lt4='exa -lgHF --tree -L4 -s type'
+alias ll='eza -lgHF -s type'
+alias lll='eza -lgHF -s type'
+alias lla='eza -lagHF -s type'
+alias clt='clear && eza -lgHF --tree -s type'
+alias clt2='clear && eza -lgHF --tree -L2 -s type'
+alias clt3='clear && eza -lgHF --tree -L3 -s type'
+alias clt4='clear && eza -lgHF --tree -L4 -s type'
+alias lt='eza -lgHF --tree -s type'
+alias ltgit='eza -lgHF --tree --git-ignore -s type'
+alias lt2='eza -lgHF --tree -L2 -s type'
+alias lt3='eza -lgHF --tree -L3 -s type'
+alias lt4='eza -lgHF --tree -L4 -s type'
 
 #SUDO Shortcuts
 alias boss='sudo su -'
