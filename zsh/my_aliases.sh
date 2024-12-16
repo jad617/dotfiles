@@ -141,6 +141,16 @@ deploy_java() {
 	mvn exec:java -Dexec.mainClass=""
 }
 
+extra() {
+	latest_session_id=$(tmux list-sessions | grep extra- | cut -d':' -f1 | tail -n 1 | cut -d'-' -f2)
+	new_session=$((latest_session_id+1))
+	tmux new-session -d -s extra-$new_session
+}
+
+tmux-new-session() {
+	tmux new-session -d -s "$1"
+}
+
 #Code
 alias vedit='ansible-vault edit '
 # alias git='git --no-pager'
@@ -241,3 +251,6 @@ alias podman-compose='sudo podman-compose'
 alias cdwork='cd ~/work'
 alias cdtransaction='cd ~/work/transaction/'
 alias cdaccount='cd ~/work/account/'
+
+
+alias open="/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe"

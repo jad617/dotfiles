@@ -6,6 +6,8 @@ return {
   -- dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-tree/nvim-web-devicons" }, -- if you prefer nvim-web-devicons
   config = function()
     require("render-markdown").setup({
+      enabled = false,
+
       anti_conceal = {
         -- This enables hiding any added text on the line the cursor is on
         -- This does have a performance penalty as we must listen to the 'CursorMoved' event
@@ -57,6 +59,11 @@ return {
         border = "thin",
         style = "full",
         width = "block",
+      },
+
+      pipe_table = {
+        -- Turn on / off pipe table rendering
+        enabled = false,
       },
     })
   end,
