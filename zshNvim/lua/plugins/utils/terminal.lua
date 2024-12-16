@@ -21,7 +21,8 @@ return {
     -- [[ Key Bindings ]]
     ------------------------------------------------------------
     -- map("n", "<c-/>", ':lua require("FTerm").toggle()<CR>', options_silent)
-    vim.keymap.set("n", "<A-i>", '<CMD>lua require("FTerm").toggle()<CR>')
-    vim.keymap.set("t", "<A-i>", '<C-\\><C-n><CMD>lua require("FTerm").toggle()<CR>')
+    -- vim.keymap.set("n", "<A-i>", '<CMD>lua require("FTerm").toggle()<CR>')
+    vim.keymap.set("n", "<A-i>", '<CMD>lua require("FTerm").open()<CR>')
+    vim.keymap.set("t", "<A-i>", '<C-\\><C-n><CMD>lua require("FTerm").close()<CR>')
   end,
 }
