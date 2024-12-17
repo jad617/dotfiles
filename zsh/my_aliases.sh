@@ -254,6 +254,3 @@ alias podman-compose='sudo podman-compose'
 alias cdbnc='cd ~/bnc'
 alias cdtransaction='cd ~/bnc/APP7363-DTB-transaction/'
 alias cdaccount='cd ~/bnc/APP6157-DTB-account/'
-
-
-alias open="/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe"
