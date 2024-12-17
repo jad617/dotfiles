@@ -254,6 +254,3 @@ alias podman-compose='sudo podman-compose'
 alias cdwork='cd ~/work'
 alias cdtransaction='cd ~/work/transaction/'
 alias cdaccount='cd ~/work/account/'
-
-
-alias open="/mnt/c/Program\ Files/Google/Chrome/Application/chrome.exe"
