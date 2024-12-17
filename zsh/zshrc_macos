@@ -116,14 +116,10 @@ setopt share_history
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-source ~/powerlevel10k/powerlevel10k.zsh-theme
+# Kubectl autocomplete
+[[ -f $(which kubectl) ]] && source <(kubectl completion zsh)
 
-#TMUX, must be after Powerlevel10k
-if [[ ! $TERM =~ "screen" ]] && [[ $(tmux list-sessions | grep '0: 1' | grep -v attached 2>&1 >/dev/null ; echo $?) -eq 0 ]]
-then
-  exec tmux attach-session -t $(tmux list-sessions |  grep '0: 1' | grep -v attached | head -1 | cut -d':' -f1); return 0
-fi
-[[ ! $TERM =~ "screen" ]] && exec tmux -u; return 0
+source ~/powerlevel10k/powerlevel10k.zsh-theme
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -134,3 +130,12 @@ export SDKMAN_DIR="$HOME/.sdkman"
 [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
 
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+. "/Users/jad.el-asmar/.deno/env"
+
+#TMUX, must be after Powerlevel10k
+if [[ ! $TERM =~ "screen" ]] && [[ $(tmux list-sessions | grep '0: 1' | grep -v attached 2>&1 >/dev/null ; echo $?) -eq 0 ]]
+then
+  exec tmux attach-session -t $(tmux list-sessions |  grep '0: 1' | grep -v attached | head -1 | cut -d':' -f1); return 0
+fi
+[[ ! $TERM =~ "screen" ]] && exec tmux -u; return 0
