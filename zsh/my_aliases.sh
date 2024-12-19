@@ -21,10 +21,21 @@
 # BIND KEYS
 bindkey "^Q" beginning-of-line
 
-# if [ -n "$WSL_DISTRO_NAME" ]
-# then
-#   export DISPLAY="`sed -n 's/nameserver //p' /etc/resolv.conf`:0"
-# fi
+# AWS
+export AWS_PROFILE="admin-release"
+export AWS_REGION=ca-central-1
+export AWS_PAGER=""
+
+# MacOS/Linux specific config
+OS=$(uname -a | awk '{print $1}')
+if [[ $OS == "Darwin" ]]; then
+	# Load MacOS Brew
+	[ -d /opt/homebrew/bin ] && export PATH="/opt/homebrew/bin:$PATH"
+
+	# Ansible issue https://github.com/ansible/ansible/issues/76322
+	export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+	[ -d /opt/homebrew/opt/mysql-client@8.0/bin ] && export PATH="/opt/homebrew/opt/mysql-client@8.0/bin:$PATH"
+fi
 
 # Nvim default EDITOR
 export EDITOR=nvim
@@ -49,17 +60,12 @@ export GO_ENV=local
 # Load RUST/Cargo apps
 [ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"
 
-# Load Golang bin
-# [ -d /usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
 
 # Load node
 [ -d ~/node_modules ] && export PATH="$HOME/node_modules:$PATH"
 
 # Load Postgresql client
 [ -d /usr/local/opt/libpq/bin ] && export PATH="/usr/local/opt/libpq/bin:$PATH"
-
-# Load MacOS Brew
-[ -d /opt/homebrew/bin ] && export PATH="/opt/homebrew/bin:$PATH"
 
 # Load Ruby/Gem
 if [ -d /usr/local/opt/ruby/bin ]; then
@@ -72,13 +78,6 @@ if [ -d /usr/local/opt/ruby/bin ]; then
 		[ -d ~/.gem/ruby/${BIN_VERSION}/bin ] && export PATH="${HOME}/.gem/ruby/${BIN_VERSION}/bin:${PATH}"
 	fi
 fi
-
-# AWS
-export AWS_PROFILE="admin-release"
-export AWS_REGION=ca-central-1
-export AWS_PAGER=""
-
-# export TERM=xterm-256color
 
 # Hashivault token
 # export VAULT_SKIP_VERIFY=true
@@ -171,14 +170,6 @@ alias gitlog='git log --oneline'
 alias gitpull='git pull'
 alias gitsubpull='ls | xargs -P10 -I{} git -C {} pull'
 alias gitundoall='git reset --hard HEAD'
-
-#Shortcuts only Linux
-# OS=$(uname -a | awk '{print $1}')
-# if [[ $OS == "Linux" ]]; then
-#   alias docker='sudo docker'
-# elif [[ $OS == "Darwin" ]]; then
-#   export REQUESTS_CA_BUNDLE=~/cert/CA.pem
-# fi
 
 #Shortcuts
 alias zim='nohup zim &'
