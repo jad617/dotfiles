@@ -153,6 +153,20 @@ tmux-new-session() {
 	tmux new-session -d -s "$1"
 }
 
+# Television
+tvcd() {
+	cd ~
+	TV_FILES=$(tv files)
+	cd $(dirname $TV_FILES)
+}
+
+tvvim() {
+	cd ~
+	TV_FILES=$(tv files)
+	cd $(dirname $TV_FILES)
+	nvim $(basename $TV_FILES)
+}
+
 #Code
 alias vedit='ansible-vault edit '
 # alias git='git --no-pager'
@@ -234,7 +248,7 @@ alias lt4='eza -lgHF --tree -L4 -s type'
 #SUDO Shortcuts
 alias boss='sudo su -'
 alias ssu='sudo su -'
-alias mtr='sudo mtr'
+# alias mtr='sudo mtr'
 alias apt='sudo apt'
 alias podman='sudo podman'
 alias podman-compose='sudo podman-compose'
