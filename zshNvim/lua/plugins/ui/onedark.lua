@@ -1,5 +1,6 @@
 return {
   "navarasu/onedark.nvim",
+  enabled = false,
   name = "onedark",
   priority = 1000,
   config = function()

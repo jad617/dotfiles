@@ -12,7 +12,10 @@ brew install \
   pwgen \
   bat \
   fd \
-  ripgrep
+  ripgrep \
+  tmux
+
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 # DevOps
 curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg" && sudo installer -pkg AWSCLIV2.pkg -target / && rm -f AWSCLIV2.pkg
