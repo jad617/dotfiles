@@ -91,7 +91,7 @@ plugins=(
  aws
  docker
  helm
- git
+ # git
  pip
  terraform
 )
