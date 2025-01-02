@@ -1,5 +1,7 @@
+-- Indent lines
 return {
   "lukas-reineke/indent-blankline.nvim",
+  enabled = true,
   main = "ibl",
   opts = {
     indent = {
@@ -21,6 +23,7 @@ return {
         "notify",
         "toggleterm",
         "lazyterm",
+        "terminal",
       },
     },
   },

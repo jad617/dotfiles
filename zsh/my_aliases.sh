@@ -1,4 +1,5 @@
 #===========Custom run after running cd ============
+# set -x
 
 # gitGlobal() {
 # 	workdir=$(tail -n 1 ~/.git_work_profile 2>/dev/null | cut -d'=' -f2)

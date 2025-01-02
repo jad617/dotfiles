@@ -1,3 +1,17 @@
+return {
+  "natecraddock/workspaces.nvim",
+  config = function()
+    require("workspaces").setup({
+      hooks = {
+        open = function()
+          -- vim.cmd(":Telescope file_browser")
+          vim.cmd(":Telescope find_files")
+        end,
+      },
+    })
+  end,
+}
+
 -- return {
 --   "ahmedkhalf/project.nvim",
 --   config = function()
@@ -19,16 +33,3 @@
 --     })
 --   end,
 -- }
-
-return {
-  "natecraddock/workspaces.nvim",
-  config = function()
-    require("workspaces").setup({
-      hooks = {
-        open = function()
-          vim.cmd(":Telescope file_browser")
-        end,
-      },
-    })
-  end,
-}
