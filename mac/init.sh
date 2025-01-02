@@ -3,6 +3,10 @@ curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k
 
+# Fonts
+# https://fonts.google.com/download?family=Cousine
+# https://fonts.google.com/download?family=Roboto+Mono
+
 # Core
 brew install \
   zsh-syntax-highlighting \

@@ -6,4 +6,5 @@ if enable_config then
   require("config.autocmds")
   require("config.keymaps")
   require("config.functions")
+  require("config.coloscheme")
 end
