@@ -1,0 +1,56 @@
+# THEMES
+theme = catppuccin-macchiato
+theme = nord
+
+# Fonts
+font-family = ""
+font-family = MesloLGS NF
+# font-family = Roboto Mono
+# font-family = Cousine
+
+font-size = 15
+
+# Core
+mouse-hide-while-typing = true
+macos-titlebar-style=transparent
+
+# background-opacity = 10
+
+# KEYBINDS
+click-repeat-interval = 0
+# macos-option-as-alt = true
+
+# Convert super/cmd key to alt on MacOS
+# https://github.com/ghostty-org/ghostty/discussions/3493
+keybind = cmd+a=text:\x1ba
+keybind = cmd+b=text:\x1bb
+keybind = cmd+c=text:\x1bc
+keybind = cmd+d=text:\x1bd
+keybind = cmd+e=text:\x1be
+keybind = cmd+f=text:\x1bf
+keybind = cmd+g=text:\x1bg
+keybind = cmd+h=text:\x1bh
+keybind = cmd+i=text:\x1bi
+keybind = cmd+j=text:\x1bj
+keybind = cmd+k=text:\x1bk
+keybind = cmd+l=text:\x1bl
+keybind = cmd+m=text:\x1bm
+keybind = cmd+n=text:\x1bn
+keybind = cmd+o=text:\x1bo
+keybind = cmd+p=text:\x1bp
+keybind = cmd+q=text:\x1bq
+keybind = cmd+s=text:\x1bs
+keybind = cmd+t=text:\x1bt
+keybind = cmd+u=text:\x1bu
+# keybind = cmd+v=text:\x1bv # This is used for copy paste
+keybind = cmd+w=text:\x1bw
+keybind = cmd+x=text:\x1bx
+keybind = cmd+y=text:\x1by
+
+keybind = cmd+/=text:\x1b/
+# Alt + Up Arrow: \x1b[1;3A
+keybind = cmd+up=text:\x1b[1;3A
+# Alt + Down Arrow: \x1b[1;3B
+keybind = cmd+down=text:\x1b[1;3B
+# Alt + Right Arrow: \x1b[1;3C
+# Alt + Left Arrow: \x1b[1;3D
