@@ -171,7 +171,7 @@ return {
       desc = "Notification History",
     },
     {
-      "<leader>gB",
+      "<leader>go",
       function()
         Snacks.gitbrowse()
       end,
