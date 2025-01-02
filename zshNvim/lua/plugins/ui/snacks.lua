@@ -130,6 +130,7 @@ return {
       expand = true,
     },
     notifier = { enabled = true },
+    terminal = { win = { style = "float", relative = "editor", border = "double" } },
     -- quickfile = { enabled = true },
     -- scroll = { enabled = true },
     -- statuscolumn = { enabled = true },
@@ -172,5 +173,87 @@ return {
 
     statuscolumn = { enabled = true },
     gitbrowse = { enabled = true },
+  },
+  keys = {
+    {
+      "<leader>z",
+      function()
+        Snacks.zen.zoom()
+      end,
+      desc = "Toggle Zoom",
+    },
+    {
+      "<leader>.",
+      function()
+        Snacks.scratch()
+      end,
+      desc = "Toggle Scratch Buffer",
+    },
+    {
+      "<leader>n",
+      function()
+        Snacks.notifier.show_history()
+      end,
+      desc = "Notification History",
+    },
+    {
+      "<leader>gB",
+      function()
+        Snacks.gitbrowse()
+      end,
+      desc = "Git Browse",
+      mode = { "n", "v" },
+    },
+    {
+      "<leader>gb",
+      function()
+        Snacks.git.blame_line()
+      end,
+      desc = "Git Blame Line",
+    },
+    {
+      "<leader>gf",
+      function()
+        Snacks.lazygit.log_file()
+      end,
+      desc = "Lazygit Current File History",
+    },
+    {
+      "<leader>gg",
+      function()
+        Snacks.lazygit()
+      end,
+      desc = "Lazygit",
+    },
+    {
+      "<leader>gl",
+      function()
+        Snacks.lazygit.log()
+      end,
+      desc = "Lazygit Log (cwd)",
+    },
+    {
+      "<leader>un",
+      function()
+        Snacks.notifier.hide()
+      end,
+      desc = "Dismiss All Notifications",
+    },
+    {
+      "<c-/>",
+      function()
+        Snacks.terminal()
+      end,
+      desc = "Toggle Terminal",
+      mode = { "n", "t" },
+    },
+    {
+      "<c-_>",
+      function()
+        Snacks.terminal()
+      end,
+      desc = "which_key_ignore",
+      mode = { "n", "t" },
+    },
   },
 }

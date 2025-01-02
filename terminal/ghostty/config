@@ -8,7 +8,7 @@ font-family = MesloLGS NF
 # font-family = Roboto Mono
 # font-family = Cousine
 
-font-size = 15
+font-size = 13
 
 # Core
 mouse-hide-while-typing = true
