@@ -34,6 +34,11 @@ brew install \
   maccy \
   television
 
+git clone https://gitlab.com/dwt1/shell-color-scripts.git /tmp/color
+cd /tmp/color
+sudo make install
+cd ~
+
 # Pip
 pip3 upgrade pip --break-system-packages
 pip3 install neovim --break-system-packages

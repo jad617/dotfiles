@@ -35,6 +35,7 @@ return {
         ["<C-v>"] = "open_vsplit",
         ["<C-x>"] = "open_split",
         ["<C-t>"] = "open_tabnew",
+        ["u"] = "navigate_up",
         -- ["<C-t>"] = {
         --   function()
         --     -- Get the current buffer number
@@ -53,7 +54,6 @@ return {
         --     require("neo-tree.command").execute({ action = "show", toggle = true, dir = vim.loop.cwd() })
         --   end,
         -- },
-        ["u"] = "navigate_up",
       },
     },
     buffers = {
@@ -83,6 +83,7 @@ return {
           ".gitlab-ci.yml",
           ".gitlab-ci.yaml",
           ".helmignore",
+          "input.tfvars",
           ".terraform-docs.yml",
           ".terraform-docs.yaml",
         },
