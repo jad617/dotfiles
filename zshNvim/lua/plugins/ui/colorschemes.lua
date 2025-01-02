@@ -1,26 +1,42 @@
 return {
   {
     "folke/tokyonight.nvim",
-    enabled = false,
+    enabled = true,
     lazy = false,
     priority = 1000,
     opts = {},
-    config = function()
-      vim.cmd([[ colorscheme tokyonight-storm]])
-    end,
+    -- config = function()
+    --   vim.cmd([[ colorscheme tokyonight-storm]])
+    -- end,
   },
   {
     "catppuccin/nvim",
     name = "catppuccin",
     enabled = true,
-    priority = 1100,
+    priority = 1000,
+    -- config = function()
+    --   vim.cmd.colorscheme("catppuccin-macchiato")
+    -- end,
+  },
+  {
+    "shaunsingh/nord.nvim",
+  },
+  {
+    "AlexvZyl/nordic.nvim",
+    lazy = false,
+    priority = 1000,
     config = function()
-      vim.cmd.colorscheme("catppuccin-macchiato")
+      require("nordic").load()
     end,
   },
   {
-    "navarasu/onedark.nvim",
+    "olimorris/onedarkpro.nvim",
+    priority = 1000, -- Ensure it loads first
     enabled = false,
+  },
+  {
+    "navarasu/onedark.nvim",
+    enabled = true,
     name = "onedark",
     priority = 1000,
     config = function()
@@ -68,7 +84,7 @@ return {
         }, -- Override highlight groups
       })
 
-      require("onedark").load()
+      -- require("onedark").load()
       -- black = "#191a1c",
       -- bg0 = "#2c2d30",
       -- bg1 = "#35373b",

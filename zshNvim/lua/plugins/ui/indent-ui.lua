@@ -1,7 +1,7 @@
--- Indent lines
+-- Indent linesindent linden
 return {
   "lukas-reineke/indent-blankline.nvim",
-  enabled = true,
+  enabled = false,
   main = "ibl",
   opts = {
     indent = {
@@ -26,5 +26,19 @@ return {
         "terminal",
       },
     },
+  },
+
+  -- Indent lines animation
+  {
+    "echasnovski/mini.indentscope",
+    enabled = false,
+    config = function()
+      require("mini.indentscope").setup({
+        options = {
+          try_as_border = true,
+        },
+        symbol = "│",
+      })
+    end,
   },
 }
