@@ -5,24 +5,49 @@
 ------------------------------------------------------------
 -- [[ Auto Open ]]
 ------------------------------------------------------------
-vim.api.nvim_create_autocmd({ "VimEnter", "TabNewEntered" }, {
+-- vim.api.nvim_create_autocmd({ "VimEnter", "TabNewEntered" }, {
+--   callback = function()
+--     if vim.fn.expand("%") == "" then
+--       -- require("telescope").extensions.projects.projects({})
+--       vim.cmd("Telescope workspaces")
+--
+--       local function check_buffer_id()
+--         if vim.fn.bufnr() == 1 then
+--           vim.cmd("Neotree action=show toggle=true dir=")
+--         else
+--           vim.defer_fn(check_buffer_id, 100)
+--         end
+--       end
+--
+--       -- Start checking buffer ID
+--       check_buffer_id()
+--     elseif not (vim.fn.expand("%") == "dbui") then
+--       vim.defer_fn(OpenNeotree, 100)
+--     end
+--   end,
+-- })
+
+------------------------------------------------------------
+-- [[ Disable mini.indentscope on filetype ]]
+------------------------------------------------------------
+-- TODO: Fix this to prevent terminal lign animation
+vim.api.nvim_create_autocmd({ "VimEnter", "BufEnter" }, {
+  desc = "Disable indentscope for certain filetypes",
+  -- pattern = {
+  --   "help",
+  --   "Trouble",
+  --   "trouble",
+  --   "lazy",
+  --   "mason",
+  --   "notify",
+  --   "better_term",
+  --   "toggleterm",
+  --   "lazyterm",
+  --   "terminal",
+  -- },
   callback = function()
-    if vim.fn.expand("%") == "" then
-      -- require("telescope").extensions.projects.projects({})
-      vim.cmd("Telescope workspaces")
-
-      local function check_buffer_id()
-        if vim.fn.bufnr() == 1 then
-          vim.cmd("Neotree action=show toggle=true dir=")
-        else
-          vim.defer_fn(check_buffer_id, 100)
-        end
-      end
-
-      -- Start checking buffer ID
-      check_buffer_id()
-    elseif not (vim.fn.expand("%") == "dbui") then
-      vim.defer_fn(OpenNeotree, 100)
+    if vim.opt.buftype == "terminal" then
+      vim.b.miniindentscope_disable = true
     end
   end,
 })
