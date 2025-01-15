@@ -17,7 +17,8 @@ brew install \
   bat \
   fd \
   ripgrep \
-  tmux
+  tmux \
+  watch
 
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
