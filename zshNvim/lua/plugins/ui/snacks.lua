@@ -20,6 +20,24 @@ return {
           padding = 1,
         },
         {
+          title = "Update Todo",
+          icon = " ",
+          action = function()
+            vim.cmd(":e ~/todo")
+          end,
+          key = "t",
+          padding = 1,
+        },
+        {
+          title = "Todo List",
+          icon = "󰒲 ",
+          section = "terminal",
+          cmd = "cat ~/todo",
+          padding = 1,
+          height = 10,
+          ttl = 5,
+        },
+        {
           title = "Projects",
           section = "projects",
           -- dirs = { "~/intelcom/" },
