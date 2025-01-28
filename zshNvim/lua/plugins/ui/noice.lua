@@ -9,7 +9,7 @@ return {
   config = function()
     require("noice").setup({
       messages = {
-        enabled = true,
+        enabled = false,
       },
       notify = {
         enabled = true,

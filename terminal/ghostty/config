@@ -2,20 +2,22 @@
 theme = catppuccin-macchiato
 theme = nord
 
+# DisplayLink
+
+window-vsync = true
+
 # Fonts
 font-family = ""
 font-family = MesloLGS NF
 # font-family = Roboto Mono
 # font-family = Cousine
-
 font-size = 13
-window-padding-x = 10,5
 
 # Core
 mouse-hide-while-typing = true
+mouse-scroll-multiplier = 0.5
 macos-titlebar-style=transparent
-
-# background-opacity = 10
+window-padding-x = 10,5
 
 # KEYBINDS
 click-repeat-interval = 0

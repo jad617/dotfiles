@@ -38,6 +38,9 @@ map("i", "<c-e>", "<C-c>$", options_silent)
 -- Open new empty tab
 map("n", "<C-t>", ":tabnew<CR>", options_silent)
 map("i", "<C-t>", "<C-c>:tabnew<CR>", options_silent)
+
+-- Open Todo
+map("n", "<leader>t", ":e ~/todo<CR>", options) -- Replace 1 by 1
 ------------------------------------------------------------
 -- [[ Float Terminal]]
 ------------------------------------------------------------
