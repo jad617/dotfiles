@@ -18,7 +18,9 @@ brew install \
   fd \
   ripgrep \
   tmux \
-  watch
+  watch \
+  pyenv \
+  pyenv-virtualenv
 
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
@@ -31,7 +33,9 @@ brew install \
   terraform-docs \
   ansible \
   kubectl \
-  mysql-client@8.0
+  derailed/k9s/k9s \
+  mysql-client@8.0 \
+  helm
 
 # UI
 brew install --cask rectangle

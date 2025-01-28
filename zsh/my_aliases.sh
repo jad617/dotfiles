@@ -23,7 +23,7 @@
 bindkey "^Q" beginning-of-line
 
 # AWS
-export AWS_PROFILE="admin-release"
+# export AWS_PROFILE="admin-release"
 export AWS_REGION=ca-central-1
 export AWS_PAGER=""
 
