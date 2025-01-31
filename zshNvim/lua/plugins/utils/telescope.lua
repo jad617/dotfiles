@@ -77,7 +77,7 @@ return {
 
     map(
       "n",
-      "gl",
+      "dl",
       '<cmd>lua vim.diagnostic.open_float(0, {scope="b", max_width=120})<CR>',
       { noremap = true, silent = true }
     )

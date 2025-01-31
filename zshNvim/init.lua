@@ -8,3 +8,6 @@ if enable_config then
   require("config.functions")
   require("config.coloscheme")
 end
+
+-- Change highlight color for plugin GitSigns
+vim.cmd("highlight GitSignsChange guifg=#ff9e64 guibg=NONE")
