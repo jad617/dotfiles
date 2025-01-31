@@ -61,6 +61,8 @@ map("n", "<C-n>", "<C-c>:Neotree action=show toggle=true<CR>", options_silent)
 -- Jump to words Right|Left with Ctrl
 map("n", "<C-Right>", "e", {})
 map("n", "<C-Left>", "ge", {})
+map("v", "<C-Right>", "e", {})
+map("v", "<C-Left>", "ge", {})
 
 -- Exit without saving: C-q
 map("n", "<C-d>", ":q!<CR><CR>", {})
