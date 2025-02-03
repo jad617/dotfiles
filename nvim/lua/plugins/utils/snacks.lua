@@ -158,10 +158,59 @@ return {
 
     statuscolumn = { enabled = true },
     gitbrowse = { enabled = true },
+    explorer = {
+      enabled = true,
+      replace_netrw = true, -- Replace netrw with the snacks explorer
+    },
     picker = {
       sources = {
-        files = {
-          hidden = true,
+        explorer = {
+          finder = "explorer",
+          sort = { fields = { "sort" } },
+          tree = true,
+          git_status = true,
+          git_status_open = false,
+          supports_live = true,
+          follow_file = true,
+          -- focus = "input",
+          auto_close = false,
+          jump = { close = false },
+          layout = { preset = "sidebar", preview = false },
+          -- to show the explorer to the right, add the below to
+          -- your config under `opts.picker.sources.explorer`
+          -- layout = { layout = { position = "right" } },
+          formatters = { file = { filename_only = true } },
+          matcher = { sort_empty = true },
+          config = function(opts)
+            return require("snacks.picker.source.explorer").setup(opts)
+          end,
+          win = {
+            list = {
+              keys = {
+                ["C-d"] = "close",
+                ["C-n"] = "close",
+                ["<BS>"] = "explorer_up",
+                ["l"] = "confirm",
+                ["h"] = "explorer_close", -- close directory
+                ["a"] = "explorer_add",
+                ["d"] = "explorer_del",
+                ["r"] = "explorer_rename",
+                ["c"] = "explorer_copy",
+                ["m"] = "explorer_move",
+                ["o"] = "explorer_open", -- open with system application
+                ["P"] = "toggle_preview",
+                ["y"] = "explorer_yank",
+                ["u"] = "explorer_update",
+                ["<c-c>"] = "explorer_cd",
+                ["."] = "explorer_focus",
+                ["I"] = "toggle_ignored",
+                ["H"] = "toggle_hidden",
+                ["Z"] = "explorer_close_all",
+                ["]g"] = "explorer_git_next",
+                ["[g"] = "explorer_git_prev",
+              },
+            },
+          },
         },
       },
     },
@@ -210,13 +259,13 @@ return {
       end,
       desc = "Git Blame Line",
     },
-    {
-      "<leader>gf",
-      function()
-        Snacks.lazygit.log_file()
-      end,
-      desc = "Lazygit Current File History",
-    },
+    -- {
+    --   "<leader>gf",
+    --   function()
+    --     Snacks.lazygit.log_file()
+    --   end,
+    --   desc = "Lazygit Current File History",
+    -- },
     {
       "<leader>gg",
       function()
@@ -237,6 +286,14 @@ return {
         Snacks.notifier.hide()
       end,
       desc = "Dismiss All Notifications",
+    },
+    {
+      "<A-i>",
+      function()
+        Snacks.terminal()
+      end,
+      desc = "Toggle Terminal",
+      mode = { "n", "t" },
     },
     {
       "ff",
@@ -276,6 +333,14 @@ return {
         Snacks.picker.diagnostics()
       end,
       desc = "Find diagnostics",
+      mode = { "n" },
+    },
+    {
+      "<C-n>",
+      function()
+        Snacks.picker.explorer()
+      end,
+      desc = "Open explorer",
       mode = { "n" },
     },
     -- {

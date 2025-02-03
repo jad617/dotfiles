@@ -1,6 +1,6 @@
 return {
+  enabled = false,
   "nvim-telescope/telescope.nvim",
-  enabled = true,
   dependencies = {
     "nvim-lua/plenary.nvim",
     -- "nvim-telescope/telescope-project.nvim",
@@ -64,13 +64,13 @@ return {
     ------------------------------------------------------------
     -- [[ Key Bindings ]]
     ------------------------------------------------------------
-    -- vim.keymap.set("n", "ff", builtin.find_files, {})
-    -- vim.keymap.set("n", "<C-f>", builtin.find_files, {})
-    -- vim.keymap.set("n", "fg", builtin.live_grep, {})
-    -- -- vim.keymap.set("n", "<C-g>", builtin.live_grep, {})
-    -- vim.keymap.set("n", "fb", builtin.buffers, {})
-    -- vim.keymap.set("n", "<leader>fb", builtin.buffers, {})
-    -- vim.keymap.set("n", "fh", builtin.help_tags, {})
+    vim.keymap.set("n", "ff", builtin.find_files, {})
+    vim.keymap.set("n", "<C-f>", builtin.find_files, {})
+    vim.keymap.set("n", "fg", builtin.live_grep, {})
+    -- vim.keymap.set("n", "<C-g>", builtin.live_grep, {})
+    vim.keymap.set("n", "fb", builtin.buffers, {})
+    vim.keymap.set("n", "<leader>fb", builtin.buffers, {})
+    vim.keymap.set("n", "fh", builtin.help_tags, {})
 
     map("n", "gv", '<cmd>lua require"telescope.builtin".lsp_definitions({jump_type="vsplit"})<CR>', options_silent)
 

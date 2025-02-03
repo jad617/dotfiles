@@ -158,11 +158,58 @@ return {
 
     statuscolumn = { enabled = true },
     gitbrowse = { enabled = true },
+    explorer = {
+      enabled = true,
+      replace_netrw = true, -- Replace netrw with the snacks explorer
+    },
     picker = {
       sources = {
-        files = {
-          hidden = true,
-        },
+        -- explorer = {
+        --   finder = "explorer",
+        --   sort = { fields = { "sort" } },
+        --   tree = true,
+        --   git_status = true,
+        --   git_status_open = false,
+        --   supports_live = true,
+        --   follow_file = true,
+        --   focus = "list",
+        --   auto_close = false,
+        --   jump = { close = false },
+        --   layout = { preset = "sidebar", preview = true },
+        --   -- to show the explorer to the right, add the below to
+        --   -- your config under `opts.picker.sources.explorer`
+        --   -- layout = { layout = { position = "right" } },
+        --   formatters = { file = { filename_only = true } },
+        --   matcher = { sort_empty = true },
+        --   config = function(opts)
+        --     return require("snacks.picker.source.explorer").setup(opts)
+        --   end,
+        --   win = {
+        --     list = {
+        --       keys = {
+        --         ["<BS>"] = "explorer_up",
+        --         ["l"] = "confirm",
+        --         ["h"] = "explorer_close", -- close directory
+        --         ["a"] = "explorer_add",
+        --         ["d"] = "explorer_del",
+        --         ["r"] = "explorer_rename",
+        --         ["c"] = "explorer_copy",
+        --         ["m"] = "explorer_move",
+        --         ["o"] = "explorer_open", -- open with system application
+        --         ["P"] = "toggle_preview",
+        --         ["y"] = "explorer_yank",
+        --         ["u"] = "explorer_update",
+        --         ["<c-c>"] = "explorer_cd",
+        --         ["."] = "explorer_focus",
+        --         ["I"] = "toggle_ignored",
+        --         ["H"] = "toggle_hidden",
+        --         ["Z"] = "explorer_close_all",
+        --         ["]g"] = "explorer_git_next",
+        --         ["[g"] = "explorer_git_prev",
+        --       },
+        --     },
+        --   },
+        -- },
       },
     },
   },
@@ -239,53 +286,20 @@ return {
       desc = "Dismiss All Notifications",
     },
     {
-      "ff",
+      "<A-i>",
       function()
-        Snacks.picker.files()
+        Snacks.terminal()
       end,
-      desc = "Find files",
-      mode = { "n" },
+      desc = "Toggle Terminal",
+      mode = { "n", "t" },
     },
     {
-      "fg",
+      "<c-_>",
       function()
-        Snacks.picker.grep()
+        Snacks.terminal()
       end,
-      desc = "Grep",
-      mode = { "n" },
+      desc = "which_key_ignore",
+      mode = { "n", "t" },
     },
-    {
-      "fb",
-      function()
-        Snacks.picker.buffers()
-      end,
-      desc = "Find buffers",
-      mode = { "n" },
-    },
-    {
-      "fh",
-      function()
-        Snacks.picker.help()
-      end,
-      desc = "Find help",
-      mode = { "n" },
-    },
-    {
-      "fd",
-      function()
-        Snacks.picker.diagnostics()
-      end,
-      desc = "Find diagnostics",
-      mode = { "n" },
-    },
-    -- {
-    --   "<leader>g",
-    --   function()
-    --     local word = vim.fn.expand("<cword>") -- Get the word under the cursor
-    --     Snacks.picker.grep({ glob = { "leader" } })
-    --   end,
-    --   desc = "Find diagnostics",
-    --   mode = { "n" },
-    -- },
   },
 }
