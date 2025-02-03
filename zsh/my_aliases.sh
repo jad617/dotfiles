@@ -96,6 +96,23 @@ pyenv_create() {
 	python3 -m venv ~/intact/virtual_envs/$1
 }
 
+dev_UP() {
+	# NVM (npm package manager)
+	export NVM_DIR="$HOME/.nvm"
+	[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+	[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+	# SDKMAN
+	export SDKMAN_DIR="$HOME/.sdkman"
+	[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+	# Python pyenv
+	export PYENV_ROOT="$HOME/.pyenv"
+	[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+	eval "$(pyenv init - zsh)"
+	eval "$(pyenv virtualenv-init -)"
+}
+
 pyenv_delete() {
 	rm -rf ~/intact/virtual_envs/$1
 }
