@@ -5,7 +5,7 @@ return {
       hooks = {
         open = function()
           -- vim.cmd(":Telescope file_browser")
-          vim.cmd(":Telescope find_files")
+          vim.cmd(":lua Snacks.picker.files({hidden = true})")
         end,
       },
     })

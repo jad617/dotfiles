@@ -125,25 +125,10 @@ else
  source ~/.config/completion/kubectl.sh
 fi
 
-# NVM (npm package manager)
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
-# SDKMAN
-export SDKMAN_DIR="$HOME/.sdkman"
-[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
-
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 # Deno (vim markdown dependenci)
 source ~/.deno/env
-
-# Python pyenv
-export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init - zsh)"
-eval "$(pyenv virtualenv-init -)"
 
 #TMUX, must be after Powerlevel10k
 if [[ ! $TERM =~ "screen" ]] && [[ $(tmux list-sessions | grep '0: 1' | grep -v attached 2>&1 >/dev/null ; echo $?) -eq 0 ]]
