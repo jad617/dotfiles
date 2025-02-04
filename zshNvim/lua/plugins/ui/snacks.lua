@@ -159,11 +159,15 @@ return {
     statuscolumn = { enabled = true },
     gitbrowse = { enabled = true },
     picker = {
-      sources = {
-        files = {
-          hidden = true,
-        },
-      },
+      -- sources = {
+      --   {
+      --     finder = "lsp_definitions",
+      --     format = "file",
+      --     include_current = false,
+      --     auto_confirm = true,
+      --     jump = { tagstack = true, reuse_win = true },
+      --   },
+      -- },
     },
   },
   keys = {
@@ -241,7 +245,7 @@ return {
     {
       "ff",
       function()
-        Snacks.picker.files()
+        Snacks.picker.files({ hidden = true })
       end,
       desc = "Find files",
       mode = { "n" },
@@ -278,14 +282,50 @@ return {
       desc = "Find diagnostics",
       mode = { "n" },
     },
-    -- {
-    --   "<leader>g",
-    --   function()
-    --     local word = vim.fn.expand("<cword>") -- Get the word under the cursor
-    --     Snacks.picker.grep({ glob = { "leader" } })
-    --   end,
-    --   desc = "Find diagnostics",
-    --   mode = { "n" },
-    -- },
+
+    -- LSP
+    {
+      "gd",
+      function()
+        Snacks.picker.lsp_definitions()
+      end,
+      desc = "Goto Definition",
+    },
+    {
+      "gD",
+      function()
+        Snacks.picker.lsp_declarations()
+      end,
+      desc = "Goto Declaration",
+    },
+    {
+      "gr",
+      function()
+        Snacks.picker.lsp_references()
+      end,
+      nowait = true,
+      desc = "References",
+    },
+    {
+      "gI",
+      function()
+        Snacks.picker.lsp_implementations()
+      end,
+      desc = "Goto Implementation",
+    },
+    {
+      "gy",
+      function()
+        Snacks.picker.lsp_type_definitions()
+      end,
+      desc = "Goto T[y]pe Definition",
+    },
+    {
+      "<leader>ss",
+      function()
+        Snacks.picker.lsp_symbols()
+      end,
+      desc = "LSP Symbols",
+    },
   },
 }
