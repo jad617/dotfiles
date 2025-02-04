@@ -158,16 +158,59 @@ return {
 
     statuscolumn = { enabled = true },
     gitbrowse = { enabled = true },
+    explorer = {
+      enabled = true,
+      replace_netrw = true, -- Replace netrw with the snacks explorer
+    },
     picker = {
-      -- sources = {
-      --   {
-      --     finder = "lsp_definitions",
-      --     format = "file",
-      --     include_current = false,
-      --     auto_confirm = true,
-      --     jump = { tagstack = true, reuse_win = true },
-      --   },
-      -- },
+      sources = {
+        -- explorer = {
+        --   finder = "explorer",
+        --   sort = { fields = { "sort" } },
+        --   tree = true,
+        --   git_status = true,
+        --   git_status_open = false,
+        --   supports_live = true,
+        --   follow_file = true,
+        --   focus = "list",
+        --   auto_close = false,
+        --   jump = { close = false },
+        --   layout = { preset = "sidebar", preview = true },
+        --   -- to show the explorer to the right, add the below to
+        --   -- your config under `opts.picker.sources.explorer`
+        --   -- layout = { layout = { position = "right" } },
+        --   formatters = { file = { filename_only = true } },
+        --   matcher = { sort_empty = true },
+        --   config = function(opts)
+        --     return require("snacks.picker.source.explorer").setup(opts)
+        --   end,
+        --   win = {
+        --     list = {
+        --       keys = {
+        --         ["<BS>"] = "explorer_up",
+        --         ["l"] = "confirm",
+        --         ["h"] = "explorer_close", -- close directory
+        --         ["a"] = "explorer_add",
+        --         ["d"] = "explorer_del",
+        --         ["r"] = "explorer_rename",
+        --         ["c"] = "explorer_copy",
+        --         ["m"] = "explorer_move",
+        --         ["o"] = "explorer_open", -- open with system application
+        --         ["P"] = "toggle_preview",
+        --         ["y"] = "explorer_yank",
+        --         ["u"] = "explorer_update",
+        --         ["<c-c>"] = "explorer_cd",
+        --         ["."] = "explorer_focus",
+        --         ["I"] = "toggle_ignored",
+        --         ["H"] = "toggle_hidden",
+        --         ["Z"] = "explorer_close_all",
+        --         ["]g"] = "explorer_git_next",
+        --         ["[g"] = "explorer_git_prev",
+        --       },
+        --     },
+        --   },
+        -- },
+      },
     },
   },
   keys = {
@@ -243,89 +286,20 @@ return {
       desc = "Dismiss All Notifications",
     },
     {
-      "ff",
+      "<A-i>",
       function()
-        Snacks.picker.files({ hidden = true })
+        Snacks.terminal()
       end,
-      desc = "Find files",
-      mode = { "n" },
+      desc = "Toggle Terminal",
+      mode = { "n", "t" },
     },
     {
-      "fg",
+      "<c-_>",
       function()
-        Snacks.picker.grep()
+        Snacks.terminal()
       end,
-      desc = "Grep",
-      mode = { "n" },
-    },
-    {
-      "fb",
-      function()
-        Snacks.picker.buffers()
-      end,
-      desc = "Find buffers",
-      mode = { "n" },
-    },
-    {
-      "fh",
-      function()
-        Snacks.picker.help()
-      end,
-      desc = "Find help",
-      mode = { "n" },
-    },
-    {
-      "fd",
-      function()
-        Snacks.picker.diagnostics()
-      end,
-      desc = "Find diagnostics",
-      mode = { "n" },
-    },
-
-    -- LSP
-    {
-      "gd",
-      function()
-        Snacks.picker.lsp_definitions()
-      end,
-      desc = "Goto Definition",
-    },
-    {
-      "gD",
-      function()
-        Snacks.picker.lsp_declarations()
-      end,
-      desc = "Goto Declaration",
-    },
-    {
-      "gr",
-      function()
-        Snacks.picker.lsp_references()
-      end,
-      nowait = true,
-      desc = "References",
-    },
-    {
-      "gI",
-      function()
-        Snacks.picker.lsp_implementations()
-      end,
-      desc = "Goto Implementation",
-    },
-    {
-      "gy",
-      function()
-        Snacks.picker.lsp_type_definitions()
-      end,
-      desc = "Goto T[y]pe Definition",
-    },
-    {
-      "<leader>ss",
-      function()
-        Snacks.picker.lsp_symbols()
-      end,
-      desc = "LSP Symbols",
+      desc = "which_key_ignore",
+      mode = { "n", "t" },
     },
   },
 }

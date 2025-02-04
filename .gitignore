@@ -4,3 +4,6 @@
 ./lazyvim/lazy-lock.json
 **/lazyvim.json
 **/lazyvim/lazyvim.json
+
+**/.DS_Store
+.DS_Store
