@@ -56,18 +56,17 @@ return {
           indent = 2,
           padding = 1,
         },
-        {
-          section = "terminal",
-          cmd = "colorscript -e square",
-          pane = 1,
-          height = 5,
-          padding = 1,
-        },
+        -- {
+        --   section = "terminal",
+        --   cmd = "colorscript -e square",
+        --   pane = 1,
+        --   height = 5,
+        --   padding = 1,
+        -- },
         { section = "startup", pane = 1 },
       },
     },
     ---@class snacks.indent.Config
-    ---@field enabled? boolean
     indent = {
       priority = 1,
       enabled = true, -- enable indent guides
@@ -326,6 +325,13 @@ return {
         Snacks.picker.lsp_symbols()
       end,
       desc = "LSP Symbols",
+    },
+    {
+      "<A-i>",
+      function()
+        Snacks.terminal()
+      end,
+      desc = "Toggle terminal",
     },
   },
 }

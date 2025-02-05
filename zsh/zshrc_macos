@@ -127,9 +127,6 @@ fi
 
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
-# Deno (vim markdown dependenci)
-source ~/.deno/env
-
 #TMUX, must be after Powerlevel10k
 if [[ ! $TERM =~ "screen" ]] && [[ $(tmux list-sessions | grep '0: 1' | grep -v attached 2>&1 >/dev/null ; echo $?) -eq 0 ]]
 then
