@@ -281,12 +281,20 @@ return {
       desc = "Find diagnostics",
       mode = { "n" },
     },
+    {
+      "fc",
+      function()
+        Snacks.picker.command_history()
+      end,
+      desc = "Find Command History",
+      mode = { "n" },
+    },
 
     -- LSP
     {
       "gd",
       function()
-        Snacks.picker.lsp_definitions()
+        Snacks.picker.lsp_definitions({ auto_confirm = false })
       end,
       desc = "Goto Definition",
     },
@@ -332,6 +340,7 @@ return {
         Snacks.terminal()
       end,
       desc = "Toggle terminal",
+      mode = { "n", "t" },
     },
   },
 }
