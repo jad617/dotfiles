@@ -27,7 +27,7 @@ click-repeat-interval = 0
 # https://github.com/ghostty-org/ghostty/discussions/3493
 keybind = cmd+a=text:\x1ba
 keybind = cmd+b=text:\x1bb
-keybind = cmd+c=text:\x1bc
+# keybind = cmd+c=text:\x1bc
 keybind = cmd+d=text:\x1bd
 keybind = cmd+e=text:\x1be
 keybind = cmd+f=text:\x1bf
