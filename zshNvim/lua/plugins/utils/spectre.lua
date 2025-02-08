@@ -1,3 +1,4 @@
+-- Replace word
 return {
   "nvim-pack/nvim-spectre",
   config = function()
