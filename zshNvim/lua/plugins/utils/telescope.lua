@@ -85,12 +85,12 @@ return {
 
     -- map("n", "<A-n>", ":Telescope buffers<cr>", { noremap = true, silent = false })
 
-    map(
-      "n",
-      "<leader>g",
-      ":execute 'Telescope live_grep default_text=' . expand('<cword>')<cr>",
-      { noremap = true, silent = true }
-    )
+    -- map(
+    --   "n",
+    --   "<leader>g",
+    --   ":execute 'Telescope live_grep default_text=' . expand('<cword>')<cr>",
+    --   { noremap = true, silent = true }
+    -- )
     map("n", "<C-l>", ":Telescope workspaces<CR>", { noremap = true, silent = true })
     -- map("n", "<C-l>", ":lua require'telescope'.extensions.projects.projects{}<CR>", { noremap = true, silent = true })
 
