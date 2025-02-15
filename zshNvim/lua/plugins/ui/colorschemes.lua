@@ -68,10 +68,10 @@ return {
         -- You can configure multiple style with comma separated, For e.g., keywords = 'italic,bold'
         code_style = {
           comments = "italic",
-          keywords = "none",
+          keywords = "bold",
           functions = "bold",
           strings = "none",
-          variables = "none",
+          variables = "bold",
         },
 
         -- Custom Highlights --
@@ -94,7 +94,7 @@ return {
           -- NeoTreeRootName = { fg = "#e16d77" },
           -- [ LSP ]
           ["@module"] = { fg = "#ff4d94" },
-          ["@operator"] = { fg = "#e16d77" },
+          ["@operator"] = { fg = "#e16d77", fmt = "bold" },
           ["@variable"] = { fg = "#ffa666" },
           ["@number"] = { fg = "#23a0a0" },
           ["@boolean"] = { fg = "#c27fd7" },
@@ -107,6 +107,15 @@ return {
           TelescopePreviewBorder = { fg = "#ff8050" },
         }, -- Override highlight groups
       })
+      -- sumiInkn1 = "#0f0f15",
+      -- sumiInk0 = "#16161D",
+      -- sumiInk1 = "#181820",
+      -- sumiInk2 = "#1a1a22",
+      -- sumiInk3 = "#1F1F28",
+      -- sumiInk4 = "#2A2A37",
+      -- sumiInk5 = "#363646",
+      -- sumiInk6 = "#54546D", --fg
+
       -- sumiInkn1 = "#0f0f15",
       -- sumiInk0 = "#16161D",
       -- sumiInk1 = "#181820",
