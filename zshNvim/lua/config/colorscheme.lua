@@ -2,4 +2,4 @@
 -- vim.cmd.colorscheme("nord")
 -- vim.cmd.colorscheme("nordic")
 -- vim.cmd.colorscheme("tokyonight-storm")
-vim.cmd.colorscheme("tokyonight-storm")
+vim.cmd.colorscheme("onedark")
