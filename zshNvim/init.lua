@@ -6,7 +6,7 @@ if enable_config then
   require("config.autocmds")
   require("config.keymaps")
   require("config.functions")
-  require("config.coloscheme")
+  require("config.colorscheme")
 end
 
 -- Change highlight color for plugin GitSigns
