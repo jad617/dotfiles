@@ -105,3 +105,16 @@ cmd([[au BufNewFile,BufRead hosts,all setf yaml]])
 ------------------------------------------------------------
 cmd([[au FileType bash,sh,lua,yaml,json,html,markdown,hcl setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]])
 cmd([[au FileType python,go,groovy setlocal tabstop=4 expandtab shiftwidth=4 softtabstop=4]])
+
+------------------------------------------------------------
+-- [[ Providers ]]
+------------------------------------------------------------
+
+-- Python
+-------------------------------
+-- pyenv virtualenv 3.13 neovim
+-- pyenv activate neovim
+-- pip install neovim
+-- pyenv which python
+-------------------------------
+vim.g.python3_host_prog = "~/.pyenv/versions/neovim/bin/python"

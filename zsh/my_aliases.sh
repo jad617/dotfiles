@@ -107,10 +107,10 @@ dev_UP() {
 	[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
 
 	# Python pyenv
-	export PYENV_ROOT="$HOME/.pyenv"
-	[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-	eval "$(pyenv init - zsh)"
-	eval "$(pyenv virtualenv-init -)"
+	# export PYENV_ROOT="$HOME/.pyenv"
+	# [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+	# eval "$(pyenv init - zsh)"
+	# eval "$(pyenv virtualenv-init -)"
 }
 
 pyenv_delete() {
