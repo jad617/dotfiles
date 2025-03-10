@@ -49,8 +49,10 @@ return {
         -- opts.desc = "Show LSP type definitions"
         -- keymap.set("n", "gt", "<cmd>Telescope lsp_type_definitions<CR>", opts) -- show lsp type definitions
 
-        opts.desc = "Disable Diagnostic warnings"
-        keymap.set("n", "<leader>di", "<cmd>lua vim.diagnostic.config({ virtual_text = false })<CR>", opts) -- show lsp implementations
+        -- opts.desc = "Disable Diagnostic warnings"
+        -- keymap.set("n", "<leader>di", "<cmd>lua vim.diagnostic.config({ virtual_text = false })<CR>", opts) -- show lsp implementations
+        -- opts.desc = "Enable Diagnostic warnings"
+        -- keymap.set("n", "<leader>de", "<cmd>lua vim.diagnostic.config({ virtual_text = true })<CR>", opts) -- show lsp implementations
 
         opts.desc = "See available code actions"
         keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, opts) -- see available code actions, in visual mode will apply to selection

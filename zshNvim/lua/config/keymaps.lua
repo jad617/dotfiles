@@ -150,6 +150,11 @@ map("i", "<C-y>", '<C-c>yi"', options)
 map("n", "<C-u>", "yi'", options)
 map("n", "<C-u>", "<C-c>yi'", options)
 
+-- Disable Diagnostic warnings
+map("n", "<leader>di", "<cmd>lua vim.diagnostic.config({ virtual_text = false })<CR>", options) -- show lsp implementations
+-- Enable Diagnostic warnings
+map("n", "<leader>de", "<cmd>lua vim.diagnostic.config({ virtual_text = true })<CR>", options) -- show lsp implementations
+
 ------------------------------------------------------------
 -- [[ VIM TROUBLESHOOT ]]
 ------------------------------------------------------------
