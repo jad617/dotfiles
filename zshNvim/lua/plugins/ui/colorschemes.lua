@@ -95,6 +95,9 @@ return {
           -- [ LSP ]
           ["@module"] = { fg = "#ff4d94" },
           ["@operator"] = { fg = "#e16d77", fmt = "bold" },
+          ["@variable.member.terraform"] = { fg = "#e16d71", fmt = "bold" },
+          ["@variable.builtin.terraform"] = { fg = "#61afef" },
+          ["@function.terraform"] = { fg = "#c27fd7" },
           ["@variable"] = { fg = "#ffa666" },
           ["@number"] = { fg = "#23a0a0" },
           ["@boolean"] = { fg = "#c27fd7" },
