@@ -6,7 +6,8 @@ return {
   -- dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-tree/nvim-web-devicons" }, -- if you prefer nvim-web-devicons
   config = function()
     require("render-markdown").setup({
-      enabled = false,
+      enabled = true,
+      render_modes = true,
 
       anti_conceal = {
         -- This enables hiding any added text on the line the cursor is on
@@ -15,25 +16,57 @@ return {
       },
 
       heading = {
-        -- Turn on / off heading icon & background rendering
         enabled = true,
-        -- Turn on / off any sign column related rendering
         sign = true,
-        -- Determines how the icon fills the available space:
-        --  inline: underlying '#'s are concealed resulting in a left aligned icon
-        --  overlay: result is left padded with spaces to hide any additional '#'
-        position = "inline",
+        position = "overlay",
 
-        -- Replaces '#+' of 'atx_h._marker'
-        -- The number of '#' in the heading determines the 'level'
-        -- The 'level' is used to index into the array using a cycle
-        -- The result is left padded with spaces to hide any additional '#'
-        icons = { "󰲡 ", "󰲣 ", "󰲥 ", "󰲧 ", "󰲩 ", "󰲫 " },
+        icons = { "󰼏 ", "󰼐 ", "󰼑 ", "󰼒 ", "󰼓 " },
+
         -- Added to the sign column if enabled
         -- The 'level' is used to index into the array using a cycle
         signs = { "󰫎 " },
-        -- The 'level' is used to index into the array using a clamp
+
+        -- width = "block",
+
+        -- backgrounds = {
+        --   "RenderMarkdownH1Bg",
+        --   "RenderMarkdownH2Bg",
+        --   "RenderMarkdownH3Bg",
+        --   "RenderMarkdownH4Bg",
+        --   "RenderMarkdownH5Bg",
+        --   "RenderMarkdownH6Bg",
+        -- },
+        -- foregrounds = {
+        --   "RenderMarkdownH1",
+        --   "RenderMarkdownH2",
+        --   "RenderMarkdownH3",
+        --   "RenderMarkdownH4",
+        --   "RenderMarkdownH5",
+        --   "RenderMarkdownH6",
+        -- },
       },
+
+      -- heading = {
+      --   -- Turn on / off heading icon & background rendering
+      --   enabled = true,
+      --   -- Turn on / off any sign column related rendering
+      --   sign = true,
+      --   -- Determines how the icon fills the available space:
+      --   --  inline: underlying '#'s are concealed resulting in a left aligned icon
+      --   --  overlay: result is left padded with spaces to hide any additional '#'
+      --   -- position = "inline",
+      --   position = "overlay",
+      --
+      --   -- Replaces '#+' of 'atx_h._marker'
+      --   -- The number of '#' in the heading determines the 'level'
+      --   -- The 'level' is used to index into the array using a cycle
+      --   -- The result is left padded with spaces to hide any additional '#'
+      --   icons = { "󰲡 ", "󰲣 ", "󰲥 ", "󰲧 ", "󰲩 ", "󰲫 " },
+      --   -- Added to the sign column if enabled
+      --   -- The 'level' is used to index into the array using a cycle
+      --   signs = { "󰫎 " },
+      --   -- The 'level' is used to index into the array using a clamp
+      -- },
 
       bullet = {
         -- Turn on / off list bullet rendering
