@@ -89,7 +89,7 @@ return {
 
       code = {
         left_pad = 0,
-        border = "thin",
+        -- border = "thin",
         style = "full",
         width = "block",
       },
