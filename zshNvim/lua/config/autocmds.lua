@@ -11,7 +11,7 @@ vim.api.nvim_create_autocmd("UiEnter", {
   desc = "Open Neotree automatically",
   group = "neotree",
   callback = function()
-    if vim.fn.argc() == 0 then
+    if vim.fn.argc() > 0 then
       vim.cmd("Neotree action=show toggle=true dir=")
       vim.cmd("Neotree action=show toggle=true dir=")
     end
