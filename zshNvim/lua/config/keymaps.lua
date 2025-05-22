@@ -141,6 +141,10 @@ map("i", "<A-,>", "<C-c>:resize -10<CR>", options_silent)
 -- [[ CODE ]]
 ------------------------------------------------------------
 
+-- [[ Delete without yanking ]]
+map("n", "<leader>dd", '"_dd', options)
+map("v", "<leader>dd", '"_dd', options)
+
 -- [[ Copy current word ]]
 -- Select word between double quote
 map("n", "<C-y>", 'yi"', options)
