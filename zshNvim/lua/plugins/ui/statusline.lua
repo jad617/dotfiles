@@ -1,6 +1,5 @@
--- Statusline, is used for tabline feature only
-
 return {
+  -- Statusline, is used for tabline feature only
   "beauwilliams/statusline.lua",
   config = function()
     require("statusline").setup({
