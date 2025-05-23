@@ -1,5 +1,5 @@
--- Indent linesindent linden
 return {
+  -- Indent lines
   "lukas-reineke/indent-blankline.nvim",
   enabled = false,
   main = "ibl",
