@@ -9,7 +9,7 @@ return {
   },
   config = function()
     -- import lspconfig plugin
-    local lspconfig = require("lspconfig")
+    -- local lspconfig = require("lspconfig") -- No longer needed in Neovim 0.11+
 
     -- import cmp-nvim-lsp plugin
     local cmp_nvim_lsp = require("cmp_nvim_lsp")
@@ -95,7 +95,8 @@ return {
     -- initialize all LSPs with their config
     local lsp = require("config.vars").lsp
     for lsp_name, lsp_config in pairs(lsp) do
-      lspconfig[lsp_name].setup({
+      -- lspconfig[lsp_name].setup({ -- No longer needed in Neovim 0.11+
+      vim.lsp.config(lsp_name, {
         capabilities = capabilities,
         settings = lsp_config.settings,
       })
