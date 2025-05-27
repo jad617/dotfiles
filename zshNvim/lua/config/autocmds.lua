@@ -113,33 +113,11 @@ vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI", "FocusGai
   command = "if mode() != 'c' | checktime | endif",
   pattern = { "*" },
 })
--- vim.api.nvim_create_autocmd({ "TabNewEntered" }, {
---   -- callback = function()
---   --   vim.defer_fn(OpenNeotree, 100)
---   -- end,
---   callback = function()
---     if vim.fn.expand("%") == "" then
---       -- require("telescope").extensions.projects.projects({})
---       vim.cmd("Telescope workspaces")
---
---       local function check_buffer_id()
---         if vim.fn.bufnr() == 1 then
---           vim.cmd("Neotree action=show toggle=true dir=")
---         else
---           vim.defer_fn(check_buffer_id, 100)
---         end
---       end
---
---       -- Start checking buffer ID
---       check_buffer_id()
---     elseif not (vim.fn.expand("%") == "dbui") then
---       vim.defer_fn(OpenNeotree, 100)
---     end
---   end,
--- })
 
+------------------------------------------------------------
 -- Disable semanticTokensProvider
 -- This messes up the syntax highlight colorscheme
+------------------------------------------------------------
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(args)
     local client = vim.lsp.get_client_by_id(args.data.client_id)
@@ -147,7 +125,9 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
 })
 
+------------------------------------------------------------
 -- Ansible file pattern
+------------------------------------------------------------
 vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
   group = vim.api.nvim_create_augroup("Ansible", { clear = true }),
   pattern = {
@@ -174,7 +154,9 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
   end,
 })
 
---fix terraform and hcl comment string
+------------------------------------------------------------
+-- Fix terraform and hcl comment string
+------------------------------------------------------------
 vim.api.nvim_create_autocmd("FileType", {
   group = vim.api.nvim_create_augroup("FixTerraformCommentString", { clear = true }),
   callback = function(ev)
@@ -183,7 +165,9 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = { "terraform", "hcl" },
 })
 
+------------------------------------------------------------
 -- highlight on yank
+------------------------------------------------------------
 vim.cmd([[
   augroup highlight_yank
   autocmd!
