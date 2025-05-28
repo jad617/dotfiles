@@ -83,7 +83,7 @@ map("n", "˙", ":silent !sensible-browser %<CR>", options) -- Open HTML in defau
 map("n", "<A-h>", ":LiveServerStart<CR>", options) -- Open HTML in default browser
 
 -- Replace word
-map("n", "<leader>l", "*``cgn", options) -- Replace 1 by 1
+map("n", "<leader>l", '*``"_cgn', options) -- Replace 1 by 1
 
 ------------------------------------------------------------
 -- [[ Navigation ]]
