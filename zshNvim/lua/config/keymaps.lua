@@ -145,6 +145,9 @@ map("i", "<A-,>", "<C-c>:resize -10<CR>", options_silent)
 map("n", "<leader>dd", '"_dd', options)
 map("v", "<leader>dd", '"_dd', options)
 
+map("n", "<leader>D", '"_D', options)
+map("v", "<leader>D", '"_D', options)
+
 -- [[ Copy current word ]]
 -- Select word between double quote
 map("n", "<C-y>", 'yi"', options)
