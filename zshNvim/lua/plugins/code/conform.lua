@@ -14,7 +14,8 @@ return {
       yaml = { "trim_newlines", "trim_whitespace" },
 
       -- go
-      go = { "goimports", "goimports-reviser" },
+      -- go = { "goimports", "goimports-reviser" },
+      go = { "gopls_add_imports", "goimports-reviser" },
 
       -- json
       json = { "jq", "trim_newlines", "trim_whitespace" },
@@ -35,6 +36,13 @@ return {
     format_on_save = {
       lsp_fallback = true,
       timeout_ms = 500,
+    },
+    formatters = {
+      gopls_add_imports = {
+        command = "gopls",
+        args = { "check", "--only=source.add_imports", "-" },
+        stdin = true,
+      },
     },
   },
 }
