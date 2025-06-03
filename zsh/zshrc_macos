@@ -52,8 +52,10 @@ eval "$(pyenv init - zsh)"
 eval "$(pyenv virtualenv-init -)"
 
 #TMUX, must be after Powerlevel10k
-if [[ ! $TERM =~ "screen" ]] && [[ $(tmux list-sessions | grep '0: 1' | grep -v attached 2>&1 >/dev/null ; echo $?) -eq 0 ]]
+export TERM=tmux-256color
+
+if [[ ! $TERM =~ "tmux-256color" ]] && [[ $(tmux list-sessions | grep '0: 1' | grep -v attached 2>&1 >/dev/null ; echo $?) -eq 0 ]]
 then
   exec tmux attach-session -t $(tmux list-sessions |  grep '0: 1' | grep -v attached | head -1 | cut -d':' -f1); return 0
 fi
-[[ ! $TERM =~ "screen" ]] && exec tmux -u; return 0
+[[ ! $TERM =~ "tmux-256color" ]] && exec tmux -u; return 0
