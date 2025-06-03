@@ -2,6 +2,7 @@
 -- [[ Load colorscheme ]]
 ------------------------------------------------------------
 vim.cmd.colorscheme("onedark")
+-- vim.cmd.colorscheme("gruvbox-material")
 
 ------------------------------------------------------------
 -- [[ Custom Overrides ]]
