@@ -1,0 +1,140 @@
+---
+# yamllint disable rule:line-length rule:truthy
+
+on:
+  workflow_call:
+    inputs:
+      ecr_image_id:
+        description: 'Image ID to use'
+        required: true
+        type: string
+      ecr_repository:
+        description: 'Repository name to fetch the image from'
+        required: true
+        type: string
+      environment:
+        description: 'Environment to deploy to'
+        type: string
+        default: 'non_production'
+      helm_values_path:
+        description: 'Path to fetch the values.yaml'
+        type: string
+
+env:
+  ARGOCD_VERSION: 'v2.12.5'
+  HELM_VALUES_REPOSITORY: 'ms-helm-values'
+  PIPELINE_REPOSITORY_PATH_CHECKOUT: 'helm-values-checkout'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  update-argocd-image:
+    name: 'update-argocd-image'
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out helm-values repository code
+        uses: actions/checkout@v4
+        with:
+          repository: 'REPOSITORY_NAME/${{ env.HELM_VALUES_REPOSITORY }}'
+          ref: 'main'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          path: '${{ env.PIPELINE_REPOSITORY_PATH_CHECKOUT }}'
+
+      - name: Fetch environment params
+        id: params
+        uses: REPOSITORY_NAME/CICD_REPO_NAME/.github/actions/devops_fetch-params@v3
+        with:
+          environment: ${{ inputs.environment }}
+
+      - name: Configure AWS ROLE credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.params.outputs.role_to_assume }}
+          aws-region: ${{ steps.params.outputs.region }}
+
+      - name: Setup ECR login
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Verify if ECR repository exists
+        run: |
+          aws ecr describe-repositories --region "${{ steps.params.outputs.region }}" --repository-names "${{ inputs.ecr_repository }}" || \
+          aws ecr create-repository --region "${{ steps.params.outputs.region }}" \
+            --repository-name "${{ inputs.ecr_repository }}" \
+            --image-tag-mutability "MUTABLE" \
+            --image-scanning-configuration scanOnPush=true
+
+      - name: Set environment variables
+        run: |
+          PROJECT_NAME_FETCH=$(echo ${{ github.repository }} | cut -d'/' -f2)
+          echo "PROJECT_NAME=$PROJECT_NAME_FETCH" >> $GITHUB_ENV
+
+          FETCH_REPOSITORY_NAME=$(echo $GITHUB_REPOSITORY | cut -d'/' -f2)
+          echo "REPOSITORY_NAME=$FETCH_REPOSITORY_NAME" >> $GITHUB_ENV
+
+      - name: Set Helm variables
+        run: |
+          # Set HELM environment variables
+          if [[ "${{ inputs.helm_values_path }}" == "" ]]; then
+            HELM_VALUES_PATH="${{ steps.params.outputs.org }}/${{ steps.params.outputs.stage }}"
+            echo "HELM_VALUES_PATH=${{ steps.params.outputs.org }}/${{ steps.params.outputs.stage }}" >> $GITHUB_ENV
+          else
+            HELM_VALUES_PATH="${{ steps.params.outputs.org }}/${{ steps.params.outputs.stage }}/${{ inputs.helm_values_path }}"
+            echo "HELM_VALUES_PATH=${{ steps.params.outputs.org }}/${{ steps.params.outputs.stage }}/${{ inputs.helm_values_path }}" >> $GITHUB_ENV
+          fi
+
+          echo "HELM_CONTAINER_NAME=$(yq '.name' ${PIPELINE_REPOSITORY_PATH_CHECKOUT}/helm-values/${HELM_VALUES_PATH}/values.yaml)" >> $GITHUB_ENV
+
+          echo "HELM_IMAGE_PATH=microservices/${REPOSITORY_NAME}/${HELM_VALUES_PATH}" >> $GITHUB_ENV
+
+      - name: Preflight check
+        env:
+          RELEASE_IMAGE: ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository }}
+        run: |
+          [[ -f ${HELM_IMAGE_PATH} ]] || mkdir -p $HELM_IMAGE_PATH
+
+          if [[ ! -f $HELM_IMAGE_PATH/image.yaml ]]; then
+            echo "# yamllint disable rule:line-length rule:truthy" > ${HELM_IMAGE_PATH}/image.yaml
+            echo "---" >> ${HELM_IMAGE_PATH}/image.yaml
+            echo "image: ${RELEASE_IMAGE}:" >> ${HELM_IMAGE_PATH}/image.yaml
+          fi
+
+      - name: Update Image ID
+        run: |
+          sed -i "s/${{ inputs.ecr_repository }}:.*$/${{ inputs.ecr_repository }}:${{ inputs.ecr_image_id }}/g" ${HELM_IMAGE_PATH}/image.yaml
+
+      - name: Push Updated Image ID
+        run: |
+          set +e
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@example.ca"
+
+          git add ${HELM_IMAGE_PATH}/image.yaml
+          git commit -m "github-actions[bot]: image update pipeline"
+          git push -f 2>/dev/null
+
+          echo "## ArgoCD application ${HELM_CONTAINER_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "### Updated with image: ${{ inputs.ecr_image_id }} :rocket:" >> $GITHUB_STEP_SUMMARY
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64
+          chmod +x /tmp/argocd
+
+      - name: Force refresh ArgoCD application
+        run: |
+          ARGOCD_PASSWORD=$(aws ssm get-parameter --name "/example/logtech/eks/argocd/admin-password" --with-decryption | jq -r .Parameter.Value)
+
+          /tmp/argocd --grpc-web login argocd-${{ steps.params.outputs.stage }}.example.ca --username admin --password ${ARGOCD_PASSWORD}
+          /tmp/argocd --grpc-web app get ${HELM_CONTAINER_NAME} --hard-refresh --server argocd-${{ steps.params.outputs.stage }}.example.ca
