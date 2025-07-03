@@ -3,8 +3,15 @@ return {
   {
     -- Renders Markdown in Neovim
     "OXY2DEV/markview.nvim",
+    dependencies = { "nvim-treesitter/nvim-treesitter" },
     lazy = false,
     config = function()
+      require("markview").setup({
+        experimental = {
+          check_rtp = false,
+          check_rtp_message = false,
+        },
+      })
       ------------------------------------------------------------
       -- [[ local vars ]]
       ------------------------------------------------------------
