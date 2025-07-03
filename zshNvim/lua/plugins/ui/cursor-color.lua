@@ -1,4 +1,5 @@
 return {
+  enabled = true,
   "mvllow/modes.nvim",
   config = function()
     require("modes").setup({
@@ -24,13 +25,14 @@ return {
 
       -- Disable modes highlights in specified filetypes
       -- Please PR commonly ignored filetypes
-      ignore = { "NvimTree", "TelescopePrompt", "neo-tree" },
+      ignore_filetypes = { "NvimTree", "TelescopePrompt", "neo-tree" },
     })
 
     vim.api.nvim_create_autocmd({ "InsertLeave", "ModeChanged" }, {
       callback = function()
-        vim.cmd([[hi nCursor guibg=#FFFFFF ]])
-        vim.opt.guicursor:append("n-c-v:block-nCursor")
+        -- Must have termguicolors=true for guifg/guibg hex to work in terminal
+        vim.cmd([[highlight nCursor guifg=#000000 guibg=#FFFFFF]])
+        vim.opt.guicursor:append("n-v-c:block-nCursor")
       end,
     })
   end,

@@ -26,11 +26,31 @@ M.lsp = {
   lua_ls = { -- lua
     settings = {
       Lua = {
-        diagnostics = {
-          globals = { "vim" }, -- removes warning: 'Global vim is undefined'
+        runtime = {
+          -- Tell the server to use LuaJIT (the Lua runtime in Neovim)
+          version = "LuaJIT",
+          -- Setup your package.path
+          path = vim.split(package.path, ";"),
         },
+        diagnostics = {
+          -- Recognize the `vim` global
+          globals = { "vim" },
+        },
+        workspace = {
+          -- Make the server aware of Neovim runtime files
+          library = vim.api.nvim_get_runtime_file("", true),
+          checkThirdParty = false, -- disable prompting about other lua libs
+        },
+        telemetry = { enable = false },
       },
     },
+    -- settings = {
+    --   Lua = {
+    --     diagnostics = {
+    --       globals = { "vim" }, -- removes warning: 'Global vim is undefined'
+    --     },
+    --   },
+    -- },
   },
   gopls = {
     settings = {
