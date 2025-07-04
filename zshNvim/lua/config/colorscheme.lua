@@ -2,7 +2,8 @@
 -- [[ Load colorscheme ]]
 ------------------------------------------------------------
 vim.cmd.colorscheme("onedark")
--- vim.cmd.colorscheme("gruvbox-material")
+-- vim.cmd.colorscheme("tokyonight-storm")
+-- vim.cmd.colorscheme("catppuccin-macchiato")
 
 ------------------------------------------------------------
 -- [[ Custom Overrides ]]
