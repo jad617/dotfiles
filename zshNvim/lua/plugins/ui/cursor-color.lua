@@ -1,5 +1,5 @@
 return {
-  enabled = true,
+  enabled = false,
   "mvllow/modes.nvim",
   config = function()
     require("modes").setup({

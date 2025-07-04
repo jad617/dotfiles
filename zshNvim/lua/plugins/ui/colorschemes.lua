@@ -20,22 +20,26 @@ return {
   },
   {
     "shaunsingh/nord.nvim",
+    enabled = false,
   },
   {
     "thesimonho/kanagawa-paper.nvim",
     lazy = false,
+    enabled = false,
     priority = 1000,
     opts = {},
   },
   {
     "rebelot/kanagawa.nvim",
     lazy = false,
+    enabled = false,
     priority = 1000,
     opts = {},
   },
   {
     "AlexvZyl/nordic.nvim",
     lazy = false,
+    enabled = false,
     priority = 1000,
     config = function()
       require("nordic").load()
@@ -43,13 +47,14 @@ return {
   },
   {
     "olimorris/onedarkpro.nvim",
+    enabled = false,
     name = "onedarkpro",
     priority = 1000, -- Ensure it loads first
     enabled = false,
   },
   {
     "sainnhe/gruvbox-material",
-    enabled = true,
+    enabled = false,
     priority = 1000,
     config = function()
       vim.g.gruvbox_material_transparent_background = 1
