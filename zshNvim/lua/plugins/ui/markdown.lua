@@ -3,8 +3,15 @@ return {
   {
     -- Renders Markdown in Neovim
     "OXY2DEV/markview.nvim",
-    dependencies = { "nvim-treesitter/nvim-treesitter" },
+    dependencies = {
+      "nvim-treesitter/nvim-treesitter",
+      "folke/snacks.nvim",
+    },
     lazy = false,
+
+    -- For `nvim-treesitter` users.
+    priority = 49,
+
     config = function()
       require("markview").setup({
         experimental = {
@@ -15,13 +22,34 @@ return {
       ------------------------------------------------------------
       -- [[ local vars ]]
       ------------------------------------------------------------
-      local map = vim.api.nvim_set_keymap -- set keys
+      local map = vim.keymap.set -- set keys
       local options = { noremap = true, silent = true }
 
       ------------------------------------------------------------
+      -- [[ Functions ]]
+      ------------------------------------------------------------
+      local indent_enabled = true
+
+      function ToggleSnacksIndent()
+        if indent_enabled then
+          require("snacks.indent").disable()
+          indent_enabled = false
+          vim.notify("Snacks indent disabled")
+          vim.cmd("Markview enable")
+        else
+          require("snacks.indent").enable()
+          indent_enabled = true
+          vim.notify("Snacks indent enabled")
+          vim.cmd("Markview disable")
+        end
+      end
+      ------------------------------------------------------------
       -- [[ Key Bindings ]]
       ------------------------------------------------------------
-      map("n", "<leader>m", ":Markview toggle<CR>", options)
+      -- map("n", "<leader>m", ":Markview toggle<CR>", options)
+      map("n", "<leader>m", function()
+        ToggleSnacksIndent()
+      end, options)
     end,
   },
   {
