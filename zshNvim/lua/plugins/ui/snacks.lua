@@ -212,14 +212,6 @@ return {
       mode = { "n" },
     },
     {
-      "fw",
-      function()
-        Snacks.picker.grep({ hidden = true, search = vim.fn.expand("<cword>") })
-      end,
-      desc = "Grep",
-      mode = { "n" },
-    },
-    {
       "fb",
       function()
         Snacks.picker.buffers()
