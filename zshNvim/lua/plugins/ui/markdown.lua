@@ -19,6 +19,13 @@ return {
           check_rtp_message = false,
         },
       })
+
+      vim.schedule(function()
+        local ok, indent = pcall(require, "snacks.indent")
+        if ok then
+          indent.disable()
+        end
+      end)
       ------------------------------------------------------------
       -- [[ local vars ]]
       ------------------------------------------------------------
@@ -28,14 +35,14 @@ return {
       ------------------------------------------------------------
       -- [[ Functions ]]
       ------------------------------------------------------------
-      local indent_enabled = true
+      local indent_enabled = false
 
       function ToggleSnacksIndent()
         if indent_enabled then
           require("snacks.indent").disable()
           indent_enabled = false
-          vim.notify("Snacks indent disabled")
           vim.cmd("Markview enable")
+          vim.notify("Snacks indent disabled")
         else
           require("snacks.indent").enable()
           indent_enabled = true
