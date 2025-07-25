@@ -14,17 +14,33 @@ return {
     vim.keymap.set("n", "<leader>sp", '<cmd>lua require("spectre").open_file_search({select_word=true})<CR>', {
       desc = "Search on current file",
     })
+
+    local sed_args
+    if vim.loop.os_uname().sysname == "Darwin" then
+      sed_args = { "-i", "", "-E" }
+    else
+      sed_args = { "-i", "-E" }
+    end
+
     require("spectre").setup({
       replace_engine = {
         ["sed"] = {
           cmd = "sed",
-          args = {
-            "-i",
-            "",
-            "-E",
-          },
+          args = sed_args,
         },
       },
     })
+    -- require("spectre").setup({
+    --   replace_engine = {
+    --     ["sed"] = {
+    --       cmd = "sed",
+    --       args = {
+    --         "-i",
+    --         "",
+    --         "-E",
+    --       },
+    --     },
+    --   },
+    -- })
   end,
 }
