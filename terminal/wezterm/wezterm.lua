@@ -22,25 +22,48 @@ config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
 --------------------------------------------------------------------------------
 -- Tiny status: show when leader is held (no extra badges)
 --------------------------------------------------------------------------------
+-- Choose the emoji you want here:
+local LEADER_ICON = utf8.char(0x1f7e2) -- green circle
+
 wezterm.on("update-right-status", function(window, _)
 	local SOLID_LEFT_ARROW = ""
 	local ARROW_FOREGROUND = { Foreground = { Color = "#c6a0f6" } } -- mauve
 	local prefix = ""
+
 	if window:leader_is_active() then
-		prefix = " " .. utf8.char(0x1f30a) -- ocean wave
+		prefix = " " .. LEADER_ICON .. " "
 		SOLID_LEFT_ARROW = utf8.char(0xe0b2)
 	end
+
 	if window:active_tab():tab_id() ~= 0 then
 		ARROW_FOREGROUND = { Foreground = { Color = "#1e2030" } } -- mantle
 	end
+
 	window:set_left_status(wezterm.format({
-		{ Background = { Color = "#b7bdf8" } }, -- lavender
-		{ Text = prefix },
+		{ Text = prefix }, -- no background override, inherits bar color
 		ARROW_FOREGROUND,
 		{ Text = SOLID_LEFT_ARROW },
 	}))
 end)
 
+--------------------------------------------------------------------------------
+-- Tab naming: show only last folder name
+--------------------------------------------------------------------------------
+wezterm.on("format-tab-title", function(tab)
+	local index = tostring(tab.tab_index)
+	local title = tab.tab_title
+
+	if title == "" then
+		local cwd_uri = tab.active_pane.current_working_dir
+		if cwd_uri and cwd_uri.file_path then
+			title = cwd_uri.file_path:match("([^/]+)$") or cwd_uri.file_path
+		else
+			title = "?"
+		end
+	end
+
+	return " " .. index .. ": " .. title .. " "
+end)
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
