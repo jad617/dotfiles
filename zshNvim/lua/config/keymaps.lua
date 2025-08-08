@@ -93,12 +93,9 @@ map("n", "<M-up>", ":tabprevious<CR>", options_silent)
 map("n", "<M-down>", ":tabnext<CR>", options_silent)
 
 -- Alt + b
+-- [[ MacOs ]]
 map("n", "∫", ":b#<CR>", options) -- Jump back from definition
-
 -- [[ Linux ]]
--- map("n", "<t-up>", ":tabprevious<CR>", options)
--- map("n", "<t-down>", ":tabnext<CR>", options)
-
 map("n", "<A-b>", ":b#<CR>", options) -- Jump back from definition
 
 ------------------------------------------------------------
