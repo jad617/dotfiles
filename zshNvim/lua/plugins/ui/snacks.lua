@@ -34,7 +34,7 @@ return {
           section = "terminal",
           cmd = "cat ~/todo",
           padding = 1,
-          height = 10,
+          height = 5,
           ttl = 5,
         },
         {
