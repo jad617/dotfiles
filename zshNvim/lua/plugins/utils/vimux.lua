@@ -1,6 +1,7 @@
 -- Tmux split run command
 return {
   "preservim/vimux",
+  enabled = false,
   config = function()
     ------------------------------------------------------------
     -- [[ local vars ]]
