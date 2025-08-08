@@ -6,6 +6,7 @@ local config = {}
 -- Appearance
 --------------------------------------------------------------------------------
 config.font_size = 13.0
+config.font = wezterm.font("MesloLGS NF", { weight = "Bold" })
 config.color_scheme = "Catppuccin Macchiato"
 config.audible_bell = "Disabled"
 
