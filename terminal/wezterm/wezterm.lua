@@ -3,9 +3,24 @@ local act = wezterm.action
 local config = {}
 
 --------------------------------------------------------------------------------
+-- Global Config
+--------------------------------------------------------------------------------
+config.enable_kitty_graphics = true
+config.enable_wayland = true
+
 -- Appearance
 --------------------------------------------------------------------------------
-config.font_size = 13.0
+if wezterm.target_triple:find("darwin") then
+	-- macOS
+	config.font_size = 13
+elseif wezterm.target_triple:find("linux") then
+	-- Linux
+	config.font_size = 11
+else
+	-- Default fallback
+	config.font_size = 12
+end
+
 config.font = wezterm.font("MesloLGS NF", { weight = "Bold" })
 config.color_scheme = "Catppuccin Macchiato"
 config.audible_bell = "Disabled"
