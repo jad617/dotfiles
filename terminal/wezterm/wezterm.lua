@@ -62,23 +62,24 @@ wezterm.on("update-right-status", function(window, _)
 end)
 
 --------------------------------------------------------------------------------
--- Tab naming: show only last folder name
+-- Tab naming: show only current app, but allow renaming
 --------------------------------------------------------------------------------
+config.tab_max_width = 999
 wezterm.on("format-tab-title", function(tab)
 	local index = tostring(tab.tab_index)
-	local title = tab.tab_title
 
-	if title == "" then
-		local cwd_uri = tab.active_pane.current_working_dir
-		if cwd_uri and cwd_uri.file_path then
-			title = cwd_uri.file_path:match("([^/]+)$") or cwd_uri.file_path
-		else
-			title = "?"
-		end
+	-- if you've renamed the tab, keep that name
+	if tab.tab_title and tab.tab_title ~= "" then
+		return " " .. index .. ": " .. tab.tab_title .. " "
 	end
 
-	return " " .. index .. ": " .. title .. " "
+	-- otherwise show the current app (basename of the foreground process)
+	local name = tab.active_pane.foreground_process_name or tab.active_pane.title or "?"
+	local app = name:gsub("^.*/", "") -- strip path, keep just the program name
+
+	return " " .. index .. ": " .. app .. " "
 end)
+
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
@@ -218,6 +219,18 @@ config.key_tables.search_mode = {
 	{ key = "N", mods = "SHIFT", action = act.CopyMode("PriorMatch") },
 	{ key = "Escape", mods = "NONE", action = act.CopyMode("Close") },
 	{ key = "Enter", mods = "NONE", action = act.CopyMode("AcceptPattern") },
+}
+
+--------------------------------------------------------------------------------
+-- Borders and inactive pane dimming
+--------------------------------------------------------------------------------
+config.colors = {
+	split = "#ff5f1f", -- Neon orange split lines
+}
+
+config.inactive_pane_hsb = {
+	saturation = 0.8,
+	brightness = 0.7,
 }
 
 return config
