@@ -5,11 +5,19 @@ local map = vim.api.nvim_set_keymap -- set keys
 local options = { noremap = true, silent = true }
 
 ------------------------------------------------------------
--- [[ Open Neotree ]]
+-- [[ Zellij ]]
 ------------------------------------------------------------
-OpenNeotree = function()
-  vim.cmd("Neotree action=show toggle=true")
-end
+-- Alt+o: Zellij floating terminal in Neovim's cwd, closes on Ctrl-D/exit
+vim.keymap.set("n", "<A-o>", function()
+  local cwd = (vim.loop and vim.loop.cwd()) or vim.fn.getcwd()
+  local shell = os.getenv("SHELL") or "bash"
+  local cmd = string.format(
+    [[zellij run --floating --width 90%% --height 90%% --x 5%% --y 5%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
+    cwd,
+    shell
+  )
+  vim.fn.jobstart(cmd, { detach = true })
+end, { silent = true, desc = "Zellij float here (75%)" })
 
 ------------------------------------------------------------
 -- [[ Select current word without jumping to next ]]

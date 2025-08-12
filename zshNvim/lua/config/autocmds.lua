@@ -3,19 +3,6 @@
 --- Add any additional autocmds here
 
 ------------------------------------------------------------
--- [[ Disable terminal redraws ]]
-------------------------------------------------------------
-vim.api.nvim_create_autocmd("TermOpen", {
-  callback = function()
-    -- If it's an empty terminal, auto-start tmux
-    local buf_name = vim.api.nvim_buf_get_name(0)
-    if buf_name == "" or buf_name:match("term://") then
-      vim.fn.chansend(vim.b.terminal_job_id, "tmux new -A -s nvimterm\n")
-    end
-  end,
-})
-
-------------------------------------------------------------
 -- [[ Auto add project with WorkspacesAdd ]]
 ------------------------------------------------------------
 -- Function to get the Git repository name dynamically
