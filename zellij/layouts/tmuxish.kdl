@@ -1,0 +1,8 @@
+// Bottom tab bar with compact-bar + centered 75% floating scratch pane
+layout {
+  pane
+  // Bottom bar that honors theme colors
+  pane size=1 borderless=true {
+    plugin location="zellij:compact-bar"
+  }
+}

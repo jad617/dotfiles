@@ -1,0 +1,140 @@
+// ~/.config/zellij/config.kdl
+
+////////////////////////////////////////////////////////////////////////////////
+///                              General                                     ///
+////////////////////////////////////////////////////////////////////////////////
+
+show_startup_tips false
+auto_reload_config true
+copy_on_select true
+mouse_mode true                // Mouse support
+scroll_buffer_size 50000       // History buffer size
+
+////////////////////////////////////////////////////////////////////////////////
+///                              Theme & UI                                  ///
+////////////////////////////////////////////////////////////////////////////////
+theme "catppuccin-macchiato"   // Catppuccin Macchiato colors
+simplified_ui true             // Minimal clean look
+pane_frames true               // Show borders around panes
+
+ui {
+  pane_frames {
+    hide_session_name true
+  }
+}
+
+default_layout "tmuxish"
+
+////////////////////////////////////////////////////////////////////////////////
+///                               Prefix                                     ///
+////////////////////////////////////////////////////////////////////////////////
+
+// Make Ctrl-a the prefix from ANY mode (Normal/Pane/Tab/etc.)
+keybinds clear-defaults=true {
+  shared {
+    bind "Ctrl a" { SwitchToMode "Tmux"; }
+
+    // Alt+i: open floating window (no prefix needed)
+    bind "Alt i" { ToggleFloatingPanes; }
+    // bind "Alt i" { NewPane "Floating" --width "77%" --height "75%" --position "center"; }
+    bind "Alt Shift i" {
+      Run "zsh" {
+        floating true
+        width  "75%"
+        height "75%"
+        x "12%"   // center horizontally for 75% width
+        y "12%"   // center vertically for 75% height
+        close_on_exit true   // <-- auto-close pane when the command (shell) exits
+      }
+    }
+  // Shift+Arrow: move focus between Zellij panes (no prefix)
+    bind "Shift Left"  { MoveFocus "Left"; }
+    bind "Shift Right" { MoveFocus "Right"; }
+    bind "Shift Up"    { MoveFocus "Up"; }
+    bind "Shift Down"  { MoveFocus "Down"; }
+
+    // Comma/period/minus/equals for resizing after prefix
+    bind "Alt ," { Resize "Up"; }
+    bind "Alt ." { Resize "Down"; }
+    bind "Alt -" { Resize "Left"; }
+    bind "Alt =" { Resize "Right"; }
+
+  }
+
+  renametab {
+    bind "Enter" { SwitchToMode "Normal"; }
+    bind "Backspace" { WriteChars "\u{007f}"; }  // DEL
+  }
+
+////////////////////////////////////////////////////////////////////////////////
+///                                Panes                                     ///
+////////////////////////////////////////////////////////////////////////////////
+  tmux {
+    // Exit tmux-mode quickly
+    bind "Esc" { SwitchToMode "Normal"; }
+
+    // --- Splits ---
+    // h: split horizontally (side-by-side) from current pane
+    bind "h" { NewPane "Right"; SwitchToMode "Normal"; }
+
+    // j: horizontal "full split" feel (approximate tmux -f)
+    bind "j" { NewPane "Right"; Resize "Right"; Resize "Right"; Resize "Right"; SwitchToMode "Normal"; }
+
+    // v: split vertically (stacked) from current pane
+    bind "v" { NewPane "Down"; SwitchToMode "Normal"; }
+
+    // b: vertical "full split" feel (approximate tmux -f)
+    bind "b" { NewPane "Down"; Resize "Down"; Resize "Down"; Resize "Down"; SwitchToMode "Normal"; }
+
+////////////////////////////////////////////////////////////////////////////////
+///                             Tabs / Windows                               ///
+////////////////////////////////////////////////////////////////////////////////
+    bind "c" { NewTab; SwitchToMode "Normal"; }      // New tab (tmux new-window)
+    bind "n" { GoToNextTab; SwitchToMode "Normal"; } // Next tab
+    bind "p" { GoToPreviousTab; SwitchToMode "Normal"; } // Previous tab
+    bind "," { SwitchToMode "RenameTab"; }
+
+////////////////////////////////////////////////////////////////////////////////
+///                              Resizing                                    ///
+////////////////////////////////////////////////////////////////////////////////
+    // Arrow keys for resizing
+    bind "Left"  { Resize "Left"; }
+    bind "Right" { Resize "Right"; }
+    bind "Up"    { Resize "Up"; }
+    bind "Down"  { Resize "Down"; }
+
+////////////////////////////////////////////////////////////////////////////////
+///                            Swap / Move Panes                             ///
+////////////////////////////////////////////////////////////////////////////////
+    // Move/swap pane (closest to tmux swap-pane with neighbors)
+    bind "H" { MovePane "Left"; }
+    bind "J" { MovePane "Down"; }
+    bind "K" { MovePane "Up"; }
+    bind "L" { MovePane "Right"; }
+
+////////////////////////////////////////////////////////////////////////////////
+///                             Scroll / Copy                                ///
+////////////////////////////////////////////////////////////////////////////////
+    bind "[" { SwitchToMode "Scroll"; }
+
+////////////////////////////////////////////////////////////////////////////////
+///                         Broadcast / Sync Panes                           ///
+////////////////////////////////////////////////////////////////////////////////
+    bind "a" { ToggleActiveSyncTab; SwitchToMode "Normal"; }
+
+////////////////////////////////////////////////////////////////////////////////
+///                                Closing                                   ///
+////////////////////////////////////////////////////////////////////////////////
+    bind "x" { CloseFocus; }
+    bind "&" { CloseTab; }
+  }
+}
+
+layout {
+  pane size=1 borderless=true {
+    plugin location="zellij:tab-bar"
+  }
+  pane size=1 borderless=true {
+    plugin location="zellij:status-bar"
+  }
+}
