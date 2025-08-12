@@ -354,13 +354,13 @@ return {
       end,
       desc = "LSP Symbols",
     },
-    {
-      "<A-i>",
-      function()
-        Snacks.terminal()
-      end,
-      desc = "Toggle terminal",
-      mode = { "n", "t" },
-    },
+    -- {
+    --   "<A-i>",
+    --   function()
+    --     Snacks.terminal()
+    --   end,
+    --   desc = "Toggle terminal",
+    --   mode = { "n", "t" },
+    -- },
   },
 }
