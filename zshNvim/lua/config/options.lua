@@ -64,7 +64,7 @@ map("i", "<LeftMouse>", "<nop>", options)
 -- [[ window-local options ]]
 wo.number = true -- Enable line Numbers
 wo.relativenumber = true -- Relative numbers for easier jumps
-wo.wrap = false -- When on, lines longer than the width of the window will wrap and displaying continues on the next line.
+wo.wrap = true -- When on, lines longer than the width of the window will wrap and displaying continues on the next line.
 -- wo.foldcolumn = "2" -- Left Margin
 
 ------------------------------------------------------------
