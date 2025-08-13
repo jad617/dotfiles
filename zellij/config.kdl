@@ -35,7 +35,11 @@ keybinds clear-defaults=true {
     bind "Ctrl a" { SwitchToMode "Tmux"; }
 
     // Alt+i: open floating window (no prefix needed)
+    // Linux
     bind "Alt i" { ToggleFloatingPanes; }
+    // MacOs
+    bind "Super i" { ToggleFloatingPanes; }
+
     // bind "Alt i" { NewPane "Floating" --width "77%" --height "75%" --position "center"; }
     bind "Alt Shift i" {
       Run "zsh" {
