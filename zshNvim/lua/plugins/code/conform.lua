@@ -11,6 +11,7 @@ return {
       -- yaml
       dockerfile = { "trim_newlines", "trim_whitespace" },
       helm = { "trim_newlines", "trim_whitespace" },
+      kdl = { "trim_newlines", "trim_whitespace" },
       yaml = { "trim_newlines", "trim_whitespace" },
 
       -- go
