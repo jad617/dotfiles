@@ -124,18 +124,3 @@ setopt rm_star_silent
 #   exec tmux attach-session -t $(tmux list-sessions | grep -v attached | head -1 | cut -d':' -f1); return 0
 # fi
 # [[ ! $TERM =~ "screen" ]] && exec tmux -u; return 0
-
-# --- Auto-start Zellij in Kitty, without breaking Neovim's floating Zellij ---
-# Bypass by running: ZELLIJ_NO_AUTO=1 kitty  (or export ZELLIJ_NO_AUTO=1)
-if [[ $- == *i* ]] && [[ -t 1 ]] \
-   && [[ -z "${ZELLIJ:-}" ]] \
-   && [[ -z "${TMUX:-}" ]] \
-   && [[ -z "${SSH_CONNECTION:-}" ]] \
-   && [[ -z "${ZELLIJ_NO_AUTO:-}" ]]; then
-  # Only in Kitty
-  if [[ "${TERM:-}" == "xterm-kitty" || -n "${KITTY_PID:-}" ]]; then
-    if command -v zellij >/dev/null 2>&1; then
-      exec zellij attach -c main
-    fi
-  fi
-fi
