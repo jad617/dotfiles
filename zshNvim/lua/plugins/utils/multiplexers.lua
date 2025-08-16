@@ -1,6 +1,7 @@
 return {
   {
     "mrjones2014/smart-splits.nvim",
+    -- enabled = false,
     version = "*",
     config = function()
       -- Tell the plugin to integrate with the multiplexer
@@ -24,5 +25,18 @@ return {
       -- vim.keymap.set("n", "<M-Up>",    require("smart-splits").resize_up)
       -- vim.keymap.set("n", "<M-Right>", require("smart-splits").resize_right)
     end,
+  },
+  {
+    "swaits/zellij-nav.nvim",
+    enabled = false,
+    lazy = true,
+    event = "VeryLazy",
+    keys = {
+      { "<S-Left>", "<cmd>ZellijNavigateLeftTab<cr>", { silent = true, desc = "navigate left or tab" } },
+      { "<S-Down>", "<cmd>ZellijNavigateDown<cr>", { silent = true, desc = "navigate down" } },
+      { "<S-Up>", "<cmd>ZellijNavigateUp<cr>", { silent = true, desc = "navigate up" } },
+      { "<S-Right>", "<cmd>ZellijNavigateRightTab<cr>", { silent = true, desc = "navigate right or tab" } },
+    },
+    opts = {},
   },
 }

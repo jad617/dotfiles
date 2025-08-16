@@ -28,6 +28,17 @@ default_layout "tmuxish"
 ////////////////////////////////////////////////////////////////////////////////
 ///                               Prefix                                     ///
 ////////////////////////////////////////////////////////////////////////////////
+// plugins {
+//   autolock location="https://github.com/fresh2dev/zellij-autolock/releases/latest/download/zellij-autolock.wasm" {
+//       triggers "nvim|vim|v|nv"  // Lock when any open these programs open. They are expected to unlock themselves when closed (e.g., using zellij.vim plugin).
+//       watch_triggers "fzf|zoxide|atuin|atac"  // Lock when any of these open and monitor until closed.
+//       watch_interval "1.0"  // When monitoring, check every X seconds.
+//   }
+// }
+// Load this "headless" plugin on start.
+// load_plugins {
+//     autolock
+// }
 
 // Make Ctrl-a the prefix from ANY mode (Normal/Pane/Tab/etc.)
 keybinds clear-defaults=true {
@@ -35,7 +46,11 @@ keybinds clear-defaults=true {
     bind "Ctrl a" { SwitchToMode "Tmux"; }
 
     // Alt+i: open floating window (no prefix needed)
+    // Linux
     bind "Alt i" { ToggleFloatingPanes; }
+    // MacOs
+    bind "Super i" { ToggleFloatingPanes; }
+
     // bind "Alt i" { NewPane "Floating" --width "77%" --height "75%" --position "center"; }
     bind "Alt Shift i" {
       Run "zsh" {
