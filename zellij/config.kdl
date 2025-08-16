@@ -58,7 +58,6 @@ keybinds clear-defaults=true {
     bind "Alt ." { Resize "Down"; }
     bind "Alt -" { Resize "Left"; }
     bind "Alt =" { Resize "Right"; }
-
   }
 
   renametab {
@@ -94,6 +93,12 @@ keybinds clear-defaults=true {
     bind "p" { GoToPreviousTab; SwitchToMode "Normal"; } // Previous tab
     bind "," { SwitchToMode "RenameTab"; }
 
+    // Move panes
+    // bind "Shift Left" { MovePane "Left"; SwitchToMode "Normal"; }
+    // bind "Shift Right" { MovePane "Right"; SwitchToMode "Normal"; }
+    // bind "Shift Up" { MovePane "Up"; SwitchToMode "Normal"; }
+    // bind "Shift Down" { MovePane "Down"; SwitchToMode "Normal"; }
+    //
 ////////////////////////////////////////////////////////////////////////////////
 ///                              Resizing                                    ///
 ////////////////////////////////////////////////////////////////////////////////
