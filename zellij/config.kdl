@@ -21,6 +21,8 @@ ui {
   pane_frames {
     hide_session_name true
   }
+
+  pane_titles false
 }
 
 default_layout "tmuxish"
@@ -28,22 +30,12 @@ default_layout "tmuxish"
 ////////////////////////////////////////////////////////////////////////////////
 ///                               Prefix                                     ///
 ////////////////////////////////////////////////////////////////////////////////
-// plugins {
-//   autolock location="https://github.com/fresh2dev/zellij-autolock/releases/latest/download/zellij-autolock.wasm" {
-//       triggers "nvim|vim|v|nv"  // Lock when any open these programs open. They are expected to unlock themselves when closed (e.g., using zellij.vim plugin).
-//       watch_triggers "fzf|zoxide|atuin|atac"  // Lock when any of these open and monitor until closed.
-//       watch_interval "1.0"  // When monitoring, check every X seconds.
-//   }
-// }
-// Load this "headless" plugin on start.
-// load_plugins {
-//     autolock
-// }
-
 // Make Ctrl-a the prefix from ANY mode (Normal/Pane/Tab/etc.)
 keybinds clear-defaults=true {
   shared {
-    bind "Ctrl a" { SwitchToMode "Tmux"; }
+
+    // toggle passthrough: press Ctrl-g to forward keys (incl. Ctrl-a) to SSH/screen
+    bind "Ctrl g" { SwitchToMode "Locked"; }
 
     // Alt+i: open floating window (no prefix needed)
     // Linux
@@ -73,6 +65,15 @@ keybinds clear-defaults=true {
     bind "Alt ." { Resize "Down"; }
     bind "Alt -" { Resize "Left"; }
     bind "Alt =" { Resize "Right"; }
+  }
+
+  normal {
+    bind "Ctrl a" { SwitchToMode "Tmux"; }
+  }
+
+  locked {
+    // press Ctrl-g again to exit passthrough
+    bind "Ctrl g" { SwitchToMode "Normal"; }
   }
 
   renametab {
