@@ -77,6 +77,7 @@ return {
       -- [[ Key Bindings ]]
       ------------------------------------------------------------
       map("n", "<A-m>", ":LivePreview start<CR>", options)
+      map("n", "µ", ":LivePreview start<CR>", options)
     end,
   },
 }
