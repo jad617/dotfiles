@@ -104,6 +104,7 @@ M.linter = {
   "ansible-lint",
   "golangci-lint",
   "pylint",
+  "proselint",
   "flake8",
   "tflint",
   "stylua",

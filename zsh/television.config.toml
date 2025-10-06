@@ -53,71 +53,71 @@ theme = "gruvbox-dark"
 
 # Previewers settings
 # ----------------------------------------------------------------------------
-[previewers.file]
-# The theme to use for syntax highlighting.
-# Bulitin syntax highlighting uses the same syntax highlighting engine as bat.
-# To get a list of your currently available themes, run `bat --list-themes`
-theme = "Coldark-Dark"
+# [previewers.file]
+# # The theme to use for syntax highlighting.
+# # Bulitin syntax highlighting uses the same syntax highlighting engine as bat.
+# # To get a list of your currently available themes, run `bat --list-themes`
+# theme = "Coldark-Dark"
 
 # Keybindings
 # ----------------------------------------------------------------------------
 #
 # Channel mode
 # ------------------------
-[keybindings.Channel]
-# Quit the application
-quit = "ctrl-d"
-# Scrolling through entries
-select_next_entry = "down"
-select_prev_entry = "up"
-select_next_page = "pagedown"
-select_prev_page = "pageup"
-# Scrolling the preview pane
-scroll_preview_half_page_down = "ctrl-o"
-scroll_preview_half_page_up = "ctrl-p"
-# Select an entry
-select_entry = "enter"
-# Copy the selected entry to the clipboard
-copy_entry_to_clipboard = "ctrl-y"
-# Toggle the remote control mode
-toggle_remote_control = "ctrl-r"
-# Toggle the send to channel mode
-toggle_send_to_channel = "ctrl-s"
-# Toggle the help bar
-toggle_help = "ctrl-g"
+# [keybindings.Channel]
+# # Quit the application
+# quit = "ctrl-d"
+# # Scrolling through entries
+# select_next_entry = "down"
+# select_prev_entry = "up"
+# select_next_page = "pagedown"
+# select_prev_page = "pageup"
+# # Scrolling the preview pane
+# scroll_preview_half_page_down = "ctrl-o"
+# scroll_preview_half_page_up = "ctrl-p"
+# # Select an entry
+# select_entry = "enter"
+# # Copy the selected entry to the clipboard
+# copy_entry_to_clipboard = "ctrl-y"
+# # Toggle the remote control mode
+# toggle_remote_control = "ctrl-r"
+# # Toggle the send to channel mode
+# toggle_send_to_channel = "ctrl-s"
+# # Toggle the help bar
+# toggle_help = "ctrl-g"
+#
 
-
-# Remote control mode
-# -------------------------------
-[keybindings.RemoteControl]
-# Quit the application
-quit = "ctrl-d"
-# Scrolling through entries
-select_next_entry = "down"
-select_prev_entry = "up"
-select_next_page = "pagedown"
-select_prev_page = "pageup"
-# Select an entry
-select_entry = "enter"
-# Toggle the remote control mode
-toggle_remote_control = "ctrl-r"
-# Toggle the help bar
-toggle_help = "ctrl-g"
-
-
-# Send to channel mode
-# --------------------------------
-[keybindings.SendToChannel]
-# Quit the application
-quit = "ctrl-d"
-# Scrolling through entries
-select_next_entry = "down"
-select_prev_entry = "up"
-select_next_page = "pagedown"
-select_prev_page = "pageup"
-# Select an entry
-select_entry = "enter"
-# Toggle the send to channel mode
-toggle_send_to_channel = "ctrl-s"
-# Toggle the help bar
-toggle_help = "ctrl-g"
+# # Remote control mode
+# # -------------------------------
+# [keybindings.RemoteControl]
+# # Quit the application
+# quit = "ctrl-d"
+# # Scrolling through entries
+# select_next_entry = "down"
+# select_prev_entry = "up"
+# select_next_page = "pagedown"
+# select_prev_page = "pageup"
+# # Select an entry
+# select_entry = "enter"
+# # Toggle the remote control mode
+# toggle_remote_control = "ctrl-r"
+# # Toggle the help bar
+# toggle_help = "ctrl-g"
+#
+#
+# # Send to channel mode
+# # --------------------------------
+# [keybindings.SendToChannel]
+# # Quit the application
+# quit = "ctrl-d"
+# # Scrolling through entries
+# select_next_entry = "down"
+# select_prev_entry = "up"
+# select_next_page = "pagedown"
+# select_prev_page = "pageup"
+# # Select an entry
+# select_entry = "enter"
+# # Toggle the send to channel mode
+# toggle_send_to_channel = "ctrl-s"
+# # Toggle the help bar
+# toggle_help = "ctrl-g"

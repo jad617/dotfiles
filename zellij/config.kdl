@@ -78,6 +78,8 @@ keybinds clear-defaults=true {
 
   renametab {
     bind "Enter" { SwitchToMode "Normal"; }
+    bind "Esc" { SwitchToMode "Normal"; }
+
     bind "Backspace" { WriteChars "\u{007f}"; }  // DEL
   }
 
