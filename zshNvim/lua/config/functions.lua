@@ -12,7 +12,7 @@ vim.keymap.set("n", "<A-o>", function()
   local cwd = (vim.loop and vim.loop.cwd()) or vim.fn.getcwd()
   local shell = os.getenv("SHELL") or "bash"
   local cmd = string.format(
-    [[zellij run --floating --width 90%% --height 90%% --x 5%% --y 5%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
+    [[zellij run --floating --width 90%% --height 95%% --x 6%% --y 2%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
     cwd,
     shell
   )
@@ -23,7 +23,7 @@ vim.keymap.set("n", "<D-o>", function()
   local cwd = (vim.loop and vim.loop.cwd()) or vim.fn.getcwd()
   local shell = os.getenv("SHELL") or "bash"
   local cmd = string.format(
-    [[zellij run --floating --width 90%% --height 90%% --x 5%% --y 5%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
+    [[zellij run --floating --width 90%% --height 95%% --x 6%% --y 2%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
     cwd,
     shell
   )
@@ -91,6 +91,9 @@ end
 
 map("n", "<A-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
 map("i", "<A-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
+
+map("n", "<D-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
+map("i", "<D-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
 
 map("n", "<A-/>", ':lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
 map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
