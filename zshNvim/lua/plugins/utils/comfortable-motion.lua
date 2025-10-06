@@ -23,8 +23,8 @@ return {
     ------------------------------------------------------------
 
     -- [[ Default]]
-    map("n", "<C-o>", ":call comfortable_motion#flick(-50)<CR>", options)
-    map("n", "<C-p>", ":call comfortable_motion#flick(50)<CR>", options)
+    map("n", "<C-o>", ":call comfortable_motion#flick(-75)<CR>", options)
+    map("n", "<C-p>", ":call comfortable_motion#flick(75)<CR>", options)
 
     -- TODO: need to find a way to force this behavior
     map("i", "<C-p>", "<C-c>:call comfortable_motion#flick(100)<CR>", options)
