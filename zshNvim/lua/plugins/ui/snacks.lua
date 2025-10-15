@@ -6,7 +6,7 @@ return {
   opts = {
     bigfile = { enabled = true },
     dashboard = {
-      enabled = true,
+      enabled = false,
       sections = {
         { section = "header" },
         { title = "Keymaps", section = "keys", icon = " ", pane = 1, padding = 1, indent = 2 },
