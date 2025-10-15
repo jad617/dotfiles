@@ -54,6 +54,17 @@ keybinds clear-defaults=true {
         close_on_exit true   // <-- auto-close pane when the command (shell) exits
       }
     }
+
+    bind "Super p" {
+      Run "zsh" {
+        floating true
+        width  "50%"
+        height "10%"
+        x "25%"   // center horizontally for 75% width
+        y "40%"   // center vertically for 75% height
+        close_on_exit true   // <-- auto-close pane when the command (shell) exits
+      }
+    }
   // Shift+Arrow: move focus between Zellij panes (no prefix)
     bind "Shift Left"  { MoveFocus "Left"; }
     bind "Shift Right" { MoveFocus "Right"; }
@@ -81,6 +92,7 @@ keybinds clear-defaults=true {
     bind "Esc" { SwitchToMode "Normal"; }
 
     bind "Backspace" { WriteChars "\u{007f}"; }  // DEL
+    bind "Shift Backspace" { WriteChars "\u{007f}"; }  // DEL
   }
 
 ////////////////////////////////////////////////////////////////////////////////

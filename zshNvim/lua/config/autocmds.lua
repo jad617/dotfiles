@@ -91,6 +91,21 @@ vim.api.nvim_create_autocmd("VimEnter", {
 })
 
 ------------------------------------------------------------
+-- [[ Auto Open Workspace List ]]
+------------------------------------------------------------
+-- https://github.com/AstroNvim/AstroNvim/issues/344#issuecomment-1214143220
+vim.api.nvim_create_augroup("workspaces", {})
+vim.api.nvim_create_autocmd("UiEnter", {
+  desc = "Open workspaces automatically",
+  group = "workspaces",
+  callback = function()
+    if vim.fn.argc() == 0 then
+      vim.fn.execute("Telescope workspaces")
+    end
+  end,
+})
+
+------------------------------------------------------------
 -- [[ Auto Open Neotree ]]
 ------------------------------------------------------------
 -- https://github.com/AstroNvim/AstroNvim/issues/344#issuecomment-1214143220
