@@ -3,6 +3,7 @@ return {
   {
     -- Renders Markdown in Neovim
     "OXY2DEV/markview.nvim",
+    enabled = false,
     dependencies = {
       "nvim-treesitter/nvim-treesitter",
       "folke/snacks.nvim",
