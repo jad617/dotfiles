@@ -151,8 +151,9 @@ return {
       win = {
         style = "float",
         relative = "editor",
-        border = "double",
-        height = 0.99,
+        border = "single",
+        height = 0.97,
+        width = 0.90,
       },
       -- start in insert, use your shell
       start_insert = true,
