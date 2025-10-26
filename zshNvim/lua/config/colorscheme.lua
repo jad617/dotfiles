@@ -33,3 +33,6 @@ vim.cmd("highlight SnacksPickerPreview guibg=#242b38 gui=bold")
 -- Snacks picker title color
 vim.cmd("highlight SnacksPickerPreviewTitle guifg=#c27fd7 gui=bold")
 vim.cmd("highlight SnacksPickerBoxTitle guifg=#c27fd7 gui=bold")
+
+-- Snacks terminal color
+vim.cmd("highlight FloatBorder guifg=#9ECE6A gui=bold")
