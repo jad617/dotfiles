@@ -1,12 +1,12 @@
 return {
   {
     "mrjones2014/smart-splits.nvim",
-    -- enabled = false,
+    enabled = true,
     version = "*",
     config = function()
       -- Tell the plugin to integrate with the multiplexer
-      -- vim.g.smart_splits_multiplexer_integration = "wezterm"
-      vim.g.smart_splits_multiplexer_integration = "zellij"
+      vim.g.smart_splits_multiplexer_integration = "wezterm"
+      -- vim.g.smart_splits_multiplexer_integration = "zellij"
 
       require("smart-splits").setup({
         -- you can tweak options here if you want

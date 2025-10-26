@@ -1,5 +1,5 @@
 local wezterm = require("wezterm")
-local act = wezterm.action
+local action = wezterm.action
 local config = {}
 
 --------------------------------------------------------------------------------
@@ -7,6 +7,7 @@ local config = {}
 --------------------------------------------------------------------------------
 config.enable_kitty_graphics = true
 config.enable_wayland = true
+config.window_decorations = "RESIZE"
 
 -- Appearance
 --------------------------------------------------------------------------------
@@ -31,7 +32,21 @@ config.tab_bar_at_bottom = true
 config.use_fancy_tab_bar = false
 config.tab_and_split_indices_are_zero_based = true
 
+--------------------------------------------------------------------------------
+-- Borders and inactive pane dimming
+--------------------------------------------------------------------------------
+config.colors = {
+	split = "#ff5f1f", -- Neon orange split lines
+}
+
+config.inactive_pane_hsb = {
+	saturation = 0.8,
+	brightness = 0.7,
+}
+
+--------------------------------------------------------------------------------
 -- Leader key (Ctrl+a, tmux-style)
+--------------------------------------------------------------------------------
 config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
 
 --------------------------------------------------------------------------------
@@ -97,7 +112,7 @@ end
 local function alt_or_resize(key, resize_action)
 	return wezterm.action_callback(function(window, pane)
 		if is_vim(pane) then
-			window:perform_action(act.SendKey({ key = key, mods = "ALT" }), pane)
+			window:perform_action(action.SendKey({ key = key, mods = "ALT" }), pane)
 		else
 			window:perform_action(resize_action, pane)
 		end
@@ -108,9 +123,9 @@ end
 local function shift_arrow_or_focus(dir, keyname)
 	return wezterm.action_callback(function(window, pane)
 		if is_vim(pane) then
-			window:perform_action(act.SendKey({ key = keyname, mods = "SHIFT" }), pane)
+			window:perform_action(action.SendKey({ key = keyname, mods = "SHIFT" }), pane)
 		else
-			window:perform_action(act.ActivatePaneDirection(dir), pane)
+			window:perform_action(action.ActivatePaneDirection(dir), pane)
 		end
 	end)
 end
@@ -120,18 +135,18 @@ end
 --------------------------------------------------------------------------------
 config.keys = {
 	-- Reload config
-	{ key = "0", mods = "LEADER", action = act.ReloadConfiguration },
+	{ key = "0", mods = "LEADER", action = action.ReloadConfiguration },
 
 	-- Tabs
-	{ key = "c", mods = "LEADER", action = act.SpawnTab("DefaultDomain") },
-	{ key = "p", mods = "LEADER", action = act.ActivateTabRelative(-1) },
-	{ key = "n", mods = "LEADER", action = act.ActivateTabRelative(1) },
+	{ key = "c", mods = "LEADER", action = action.SpawnTab("DefaultDomain") },
+	{ key = "p", mods = "LEADER", action = action.ActivateTabRelative(-1) },
+	{ key = "n", mods = "LEADER", action = action.ActivateTabRelative(1) },
 
 	-- Rename tab (minimal prompt at bottom)
 	{
 		key = ",",
 		mods = "LEADER",
-		action = act.PromptInputLine({
+		action = action.PromptInputLine({
 			description = "",
 			action = wezterm.action_callback(function(window, _, line)
 				if line then
@@ -145,7 +160,7 @@ config.keys = {
 	{
 		key = ".",
 		mods = "LEADER",
-		action = act.PromptInputLine({
+		action = action.PromptInputLine({
 			description = "Move tab to new index (0-based)",
 			action = wezterm.action_callback(function(window, pane, line)
 				local idx = tonumber(line)
@@ -157,32 +172,23 @@ config.keys = {
 				end)
 				local count = (ok and tabs and #tabs) or 1
 				while count <= idx do
-					window:perform_action(act.SpawnTab("DefaultDomain"), pane)
+					window:perform_action(action.SpawnTab("DefaultDomain"), pane)
 					ok, tabs = pcall(function()
 						return window:tabs()
 					end)
 					count = (ok and tabs and #tabs) or (count + 1)
 				end
-				window:perform_action(act.MoveTab(idx), pane)
+				window:perform_action(action.MoveTab(idx), pane)
 			end),
 		}),
 	},
 
 	-- Normal splits (active pane)
-	{ key = "h", mods = "LEADER", action = act.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
-	{ key = "v", mods = "LEADER", action = act.SplitPane({ direction = "Down", size = { Percent = 50 } }) },
+	{ key = "j", mods = "LEADER", action = action.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
+	{ key = "h", mods = "LEADER", action = action.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
 
-	-- Full splits (top-level). Last one you press "wins" the layout.
-	{
-		key = "j",
-		mods = "LEADER",
-		action = act.SplitPane({ direction = "Right", size = { Percent = 50 }, top_level = true }),
-	},
-	{
-		key = "b",
-		mods = "LEADER",
-		action = act.SplitPane({ direction = "Down", size = { Percent = 50 }, top_level = true }),
-	},
+	{ key = "v", mods = "LEADER", action = action.SplitPane({ direction = "Down", size = { Percent = 50 } }) },
+	{ key = "b", mods = "LEADER", action = action.SplitPane({ direction = "Down", size = { Percent = 50 } }) },
 
 	-- Navigate panes (Shift + Arrows) but pass to vim when in vim
 	{ key = "LeftArrow", mods = "SHIFT", action = shift_arrow_or_focus("Left", "LeftArrow") },
@@ -191,46 +197,38 @@ config.keys = {
 	{ key = "DownArrow", mods = "SHIFT", action = shift_arrow_or_focus("Down", "DownArrow") },
 
 	-- Swap panes (Ctrl+Shift+Arrow) via quick selector
-	{ key = "LeftArrow", mods = "CTRL|SHIFT", action = act.PaneSelect({ mode = "SwapWithActive" }) },
-	{ key = "RightArrow", mods = "CTRL|SHIFT", action = act.PaneSelect({ mode = "SwapWithActive" }) },
-	{ key = "UpArrow", mods = "CTRL|SHIFT", action = act.PaneSelect({ mode = "SwapWithActive" }) },
-	{ key = "DownArrow", mods = "CTRL|SHIFT", action = act.PaneSelect({ mode = "SwapWithActive" }) },
+	{ key = "LeftArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
+	{ key = "RightArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
+	{ key = "UpArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
+	{ key = "DownArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
 
 	-- Resize panes (vim-aware)
-	{ key = ",", mods = "ALT", action = alt_or_resize(",", act.AdjustPaneSize({ "Up", 4 })) },
-	{ key = ".", mods = "ALT", action = alt_or_resize(".", act.AdjustPaneSize({ "Down", 4 })) },
-	{ key = "-", mods = "ALT", action = alt_or_resize("-", act.AdjustPaneSize({ "Left", 5 })) },
-	{ key = "=", mods = "ALT", action = alt_or_resize("=", act.AdjustPaneSize({ "Right", 4 })) },
+	{ key = ",", mods = "ALT", action = alt_or_resize(",", action.AdjustPaneSize({ "Up", 4 })) },
+	{ key = ".", mods = "ALT", action = alt_or_resize(".", action.AdjustPaneSize({ "Down", 4 })) },
+	{ key = "-", mods = "ALT", action = alt_or_resize("-", action.AdjustPaneSize({ "Left", 5 })) },
+	{ key = "=", mods = "ALT", action = alt_or_resize("=", action.AdjustPaneSize({ "Right", 4 })) },
 
 	-- Zoom & swap
-	{ key = "z", mods = "LEADER", action = act.TogglePaneZoomState },
-	{ key = "S", mods = "LEADER|SHIFT", action = act.PaneSelect({ mode = "SwapWithActive" }) },
+	{ key = "z", mods = "LEADER", action = action.TogglePaneZoomState },
+	{ key = "s", mods = "LEADER", action = action.PaneSelect({ mode = "SwapWithActive" }) },
 
-	-- Search: Alt+F to open search; n / Shift+n to navigate like Vim
-	{ key = "f", mods = "ALT", action = act.Search({ CaseSensitiveString = "" }) },
-}
-
---------------------------------------------------------------------------------
--- Key tables (search mode: n / Shift+n like Neovim)
---------------------------------------------------------------------------------
-config.key_tables = config.key_tables or {}
-config.key_tables.search_mode = {
-	{ key = "n", mods = "NONE", action = act.CopyMode("NextMatch") },
-	{ key = "N", mods = "SHIFT", action = act.CopyMode("PriorMatch") },
-	{ key = "Escape", mods = "NONE", action = act.CopyMode("Close") },
-	{ key = "Enter", mods = "NONE", action = act.CopyMode("AcceptPattern") },
-}
-
---------------------------------------------------------------------------------
--- Borders and inactive pane dimming
---------------------------------------------------------------------------------
-config.colors = {
-	split = "#ff5f1f", -- Neon orange split lines
-}
-
-config.inactive_pane_hsb = {
-	saturation = 0.8,
-	brightness = 0.7,
+	-- Search: Alt+f or LEADER+f to open search
+	{
+		key = "f",
+		mods = "ALT",
+		action = action.Multiple({
+			action.CopyMode("ClearPattern"), -- wipe saved search
+			action.Search({ CaseSensitiveString = "" }), -- open empty
+		}),
+	},
+	{
+		key = "f",
+		mods = "LEADER",
+		action = action.Multiple({
+			action.CopyMode("ClearPattern"), -- wipe saved search
+			action.Search({ CaseSensitiveString = "" }), -- open empty
+		}),
+	},
 }
 
 return config
