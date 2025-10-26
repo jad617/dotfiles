@@ -6,13 +6,13 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
 fi
 
 plugins=(
- ansible
- aws
- docker
- helm
+ # aws
+ # terraform
+ # ansible
+ # docker
+ # helm
  # git
- pip
- terraform
+ # pip
 )
 
 setopt rm_star_silent
@@ -24,6 +24,10 @@ bindkey '\e\e[C' forward-word
 bindkey '\e\e[D' backward-word
 
 setopt share_history
+
+# How many lines to keep in memory / on disk
+HISTSIZE=200000
+SAVEHIST=200000
 
 #Custom
 [ -f ~/.my_aliases.sh ] && source ~/.my_aliases.sh
