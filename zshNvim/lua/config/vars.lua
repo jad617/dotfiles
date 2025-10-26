@@ -25,21 +25,49 @@ M.lsp = {
   }, -- terraform
   lua_ls = { -- lua
     settings = {
+      -- Lua = {
+      --   runtime = {
+      --     -- Tell the server to use LuaJIT (the Lua runtime in Neovim)
+      --     version = "LuaJIT",
+      --     -- Setup your package.path
+      --     path = vim.split(package.path, ";"),
+      --   },
+      --   diagnostics = {
+      --     -- Recognize the `vim` global
+      --     globals = { "vim", "wezterm" },
+      --   },
+      --   workspace = {
+      --     -- Make the server aware of Neovim runtime files
+      --     library = vim.api.nvim_get_runtime_file("", true),
+      --     checkThirdParty = false, -- disable prompting about other lua libs
+      --   },
+      --   telemetry = { enable = false },
+      -- },
       Lua = {
         runtime = {
-          -- Tell the server to use LuaJIT (the Lua runtime in Neovim)
-          version = "LuaJIT",
-          -- Setup your package.path
+          version = "LuaJIT", -- for Neovim
           path = vim.split(package.path, ";"),
         },
         diagnostics = {
-          -- Recognize the `vim` global
-          globals = { "vim" },
+          globals = { "vim", "wezterm" }, -- support both
         },
         workspace = {
-          -- Make the server aware of Neovim runtime files
-          library = vim.api.nvim_get_runtime_file("", true),
-          checkThirdParty = false, -- disable prompting about other lua libs
+          library = (function()
+            local lib = vim.api.nvim_get_runtime_file("", true)
+            -- Add wezterm-related dirs if they exist
+            local uv = vim.uv or vim.loop
+            local extra = {
+              vim.fn.expand("~/.local/share/wezterm-types"),
+              vim.fn.expand("~/.config/wezterm"),
+            }
+            for _, path in ipairs(extra) do
+              if uv.fs_stat(path) then
+                table.insert(lib, path)
+              end
+            end
+            return lib
+          end)(),
+          checkThirdParty = false,
         },
         telemetry = { enable = false },
       },

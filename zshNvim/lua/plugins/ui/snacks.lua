@@ -147,7 +147,17 @@ return {
       expand = true,
     },
     notifier = { enabled = true },
-    terminal = { win = { style = "float", relative = "editor", border = "double", height = 0.99 } },
+    terminal = {
+      win = {
+        style = "float",
+        relative = "editor",
+        border = "double",
+        height = 0.99,
+      },
+      -- start in insert, use your shell
+      start_insert = true,
+      shell = "tmux",
+    },
     styles = {
       zen = {
         width = 200,
@@ -375,13 +385,13 @@ return {
       end,
       desc = "LSP Symbols",
     },
-    -- {
-    --   "<A-i>",
-    --   function()
-    --     Snacks.terminal()
-    --   end,
-    --   desc = "Toggle terminal",
-    --   mode = { "n", "t" },
-    -- },
+    {
+      "<A-i>",
+      function()
+        Snacks.terminal()
+      end,
+      desc = "Toggle terminal",
+      mode = { "n", "t" },
+    },
   },
 }

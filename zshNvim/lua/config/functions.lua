@@ -8,27 +8,27 @@ local options = { noremap = true, silent = true }
 -- [[ Zellij ]]
 ------------------------------------------------------------
 -- Alt+o: Zellij floating terminal in Neovim's cwd, closes on Ctrl-D/exit
-vim.keymap.set("n", "<A-o>", function()
-  local cwd = (vim.loop and vim.loop.cwd()) or vim.fn.getcwd()
-  local shell = os.getenv("SHELL") or "bash"
-  local cmd = string.format(
-    [[zellij run --floating --width 90%% --height 95%% --x 6%% --y 2%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
-    cwd,
-    shell
-  )
-  vim.fn.jobstart(cmd, { detach = true })
-end, { silent = true, desc = "Zellij float here (75%)" })
-
-vim.keymap.set("n", "<D-o>", function()
-  local cwd = (vim.loop and vim.loop.cwd()) or vim.fn.getcwd()
-  local shell = os.getenv("SHELL") or "bash"
-  local cmd = string.format(
-    [[zellij run --floating --width 90%% --height 95%% --x 6%% --y 2%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
-    cwd,
-    shell
-  )
-  vim.fn.jobstart(cmd, { detach = true })
-end, { silent = true, desc = "Zellij float here (75%)" })
+-- vim.keymap.set("n", "<A-o>", function()
+--   local cwd = (vim.loop and vim.loop.cwd()) or vim.fn.getcwd()
+--   local shell = os.getenv("SHELL") or "bash"
+--   local cmd = string.format(
+--     [[zellij run --floating --width 90%% --height 95%% --x 6%% --y 2%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
+--     cwd,
+--     shell
+--   )
+--   vim.fn.jobstart(cmd, { detach = true })
+-- end, { silent = true, desc = "Zellij float here (75%)" })
+--
+-- vim.keymap.set("n", "<D-o>", function()
+--   local cwd = (vim.loop and vim.loop.cwd()) or vim.fn.getcwd()
+--   local shell = os.getenv("SHELL") or "bash"
+--   local cmd = string.format(
+--     [[zellij run --floating --width 90%% --height 95%% --x 6%% --y 2%% --close-on-exit -- bash -lc 'cd %q && exec %q']],
+--     cwd,
+--     shell
+--   )
+--   vim.fn.jobstart(cmd, { detach = true })
+-- end, { silent = true, desc = "Zellij float here (75%)" })
 
 ------------------------------------------------------------
 -- [[ Select current word without jumping to next ]]
