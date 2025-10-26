@@ -1,5 +1,9 @@
+--------------------------------------------------------------------------------
+-- Locals
+--------------------------------------------------------------------------------
 local wezterm = require("wezterm")
 local action = wezterm.action
+local mux = wezterm.mux
 local config = {}
 
 --------------------------------------------------------------------------------
@@ -9,6 +13,12 @@ config.enable_kitty_graphics = true
 config.enable_wayland = true
 config.window_decorations = "RESIZE"
 
+wezterm.on("gui-startup", function(cmd)
+	local tab, pane, window = mux.spawn_window(cmd or {})
+	window:gui_window():maximize()
+end)
+
+--------------------------------------------------------------------------------
 -- Appearance
 --------------------------------------------------------------------------------
 if wezterm.target_triple:find("darwin") then
@@ -31,6 +41,21 @@ config.hide_tab_bar_if_only_one_tab = false
 config.tab_bar_at_bottom = true
 config.use_fancy_tab_bar = false
 config.tab_and_split_indices_are_zero_based = true
+
+-- Workspaces
+-- Show current workspace name on right side of status bar
+wezterm.on("update-right-status", function(window, pane)
+	local name = wezterm.mux.get_active_workspace()
+	window:set_right_status(wezterm.format({
+		{ Text = " 󱂬  " .. name .. " " },
+	}))
+end)
+
+-- Toast when workspace changes
+wezterm.on("workspace-changed", function(window, _)
+	local ws = mux.get_active_workspace()
+	window:toast_notification("Workspace", "Switched to: " .. (ws or "default"), nil, 3000)
+end)
 
 --------------------------------------------------------------------------------
 -- Borders and inactive pane dimming
@@ -130,6 +155,26 @@ local function shift_arrow_or_focus(dir, keyname)
 	end)
 end
 
+-- (filters out "default" and any starting with "__")
+local function get_custom_workspaces()
+	local out = {}
+	for _, name in ipairs(mux.get_workspace_names()) do
+		if name ~= "default" and not name:match("^__") then
+			table.insert(out, name)
+		end
+	end
+	table.sort(out)
+	return out
+end
+
+-- Show a quick list of custom workspaces (non-interactive)
+local function show_custom_workspace_list(window)
+	local names = get_custom_workspaces()
+	local msg = (#names > 0) and ("Custom workspaces:\n• " .. table.concat(names, "\n• "))
+		or "No custom workspaces yet."
+	window:toast_notification("WezTerm", msg, nil, 5000)
+end
+
 --------------------------------------------------------------------------------
 -- Keys
 --------------------------------------------------------------------------------
@@ -141,6 +186,7 @@ config.keys = {
 	{ key = "c", mods = "LEADER", action = action.SpawnTab("DefaultDomain") },
 	{ key = "p", mods = "LEADER", action = action.ActivateTabRelative(-1) },
 	{ key = "n", mods = "LEADER", action = action.ActivateTabRelative(1) },
+	{ key = "x", mods = "LEADER", action = action.CloseCurrentPane({ confirm = true }) },
 
 	-- Rename tab (minimal prompt at bottom)
 	{
@@ -229,6 +275,25 @@ config.keys = {
 			action.Search({ CaseSensitiveString = "" }), -- open empty
 		}),
 	},
+	-- <leader> w → create & switch to a new workspace
+	{
+		key = "w",
+		mods = "LEADER",
+		action = action.PromptInputLine({
+			description = "Enter new workspace name",
+			action = wezterm.action_callback(function(window, pane, line)
+				if not line or line == "" then
+					return
+				end
+				mux.spawn_window({ workspace = line })
+				mux.set_active_workspace(line)
+				window:toast_notification("Workspace", "Created: " .. line, nil, 3000)
+			end),
+		}),
+	},
+
+	-- Alt+w → open built-in workspace switcher (interactive)
+	{ key = "w", mods = "ALT", action = action.ShowLauncherArgs({ flags = "WORKSPACES" }) },
 }
 
 return config
