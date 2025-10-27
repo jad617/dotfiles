@@ -261,14 +261,6 @@ config.keys = {
 	-- Search: Alt+f or LEADER+f to open search
 	{
 		key = "f",
-		mods = "ALT",
-		action = action.Multiple({
-			action.CopyMode("ClearPattern"), -- wipe saved search
-			action.Search({ CaseSensitiveString = "" }), -- open empty
-		}),
-	},
-	{
-		key = "f",
 		mods = "LEADER",
 		action = action.Multiple({
 			action.CopyMode("ClearPattern"), -- wipe saved search

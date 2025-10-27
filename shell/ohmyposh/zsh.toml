@@ -10,11 +10,14 @@ alignment = "left"
 newline = true
 type = "prompt"
 
+  ########################################
+  # Shell & Path
+  ########################################
   [[blocks.segments]]
   type = "shell"
   style = "plain"
   foreground = "#E06C75"
-  template = " {{ .Name }} "
+  template = "  {{ .Name }} "
 
     [blocks.segments.properties.mapped_shell_names]
     pwsh = "Shell"
@@ -31,6 +34,9 @@ type = "prompt"
     [blocks.segments.properties]
     style = "full"
 
+  ########################################
+  # Git
+  ########################################
   # --- Git (branch/icon) in green ---
   [[blocks.segments]]
   type = "git"
@@ -38,10 +44,11 @@ type = "prompt"
   style = "plain"
   foreground = "#98C379"
   template = " | {{ .UpstreamIcon }}{{ .HEAD }}"
-  [blocks.segments.properties]
-  branch_template = "{{ trunc 25 .Branch }}"
-  fetch_status = true
-  fetch_upstream_icon = true
+
+    [blocks.segments.properties]
+    branch_template = "{{ trunc 25 .Branch }}"
+    fetch_status = true
+    fetch_upstream_icon = true
 
   # --- Git (status/stash/etc.) in orange ---
   [[blocks.segments]]
@@ -50,35 +57,94 @@ type = "prompt"
   style = "plain"
   foreground = "#FF9248"
   template = " |{{ if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if gt .StashCount 0 }}  {{ .StashCount }}{{ end }}{{ if .Working.Changed }}  {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }}  {{ .Staging.String }}{{ end }}"
-  [blocks.segments.properties]
-  fetch_status = true
+
+    [blocks.segments.properties]
+    fetch_status = true
 
 ########################################
-# LINE 1 — AWS / Kube / AZ / Time (Right)
+# LINE 1 — Prompt (Right)
 ########################################
 [[blocks]]
 alignment = "right"
 type = "prompt"
 
-  # --- AWS Profile ---
+  ########################################
+  # Languages & Tools
+  ########################################
+  [[blocks.segments]]
+  type = "go"
+  style = "plain"
+  foreground = "#7FD5EA"
+  template = " {{ .Full }} | "
+
+  [[blocks.segments]]
+  type = "python"
+  style = "plain"
+  foreground = "#E5C07B"
+  template = " {{ .Full }} | "
+
+    [blocks.segments.properties]
+    display_mode = "files"
+
+  [[blocks.segments]]
+  type = "terraform"
+  style = "plain"
+  foreground = "#c27fd7"
+  template = "󱁢 Terraform | "
+    [blocks.segments.properties]
+    fetch_version = true
+
+  [[blocks.segments]]
+  type = "helm"
+  style = "plain"
+  foreground = "#9ec3f0"
+  template = "ﴱ Helm | "
+
+    [blocks.segments.properties]
+    display_mode = "files"
+
+  [[blocks.segments]]
+  type = "mvn"
+  style = "plain"
+  foreground = "#E06C75"
+  template = "🪶 mvn | "
+
+  [[blocks.segments]]
+  type = "dotnet"
+  style = "plain"
+  foreground = "#00ffff"
+  template = " .Net | "
+
+  [[blocks.segments]]
+  type = "lua"
+  style = "plain"
+  foreground = "#E5C07B"
+  template = "  Lua | "
+
+  ########################################
+  # Clouds
+  ########################################
   [[blocks.segments]]
   type = "aws"
   style = "plain"
   foreground = "#E06C75"
-  template = " {{.Profile}}{{if .Region}}|{{.Region}}{{end}} "
+  template = '{{ if (ne .Profile "default") }} {{ .Profile }}{{ if .Region }}|{{ .Region }}{{ end }} | {{ end }}'
 
   [[blocks.segments]]
   type = "kubectl"
   style = "plain"
   foreground = "#9ec3f0"
-  template = '| ﴱ {{ .Cluster | replace "arn:aws:eks:" "" | replace ":cluster/" " " | splitList " " | last }} '
+  template = '󱃾 {{ .Cluster | replace "arn:aws:eks:" "" | replace ":cluster/" " " | splitList " " | last }} | '
 
   [[blocks.segments]]
   type = "az"
   style = "plain"
   foreground = "#9ec3f0"
-  template = "|  {{ .EnvironmentName }}"
+  template = " {{ .EnvironmentName }} | "
 
+  ########################################
+  # Time
+  ########################################
   [[blocks.segments]]
   foreground = "#E5C07B"
   style = "plain"
@@ -105,5 +171,5 @@ type = "prompt"
   [[blocks.segments]]
   foreground = "#E06C75"
   style = "plain"
-  template = "❯"
+  template = " ❯"
   type = "text"
