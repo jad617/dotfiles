@@ -46,8 +46,12 @@ config.tab_and_split_indices_are_zero_based = true
 -- Show current workspace name on right side of status bar
 wezterm.on("update-right-status", function(window, pane)
 	local name = wezterm.mux.get_active_workspace()
+
+	-- Get current time
+	local time = wezterm.strftime("%H:%M:%S")
+
 	window:set_right_status(wezterm.format({
-		{ Text = " 󱂬  " .. name .. " " },
+		{ Text = " 󱂬  " .. name .. " | " .. time .. " " },
 	}))
 end)
 
