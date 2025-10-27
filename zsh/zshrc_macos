@@ -111,6 +111,7 @@ export PYENV_ROOT="$HOME/.pyenv"
 eval "$(pyenv init - zsh)"
 eval "$(pyenv virtualenv-init -)"
 
+eval "$(zoxide init zsh)"
 ##################################
 # Oh My Posh
 ##################################
