@@ -5,6 +5,15 @@
 autoload -U compinit
 compinit
 
+# --- History substring search like Oh My Zsh ---
+autoload -Uz up-line-or-beginning-search
+autoload -Uz down-line-or-beginning-search
+zle -N up-line-or-beginning-search
+zle -N down-line-or-beginning-search
+
+bindkey '^[[A' up-line-or-beginning-search     # Up arrow
+bindkey '^[[B' down-line-or-beginning-search   # Down arrow
+
 # Needed for interactive selection UI
 zmodload zsh/complist
 
@@ -62,6 +71,13 @@ bindkey '\e\e[C' forward-word
 bindkey '\e\e[D' backward-word
 bindkey "^[[1;5D" backward-word
 bindkey "^[[1;5C" forward-word
+# --- Make Home/End keys move to start/end of line ---
+bindkey '^[[H' beginning-of-line
+bindkey '^[[F' end-of-line
+
+# Some terminals (like Kitty, WezTerm, GNOME) use slightly different codes:
+bindkey '^[OH' beginning-of-line
+bindkey '^[OF' end-of-line
 
 # ZSH HISTORY Settings
 setopt share_history
