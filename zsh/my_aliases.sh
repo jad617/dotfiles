@@ -1,29 +1,16 @@
-#===========Custom run after running cd ============
+##################################
+# Global ZSH ALIASES AND FUNCTIONS
+##################################
+
 # set -x
 
-# gitGlobal() {
-# 	workdir=$(tail -n 1 ~/.git_work_profile 2>/dev/null | cut -d'=' -f2)
-#
-# 	if [ -f ~/.git_work_profile ] && [[ $PWD == *"$workdir"* ]]; then
-# 		for i in $(head -n 2 ~/.git_work_profile); do
-# 			git config --global $(echo $i | sed -e 's/=/ /g')
-# 			done
-# 	else
-# 		for i in $(head -n 2 ~/.git_perso_profile); do
-# 			git config --global $(echo $i | sed -e 's/=/ /g')
-# 		done
-# 	fi
-# }
-#
-# chpwd_functions+=(gitGlobal)
-
-#===========Custom============
-
+##################################
+# Startup config
+##################################
 # BIND KEYS
 bindkey "^Q" beginning-of-line
 
 # AWS
-# export AWS_PROFILE="admin-release"
 export AWS_REGION=ca-central-1
 export AWS_PAGER=""
 
@@ -56,11 +43,8 @@ export GO_ENV=local
 # [ -d ~/.local/bin/go ] && export PATH="$HOME/.local/bin/go/bin:$PATH"
 [ -d /usr/local/go/ ] && export PATH=$PATH:/usr/local/go/bin
 
-# [ -d ~/usr/local/go ] && export PATH=$PATH:/usr/local/go/bin
-
 # Load RUST/Cargo apps
 [ -d ~/.cargo/bin ] && export PATH="$HOME/.cargo/bin:$PATH"
-
 
 # Load node
 [ -d ~/node_modules ] && export PATH="$HOME/node_modules:$PATH"
@@ -85,12 +69,9 @@ fi
 # export VAULT_TOKEN=$(cat ~/.vault_token)
 # export TF_VAR_VAULT_TOKEN=${VAULT_TOKEN}
 
-#ssh auto passphrase
-# eval "$(ssh-agent)" &>/dev/null
-# cat ~/.ssh/id_rsa | SSH_ASKPASS="$HOME/.passphrase" ssh-add - &>/dev/null
-# ssh-add -K > /dev/null 2>/dev/null
-
-#Functions
+##################################
+# Functions
+##################################
 
 pyenv_create() {
 	python3 -m venv ~/intact/virtual_envs/$1
@@ -134,41 +115,8 @@ toupper() {
 	echo "$1" | awk '{print toupper($0)}'
 }
 
-vimpy() {
-	file=$1
-	is_python=$(
-		file $file | grep -o python >/dev/null
-		echo $?
-	)
-
-	if [ $is_python -eq 0 ]; then
-		tmux split-window -h -c '#{pane_current_path}' \; resize-pane -x 50
-		tmux select-pane -L
-		tmux split-window -v -c '#{pane_current_path}'
-		tmux select-pane -U
-		tmux resize-pane -y 50
-		nvim $file
-	fi
-}
-
 gitjpush() {
 	git add -A && git commit -m "$1" && git push
-}
-
-deploy_java() {
-	export JAVA_HOME=$(/usr/libexec/java_home -v 1.8.0_201)
-	mvn clean package
-	mvn exec:java -Dexec.mainClass=""
-}
-
-extra() {
-	latest_session_id=$(tmux list-sessions | grep extra- | cut -d':' -f1 | tail -n 1 | cut -d'-' -f2)
-	new_session=$((latest_session_id+1))
-	tmux new-session -d -s extra-$new_session
-}
-
-tmux-new-session() {
-	tmux new-session -d -s "$1"
 }
 
 # Television
@@ -186,79 +134,40 @@ tvvim() {
 }
 
 #Code
-alias vedit='ansible-vault edit '
-# alias git='git --no-pager'
 alias gitadd='git add -A'
 alias gitcommit='git add -A && git commit -m'
 alias gitcheckout='git checkout'
 alias gistatus='git status'
 alias gitmaster='git checkout master && git pull'
 alias gitmain='git checkout main && git pull'
-alias gitorigin='git checkout develop'
-alias gitproduction='git checkout production'
-alias gitpush='git push'
 alias gitdiff='git --no-pager diff'
 alias gitlog='git log --oneline'
 alias gitpull='git pull'
-alias gitsubpull='ls | xargs -P10 -I{} git -C {} pull'
 alias gitundoall='git reset --hard HEAD'
 
 #Shortcuts
-alias zim='nohup zim &'
 alias v='nvim'
 alias vim='nvim'
 alias bim='nvim'
 alias cim='nvim'
 alias vimo='nvim -O'
 alias vimdiff='nvim -d'
-# alias nvim='nvim'
-alias prof_nvim='PROF=1 nvim'
-alias svim='clear && sudo nvim'
 alias myzsh='mybash'
 alias mybash='vim ~/.my_aliases.sh'
-alias sshr='ssh -l root '
-alias ssh='env TERM=xterm-256color ssh'
-
-# Vim shortcuts
 alias vimzsh='vim ~/.zshrc'
 alias vimkitty='vim ~/.config/kitty/kitty.conf'
 alias vimtmux='vim ~/.tmux.conf'
 alias mytmux='vim ~/.tmux.conf'
 
-#i3
-alias vimi3='vim ~/.config/i3/initial_config'
-alias vimi3_outputs='vim ~/.config/i3/ouput_config'
-alias vimi3_full='vim ~/.config/i3/config'
-
 #Shortcut CD
 alias cdold='cd $OLDPWD'
 alias cddotfiles='cd ~/nodestack/dotfiles'
-alias cdlazyvim='cd ~/nodestack/dotfiles/zshNvim/'
-alias vimlazyvim='cd ~/nodestack/dotfiles/zshNvim/ && vim init.lua'
-alias cdswap='cd ~/.vim/tmp'
-alias cdnodestack='cd ~/nodestack'
-alias cdopsinc='cd ~/opsinc'
-alias cdmgmt='cd ~/nodestack/nodeai/mgmt'
-alias cdzim='cd ~/nodestack/zim'
-
-# Alias K8S
-# alias kubectl='kubectl 2>/dev/null'
-
-#Shortcut VIM
-# alias mynvimrc='vim ~/.config/nvim/init.vim'
-alias myvimlua='cd ~/.config/nvim && vim init.lua'
-alias mytmux='vim ~/.tmux.conf'
 
 #Alias LS
-alias cll='clear && eza -lgHF'
 alias kk='ll'
 alias ll='eza -lgHF -s type'
 alias lll='eza -lgHF -s type'
 alias lla='eza -lagHF -s type'
-alias clt='clear && eza -lgHF --tree -s type'
-alias clt2='clear && eza -lgHF --tree -L2 -s type'
-alias clt3='clear && eza -lgHF --tree -L3 -s type'
-alias clt4='clear && eza -lgHF --tree -L4 -s type'
 alias lt='eza -lgHF --tree -s type'
 alias ltgit='eza -lgHF --tree --git-ignore -s type'
 alias lt2='eza -lgHF --tree -L2 -s type'
@@ -268,14 +177,6 @@ alias lt4='eza -lgHF --tree -L4 -s type'
 #SUDO Shortcuts
 alias boss='sudo su -'
 alias ssu='sudo su -'
-# alias mtr='sudo mtr'
 alias apt='sudo apt'
 alias podman='sudo podman'
 alias podman-compose='sudo podman-compose'
-
-# alias aws='aws --no-verify-ssl'
-
-# Extras
-alias cdbnc='cd ~/bnc'
-alias cdtransaction='cd ~/bnc/APP7363-DTB-transaction/'
-alias cdaccount='cd ~/bnc/APP6157-DTB-account/'

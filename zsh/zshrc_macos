@@ -1,33 +1,76 @@
-# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
-# Initialization code that may require console input (password prompts, [y/n]
-# confirmations, etc.) must go above this block; everything else may go below.
-if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
-fi
+##################################
+# Global ZSH Settings
+##################################
+# --- Zsh completion with preselected menu on Tab Tab ---
+autoload -U compinit
+compinit
 
-plugins=(
- # aws
- # terraform
- # ansible
- # docker
- # helm
- # git
- # pip
-)
+# Needed for interactive selection UI
+zmodload zsh/complist
 
+# Behaviors:
+setopt AUTO_LIST          # list choices on ambiguous completion
+setopt AUTO_MENU          # start menu completion on the 2nd Tab press
+unsetopt MENU_COMPLETE    # keep normal completion on first Tab
+
+# Make the menu open with a highlighted (preselected) item
+zstyle ':completion:*' menu select=1
+
+# Nice-to-haves for cd
+setopt AUTO_PARAM_SLASH                     # add trailing / when completing dirs
+zstyle ':completion:*:cd:*' tag-order 'local-directories directory-stack path-directories'
+zstyle ':completion:*:cd:*' ignore-parents parent pwd  # don't suggest . and ..
+zstyle ':completion:*' squeeze-slashes true
+
+# Optional: colors in the completion menu (uses your LS_COLORS if set)
+zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
+
+# Custom cd function to handle multiple dots
+cd() {
+  # Detect only dots (.., ..., ....)
+  if [[ $# -eq 1 && $1 == +([.]) ]]; then
+    local n=${#1}
+    local path=".."
+    for ((i=2; i<=n; i++)); do path+="/.."; done
+    builtin cd "$path"
+  else
+    builtin cd "$@"
+  fi
+}
+
+# Completion function: allow `cd ..<TAB>` to list parent folder
+_cd_parent() {
+  # If the current word is '..', expand to '../' to list parent contents
+  if [[ $words[-1] == '..' ]]; then
+    compadd -- $(command ls -d ../*/ 2>/dev/null)
+  else
+    _cd
+  fi
+}
+compdef _cd_parent cd
+
+# Enable select word style
+autoload -U select-word-style
+select-word-style bash
+
+# Prevent confirmation on rm
 setopt rm_star_silent
 
-source ~/.oh-my-zsh/oh-my-zsh.sh
-
+# Bindkey Settings
 bindkey -e
 bindkey '\e\e[C' forward-word
 bindkey '\e\e[D' backward-word
+bindkey "^[[1;5D" backward-word
+bindkey "^[[1;5C" forward-word
 
+# ZSH HISTORY Settings
 setopt share_history
-
-# How many lines to keep in memory / on disk
 HISTSIZE=200000
 SAVEHIST=200000
+
+################################
+# Custom configurations
+################################
 
 #Custom
 [ -f ~/.my_aliases.sh ] && source ~/.my_aliases.sh
@@ -35,9 +78,6 @@ SAVEHIST=200000
 
 #FZF
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
-[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh && source ~/powerlevel10k/powerlevel10k.zsh-theme
 
 # Kubectl autocomplete
 if [[ -f ~/.config/completion/kubectl.sh ]]
@@ -55,21 +95,16 @@ export PYENV_ROOT="$HOME/.pyenv"
 eval "$(pyenv init - zsh)"
 eval "$(pyenv virtualenv-init -)"
 
-#TMUX, must be after Powerlevel10k
-# If already inside tmux, do nothing
-# if [ -n "$TMUX" ]; then
-#   return
-# fi
-#
-# # Try to attach to the first detached session
-# if tmux has-session 2>/dev/null; then
-#   tmux attach-session || tmux new-session
-# else
-#   tmux new-session
-# fi
-
-# if [[ ! $TERM =~ "screen" ]] && [[ $(tmux list-sessions | grep '0: 1' | grep -v attached 2>&1 >/dev/null ; echo $?) -eq 0 ]]
-# then
-#   exec tmux attach-session -t $(tmux list-sessions |  grep '0: 1' | grep -v attached | head -1 | cut -d':' -f1); return 0
-# fi
-# [[ ! $TERM =~ "screen" ]] && exec tmux -u; return 0
+##################################
+# Oh My Posh
+##################################
+# Load Oh My Posh configuration
+# Has to be at the end of the file
+eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/zsh.toml)"
+# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/craver.json)"
+# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/emodipt-extend.omp.json)"
+# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/markbull.omp.json)"
+# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/marcduiker.omp.json)"
+# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/material.omp.json)"
+# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/space.omp.json)"
+# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/spaceship.omp.json)"
