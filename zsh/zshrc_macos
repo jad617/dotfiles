@@ -117,10 +117,3 @@ eval "$(pyenv virtualenv-init -)"
 # Load Oh My Posh configuration
 # Has to be at the end of the file
 eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/zsh.toml)"
-# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/craver.json)"
-# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/emodipt-extend.omp.json)"
-# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/markbull.omp.json)"
-# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/marcduiker.omp.json)"
-# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/material.omp.json)"
-# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/space.omp.json)"
-# eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/spaceship.omp.json)"
