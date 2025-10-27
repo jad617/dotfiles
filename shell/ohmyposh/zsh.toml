@@ -148,11 +148,17 @@ type = "prompt"
   [[blocks.segments]]
   foreground = "#E5C07B"
   style = "plain"
-  template = "[{{ .CurrentDate | date .Format }}]"
+  template = "[{{ .CurrentDate | date .Format }}] | "
   type = "time"
 
     [blocks.segments.properties]
     time_format = "15:04"
+
+  [[blocks.segments]]
+  type = "os"
+  style = "plain"
+  foreground = "#FF9248"
+  template = "{{ .Icon }} "
 
 ########################################
 # LINE 2 — Prompt
