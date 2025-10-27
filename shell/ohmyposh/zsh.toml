@@ -17,7 +17,7 @@ type = "prompt"
   type = "shell"
   style = "plain"
   foreground = "#E06C75"
-  template = "  {{ .Name }} "
+  template = "  {{ .Name }} | "
 
     [blocks.segments.properties.mapped_shell_names]
     pwsh = "Shell"
@@ -46,7 +46,7 @@ type = "prompt"
   template = " | {{ .UpstreamIcon }}{{ .HEAD }}"
 
     [blocks.segments.properties]
-    branch_template = "{{ trunc 25 .Branch }}"
+    branch_template = " {{ trunc 50 .Branch }}"
     fetch_status = true
     fetch_upstream_icon = true
 
