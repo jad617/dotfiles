@@ -11,7 +11,6 @@ local config = {}
 --------------------------------------------------------------------------------
 config.enable_kitty_graphics = true
 config.enable_wayland = true
-config.window_decorations = "RESIZE"
 
 wezterm.on("gui-startup", function(cmd)
 	local tab, pane, window = mux.spawn_window(cmd or {})
