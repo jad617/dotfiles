@@ -19,6 +19,7 @@ return {
   -- GitHub octo
   {
     "pwntester/octo.nvim",
+    enabled = false,
     requires = {
       "nvim-lua/plenary.nvim",
       "folke/snacks.nvim",
