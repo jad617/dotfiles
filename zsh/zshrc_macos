@@ -6,7 +6,7 @@ autoload -U +X compinit && compinit
 autoload -U +X bashcompinit && bashcompinit
 
 # Terraform autocomplete
-complete -o nospace -C terraform terraform
+complete -o nospace -C $(which terraform) terraform
 
 # --- History substring search like Oh My Zsh ---
 autoload -Uz up-line-or-beginning-search
@@ -121,6 +121,3 @@ eval "$(zoxide init zsh)"
 # Load Oh My Posh configuration
 # Has to be at the end of the file
 eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/zsh.toml)"
-
-autoload -U +X bashcompinit && bashcompinit
-complete -o nospace -C /opt/homebrew/bin/terraform terraform
