@@ -176,7 +176,7 @@ return {
       end, {})
 
       -- Keymap shortcut
-      vim.keymap.set("n", "<leader>fw", "<cmd>SnacksWorkspaces<cr>", { desc = "Workspaces (Snacks)" })
+      vim.keymap.set("n", "<c-l>", "<cmd>SnacksWorkspaces<cr>", { desc = "Workspaces (Snacks)" })
     end,
   },
 }
