@@ -95,6 +95,7 @@ return {
       -- - Aligned two-column layout: "<name> │ <path>"
       -- - Temporarily tints list text green to mimic "green path" (select() does
       --   not support per-item spans). Colors are restored after closing.
+      -- - Opens in Insert mode automatically for quick filtering.
       ---------------------------------------------------------------------------
       vim.api.nvim_create_user_command("SnacksWorkspaces", function()
         -- Ensure both plugins are available
@@ -135,7 +136,6 @@ return {
 
         local function restore_hl()
           if OLD and (OLD.link or OLD.fg or OLD.bg or OLD.bold or OLD.italic or OLD.underline) then
-            -- Restore the prior definition (link takes precedence if present)
             vim.api.nvim_set_hl(0, "SnacksPickerListText", OLD.link and { link = OLD.link } or {
               fg = OLD.fg,
               bg = OLD.bg,
@@ -144,7 +144,6 @@ return {
               underline = OLD.underline,
             })
           else
-            -- If nothing existed, clear it back to default
             vim.api.nvim_set_hl(0, "SnacksPickerListText", {})
           end
         end
@@ -155,9 +154,8 @@ return {
           win = { width = 0.9, height = 0.6 },
           format_item = function(it)
             return it.text
-          end, -- render the built line
+          end,
         }, function(choice)
-          -- Always restore colors when leaving the picker
           restore_hl()
 
           if not choice or not choice.value then
@@ -168,8 +166,11 @@ return {
             vim.notify("Workspace path missing: " .. it.path, vim.log.levels.ERROR)
             return
           end
-          ws.open(it.name) -- open by name so hooks run
+          ws.open(it.name)
         end)
+
+        -- Auto-focus in insert mode
+        vim.cmd("startinsert")
 
         -- Also restore colors shortly after (covers cancel/esc paths)
         vim.defer_fn(restore_hl, 1000)
