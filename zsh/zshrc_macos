@@ -1,79 +1,102 @@
 ##################################
 # 0) Guard non-interactive shells
 ##################################
-# Skip interactive-only features for scripts / scp / rsync
 [[ -o interactive ]] || return
 
-# Path shortcuts
 ZDOT=${ZDOTDIR:-$HOME}
 
 ##################################
-# 1) Core Shell Options & History
+# 0.5) Function path for completions (Terraform writes here)
 ##################################
-setopt rm_star_silent
-setopt share_history
+ZFUNC_DIR="$HOME/.zfunc"
+mkdir -p "$ZFUNC_DIR"
+fpath=("$ZFUNC_DIR" $fpath)
+
+##################################
+# 1) Core Settings & History
+##################################
+setopt rm_star_silent share_history
 HISTSIZE=200000
 SAVEHIST=200000
-
-# Editing mode & word motions
 bindkey -e
-bindkey '\e\e[C' forward-word
-bindkey '\e\e[D' backward-word
-bindkey "^[[1;5D" backward-word
-bindkey "^[[1;5C" forward-word
-bindkey '^[[H' beginning-of-line
-bindkey '^[[F' end-of-line
-bindkey '^[OH' beginning-of-line
-bindkey '^[OF' end-of-line
 
 ##################################
-# 2) Completion: fast & cached
+# 2) Completion (cached & fast)
 ##################################
-# Load completion system with caching
 zmodload zsh/complist
 autoload -Uz compinit
-
-# Cache completions to speed subsequent startups
 zstyle ':completion:*' use-cache yes
 zstyle ':completion:*' cache-path "$ZDOT/.zcompcache"
-
-# Behaviors
-setopt AUTO_LIST          # list choices on ambiguous completion
-setopt AUTO_MENU          # start menu on 2nd Tab
-unsetopt MENU_COMPLETE    # normal completion on 1st Tab
+setopt AUTO_LIST AUTO_MENU
+unsetopt MENU_COMPLETE
 zstyle ':completion:*' menu select=1
 zstyle ':completion:*:cd:*' tag-order 'local-directories directory-stack path-directories'
 zstyle ':completion:*:cd:*' ignore-parents parent pwd
 zstyle ':completion:*' squeeze-slashes true
-# Colors in the menu (uses LS_COLORS if set)
 [[ -n $LS_COLORS ]] && zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
 
-# Initialize completion (use -C to rebuild if dump is old/missing)
 if [[ ! -s "$ZDOT/.zcompdump" || "$ZDOT/.zcompdump"(Nm-20) ]]; then
   compinit -i -C
 else
   compinit -i
 fi
 
-# Bash completion shim (rarely needed; keep but defer)
+# Bash compat layer (only if something needs it)
 autoload -U +X bashcompinit && bashcompinit
 
 ##################################
-# 3) Navigation & Line Editing
+# 2.5) Terraform completion (v1.13+)
 ##################################
-# History substring search (Up/Down)
+if command -v terraform >/dev/null 2>&1; then
+  # One-time install if not present
+  if [[ ! -f "$ZFUNC_DIR/_terraform" ]]; then
+    terraform -install-autocomplete >/dev/null 2>&1
+  fi
+  # Load and bind completion if the function exists
+  if [[ -f "$ZFUNC_DIR/_terraform" ]]; then
+    autoload -Uz _terraform
+    compdef _terraform terraform
+  fi
+fi
+
+##################################
+# 3) Navigation & Search
+##################################
 autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
 zle -N up-line-or-beginning-search
 zle -N down-line-or-beginning-search
 bindkey '^[[A' up-line-or-beginning-search
 bindkey '^[[B' down-line-or-beginning-search
-
-# Word selection style
 autoload -U select-word-style
 select-word-style bash
 
 ##################################
-# 4) cd helpers (multi-dot & parent list)
+# 4) Home / End / Ctrl-Arrows (tmux + WezTerm safe)
+##################################
+for map in emacs viins vicmd; do
+  # Home / End via terminfo + fallbacks
+  [[ -n ${terminfo[khome]} ]] && bindkey -M $map "${terminfo[khome]}" beginning-of-line
+  [[ -n ${terminfo[kend]}  ]] && bindkey -M $map "${terminfo[kend]}"  end-of-line
+  bindkey -M $map "\e[H"  beginning-of-line
+  bindkey -M $map "\eOH" beginning-of-line
+  bindkey -M $map "\e[F"  end-of-line
+  bindkey -M $map "\eOF" end-of-line
+  bindkey -M $map "\e[1~" beginning-of-line
+  bindkey -M $map "\e[4~" end-of-line
+
+  # Ctrl + Left / Right (common sequences across terminals/tmux)
+  [[ -n ${terminfo[kLFT5]} ]] && bindkey -M $map "${terminfo[kLFT5]}" backward-word
+  [[ -n ${terminfo[kRIT5]} ]] && bindkey -M $map "${terminfo[kRIT5]}" forward-word
+  bindkey -M $map "^[OD" backward-word
+  bindkey -M $map "^[OC" forward-word
+  bindkey -M $map "\e[1;5D" backward-word
+  bindkey -M $map "\e[1;5C" forward-word
+  bindkey -M $map "\e[5D" backward-word
+  bindkey -M $map "\e[5C" forward-word
+done
+
+##################################
+# 5) cd helpers
 ##################################
 cd() {
   if [[ $# -eq 1 && $1 == +([.]) ]]; then
@@ -84,7 +107,7 @@ cd() {
     builtin cd "$@"
   fi
 }
-# Completion for `cd ..<TAB>` to show parent
+
 _cd_parent() {
   if [[ $words[-1] == '..' ]]; then
     compadd -- $(command ls -d ../*/ 2>/dev/null)
@@ -95,27 +118,15 @@ _cd_parent() {
 compdef _cd_parent cd
 
 ##################################
-# 5) Aliases & small files (early)
+# 6) Aliases & Small files
 ##################################
-# Keep these small; they load immediately
 [[ -f "$HOME/.my_aliases.sh" ]] && source "$HOME/.my_aliases.sh"
 [[ -f "$HOME/.my_aliases_non_git.sh" ]] && source "$HOME/.my_aliases_non_git.sh"
-
-##################################
-# 6) Light tools (conditional)
-##################################
-# FZF (fast if installed; negligible cost)
 [[ -f "$HOME/.fzf.zsh" ]] && source "$HOME/.fzf.zsh"
 
-# Terraform autocomplete (light)
-if command -v terraform >/dev/null 2>&1; then
-  complete -o nospace -C "$(command -v terraform)" terraform
-fi
-
 ##################################
-# 7) Lazy completions (heavy deferred)
+# 7) Lazy kubectl completion
 ##################################
-# Kubectl: load completion only on first use
 if command -v kubectl >/dev/null 2>&1; then
   _kubectl_lazy() {
     unset -f _kubectl_lazy
@@ -131,60 +142,55 @@ if command -v kubectl >/dev/null 2>&1; then
 fi
 
 ##################################
-# 8) Deferred initializations at first prompt
+# 8) Deferred initializations
 ##################################
 autoload -Uz add-zsh-hook
 
-eval "$(oh-my-posh init zsh --config "$HOME/.config/ohmyposh/zsh.toml")"
-# a) Oh My Posh (heaviest) — defer to first prompt
-# _omp_init_once() {
-#   add-zsh-hook -d precmd _omp_init_once
-#   command -v oh-my-posh >/dev/null 2>&1 || return
-#   eval "$(oh-my-posh init zsh --config "$HOME/.config/ohmyposh/zsh.toml")"
-# }
-# add-zsh-hook precmd _omp_init_once
-# TEMP prompt before OMP kicks in (keeps startup snappy)
-PROMPT='%F{cyan}%n@%m%f:%F{blue}%~%f %# '
-
-# b) zoxide — defer to first prompt
+# --- zoxide (provides `z`) ---
 _zoxide_init_once() {
   add-zsh-hook -d precmd _zoxide_init_once
-  command -v zoxide >/dev/null 2>&1 || return
-  eval "$(zoxide init zsh)"
+  if command -v zoxide >/dev/null 2>&1; then
+    eval "$(zoxide init zsh)"
+  fi
 }
 add-zsh-hook precmd _zoxide_init_once
 
-# c) pyenv — only when you cd into a dir with .python-version OR on first prompt
+# --- pyenv (on-demand auto-init) ---
 export PYENV_ROOT="$HOME/.pyenv"
-if [[ -d "$PYENV_ROOT/bin" ]]; then
-  path+="$PYENV_ROOT/bin"
-fi
+[[ -d "$PYENV_ROOT/bin" ]] && path+="$PYENV_ROOT/bin"
 
 _pyenv_init_if_needed() {
-  # init only once
-  if [[ -n "$__PYENV_INIT_DONE" ]]; then return; fi
+  [[ -n "$__PYENV_INIT_DONE" ]] && return
   command -v pyenv >/dev/null 2>&1 || return
   __PYENV_INIT_DONE=1
   eval "$(pyenv init - zsh)"
   eval "$(pyenv virtualenv-init -)"
 }
 
-# Init if directory hints it’s needed
 _pyenv_dir_check() {
-  [[ -f .python-version ]] && _pyenv_init_if_needed
+  emulate -L zsh
+  setopt extended_glob null_glob
+  local -a py_files=( *.py(N) )
+  if [[ -f .python-version ]] || (( ${#py_files} > 0 )) || [[ -d venv || -d .venv ]]; then
+    _pyenv_init_if_needed
+  fi
 }
 add-zsh-hook chpwd _pyenv_dir_check
-
-# Also init right before first prompt (covers repos without chpwd yet)
-_pyenv_precmd_once() {
-  add-zsh-hook -d precmd _pyenv_precmd_once
-  _pyenv_dir_check
-}
-add-zsh-hook precmd _pyenv_precmd_once
+add-zsh-hook precmd _pyenv_dir_check
 
 ##################################
-# 9) zsh-syntax-highlighting (last)
+# 9) Prompt & Theming
 ##################################
-# This must be near the end; it hooks into zle widgets
+if command -v oh-my-posh >/dev/null 2>&1; then
+  eval "$(oh-my-posh init zsh --config "$HOME/.config/ohmyposh/zsh.toml")"
+else
+  PROMPT='%F{cyan}%n@%m%f:%F{blue}%~%f %# '
+fi
+
+##################################
+# 10) Syntax highlighting (last)
+##################################
 [[ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
   source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+complete -o nospace -C /opt/homebrew/bin/terraform terraform
