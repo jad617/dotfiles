@@ -1,58 +1,91 @@
 ##################################
-# Global ZSH Settings
+# 0) Guard non-interactive shells
 ##################################
-# --- Zsh completion with preselected menu on Tab Tab ---
-autoload -U +X compinit && compinit
+# Skip interactive-only features for scripts / scp / rsync
+[[ -o interactive ]] || return
+
+# Path shortcuts
+ZDOT=${ZDOTDIR:-$HOME}
+
+##################################
+# 1) Core Shell Options & History
+##################################
+setopt rm_star_silent
+setopt share_history
+HISTSIZE=200000
+SAVEHIST=200000
+
+# Editing mode & word motions
+bindkey -e
+bindkey '\e\e[C' forward-word
+bindkey '\e\e[D' backward-word
+bindkey "^[[1;5D" backward-word
+bindkey "^[[1;5C" forward-word
+bindkey '^[[H' beginning-of-line
+bindkey '^[[F' end-of-line
+bindkey '^[OH' beginning-of-line
+bindkey '^[OF' end-of-line
+
+##################################
+# 2) Completion: fast & cached
+##################################
+# Load completion system with caching
+zmodload zsh/complist
+autoload -Uz compinit
+
+# Cache completions to speed subsequent startups
+zstyle ':completion:*' use-cache yes
+zstyle ':completion:*' cache-path "$ZDOT/.zcompcache"
+
+# Behaviors
+setopt AUTO_LIST          # list choices on ambiguous completion
+setopt AUTO_MENU          # start menu on 2nd Tab
+unsetopt MENU_COMPLETE    # normal completion on 1st Tab
+zstyle ':completion:*' menu select=1
+zstyle ':completion:*:cd:*' tag-order 'local-directories directory-stack path-directories'
+zstyle ':completion:*:cd:*' ignore-parents parent pwd
+zstyle ':completion:*' squeeze-slashes true
+# Colors in the menu (uses LS_COLORS if set)
+[[ -n $LS_COLORS ]] && zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
+
+# Initialize completion (use -C to rebuild if dump is old/missing)
+if [[ ! -s "$ZDOT/.zcompdump" || "$ZDOT/.zcompdump"(Nm-20) ]]; then
+  compinit -i -C
+else
+  compinit -i
+fi
+
+# Bash completion shim (rarely needed; keep but defer)
 autoload -U +X bashcompinit && bashcompinit
 
-# Terraform autocomplete
-complete -o nospace -C $(which terraform) terraform
-
-# --- History substring search like Oh My Zsh ---
-autoload -Uz up-line-or-beginning-search
-autoload -Uz down-line-or-beginning-search
+##################################
+# 3) Navigation & Line Editing
+##################################
+# History substring search (Up/Down)
+autoload -Uz up-line-or-beginning-search down-line-or-beginning-search
 zle -N up-line-or-beginning-search
 zle -N down-line-or-beginning-search
+bindkey '^[[A' up-line-or-beginning-search
+bindkey '^[[B' down-line-or-beginning-search
 
-bindkey '^[[A' up-line-or-beginning-search     # Up arrow
-bindkey '^[[B' down-line-or-beginning-search   # Down arrow
+# Word selection style
+autoload -U select-word-style
+select-word-style bash
 
-# Needed for interactive selection UI
-zmodload zsh/complist
-
-# Behaviors:
-setopt AUTO_LIST          # list choices on ambiguous completion
-setopt AUTO_MENU          # start menu completion on the 2nd Tab press
-unsetopt MENU_COMPLETE    # keep normal completion on first Tab
-
-# Make the menu open with a highlighted (preselected) item
-zstyle ':completion:*' menu select=1
-
-# Nice-to-haves for cd
-setopt AUTO_PARAM_SLASH                     # add trailing / when completing dirs
-zstyle ':completion:*:cd:*' tag-order 'local-directories directory-stack path-directories'
-zstyle ':completion:*:cd:*' ignore-parents parent pwd  # don't suggest . and ..
-zstyle ':completion:*' squeeze-slashes true
-
-# Optional: colors in the completion menu (uses your LS_COLORS if set)
-zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
-
-# Custom cd function to handle multiple dots
+##################################
+# 4) cd helpers (multi-dot & parent list)
+##################################
 cd() {
-  # Detect only dots (.., ..., ....)
   if [[ $# -eq 1 && $1 == +([.]) ]]; then
-    local n=${#1}
-    local path=".."
+    local n=${#1} path=".."
     for ((i=2; i<=n; i++)); do path+="/.."; done
     builtin cd "$path"
   else
     builtin cd "$@"
   fi
 }
-
-# Completion function: allow `cd ..<TAB>` to list parent folder
+# Completion for `cd ..<TAB>` to show parent
 _cd_parent() {
-  # If the current word is '..', expand to '../' to list parent contents
   if [[ $words[-1] == '..' ]]; then
     compadd -- $(command ls -d ../*/ 2>/dev/null)
   else
@@ -61,63 +94,97 @@ _cd_parent() {
 }
 compdef _cd_parent cd
 
-# Enable select word style
-autoload -U select-word-style
-select-word-style bash
+##################################
+# 5) Aliases & small files (early)
+##################################
+# Keep these small; they load immediately
+[[ -f "$HOME/.my_aliases.sh" ]] && source "$HOME/.my_aliases.sh"
+[[ -f "$HOME/.my_aliases_non_git.sh" ]] && source "$HOME/.my_aliases_non_git.sh"
 
-# Prevent confirmation on rm
-setopt rm_star_silent
+##################################
+# 6) Light tools (conditional)
+##################################
+# FZF (fast if installed; negligible cost)
+[[ -f "$HOME/.fzf.zsh" ]] && source "$HOME/.fzf.zsh"
 
-# Bindkey Settings
-bindkey -e
-bindkey '\e\e[C' forward-word
-bindkey '\e\e[D' backward-word
-bindkey "^[[1;5D" backward-word
-bindkey "^[[1;5C" forward-word
-# --- Make Home/End keys move to start/end of line ---
-bindkey '^[[H' beginning-of-line
-bindkey '^[[F' end-of-line
-
-# Some terminals (like Kitty, WezTerm, GNOME) use slightly different codes:
-bindkey '^[OH' beginning-of-line
-bindkey '^[OF' end-of-line
-
-# ZSH HISTORY Settings
-setopt share_history
-HISTSIZE=200000
-SAVEHIST=200000
-
-################################
-# Custom configurations
-################################
-
-#Custom
-[ -f ~/.my_aliases.sh ] && source ~/.my_aliases.sh
-[ -f ~/.my_aliases_non_git.sh ] && source ~/.my_aliases_non_git.sh
-
-#FZF
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-# Kubectl autocomplete
-if [[ -f ~/.config/completion/kubectl.sh ]]
-then
- source ~/.config/completion/kubectl.sh
-else
-  kubectl completion zsh > ~/.config/completion/kubectl.sh
- source ~/.config/completion/kubectl.sh
+# Terraform autocomplete (light)
+if command -v terraform >/dev/null 2>&1; then
+  complete -o nospace -C "$(command -v terraform)" terraform
 fi
 
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+##################################
+# 7) Lazy completions (heavy deferred)
+##################################
+# Kubectl: load completion only on first use
+if command -v kubectl >/dev/null 2>&1; then
+  _kubectl_lazy() {
+    unset -f _kubectl_lazy
+    local comp="$HOME/.config/completion/kubectl.sh"
+    if [[ ! -f $comp ]]; then
+      mkdir -p "$HOME/.config/completion"
+      kubectl completion zsh >| "$comp" 2>/dev/null
+    fi
+    source "$comp"
+    _kubectl "$@"
+  }
+  compdef _kubectl_lazy kubectl k
+fi
 
+##################################
+# 8) Deferred initializations at first prompt
+##################################
+autoload -Uz add-zsh-hook
+
+eval "$(oh-my-posh init zsh --config "$HOME/.config/ohmyposh/zsh.toml")"
+# a) Oh My Posh (heaviest) — defer to first prompt
+# _omp_init_once() {
+#   add-zsh-hook -d precmd _omp_init_once
+#   command -v oh-my-posh >/dev/null 2>&1 || return
+#   eval "$(oh-my-posh init zsh --config "$HOME/.config/ohmyposh/zsh.toml")"
+# }
+# add-zsh-hook precmd _omp_init_once
+# TEMP prompt before OMP kicks in (keeps startup snappy)
+PROMPT='%F{cyan}%n@%m%f:%F{blue}%~%f %# '
+
+# b) zoxide — defer to first prompt
+_zoxide_init_once() {
+  add-zsh-hook -d precmd _zoxide_init_once
+  command -v zoxide >/dev/null 2>&1 || return
+  eval "$(zoxide init zsh)"
+}
+add-zsh-hook precmd _zoxide_init_once
+
+# c) pyenv — only when you cd into a dir with .python-version OR on first prompt
 export PYENV_ROOT="$HOME/.pyenv"
-[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init - zsh)"
-eval "$(pyenv virtualenv-init -)"
+if [[ -d "$PYENV_ROOT/bin" ]]; then
+  path+="$PYENV_ROOT/bin"
+fi
 
-eval "$(zoxide init zsh)"
+_pyenv_init_if_needed() {
+  # init only once
+  if [[ -n "$__PYENV_INIT_DONE" ]]; then return; fi
+  command -v pyenv >/dev/null 2>&1 || return
+  __PYENV_INIT_DONE=1
+  eval "$(pyenv init - zsh)"
+  eval "$(pyenv virtualenv-init -)"
+}
+
+# Init if directory hints it’s needed
+_pyenv_dir_check() {
+  [[ -f .python-version ]] && _pyenv_init_if_needed
+}
+add-zsh-hook chpwd _pyenv_dir_check
+
+# Also init right before first prompt (covers repos without chpwd yet)
+_pyenv_precmd_once() {
+  add-zsh-hook -d precmd _pyenv_precmd_once
+  _pyenv_dir_check
+}
+add-zsh-hook precmd _pyenv_precmd_once
+
 ##################################
-# Oh My Posh
+# 9) zsh-syntax-highlighting (last)
 ##################################
-# Load Oh My Posh configuration
-# Has to be at the end of the file
-eval "$(oh-my-posh init zsh --config $HOME/.config/ohmyposh/zsh.toml)"
+# This must be near the end; it hooks into zle widgets
+[[ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+  source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
