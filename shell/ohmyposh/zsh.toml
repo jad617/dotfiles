@@ -81,7 +81,7 @@ type = "prompt"
   type = "python"
   style = "plain"
   foreground = "#E5C07B"
-  template = " {{ .Full }} | "
+  template = " Python<#c27fd7>{{ if .Venv }} [{{ end }}{{ .Venv }}{{ if .Venv }}]{{ end }}</> | "
 
     [blocks.segments.properties]
     display_mode = "files"
