@@ -158,26 +158,6 @@ local function shift_arrow_or_focus(dir, keyname)
 	end)
 end
 
--- (filters out "default" and any starting with "__")
-local function get_custom_workspaces()
-	local out = {}
-	for _, name in ipairs(mux.get_workspace_names()) do
-		if name ~= "default" and not name:match("^__") then
-			table.insert(out, name)
-		end
-	end
-	table.sort(out)
-	return out
-end
-
--- Show a quick list of custom workspaces (non-interactive)
-local function show_custom_workspace_list(window)
-	local names = get_custom_workspaces()
-	local msg = (#names > 0) and ("Custom workspaces:\n• " .. table.concat(names, "\n• "))
-		or "No custom workspaces yet."
-	window:toast_notification("WezTerm", msg, nil, 5000)
-end
-
 --------------------------------------------------------------------------------
 -- Keys
 --------------------------------------------------------------------------------
