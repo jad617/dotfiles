@@ -17,6 +17,13 @@ wezterm.on("gui-startup", function(cmd)
 	window:gui_window():maximize()
 end)
 
+config.window_padding = {
+	left = 5,
+	right = 0,
+	top = 10,
+	bottom = 0,
+}
+
 --------------------------------------------------------------------------------
 -- Appearance
 --------------------------------------------------------------------------------
