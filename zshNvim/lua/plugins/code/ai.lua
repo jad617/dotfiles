@@ -2,6 +2,9 @@ return {
   -- official copilot plugin
   {
     "github/copilot.vim",
+    enabled = function()
+      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
+    end,
     config = function()
       -- 🌟 Keymaps for inline suggestions
       vim.g.copilot_no_tab_map = true
@@ -16,6 +19,9 @@ return {
       { "github/copilot.vim" }, -- official Copilot plugin (auth + inline suggestions)
       { "nvim-lua/plenary.nvim" },
     },
+    enabled = function()
+      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
+    end,
     config = function()
       local chat = require("CopilotChat")
 
