@@ -16,8 +16,8 @@ type = "prompt"
   [[blocks.segments]]
   type = "shell"
   style = "plain"
-  foreground = "#E06C75"
-  template = "┏━  {{ .Name }} | "
+  foreground = "#c27fd7"
+  template = "┏━ <#c27fd7> {{ .Name }} |</>"
 
     [blocks.segments.properties.mapped_shell_names]
     pwsh = "Shell"
@@ -26,9 +26,9 @@ type = "prompt"
     bash = "Bash"
 
   [[blocks.segments]]
-  foreground = "#61AFEF"
   style = "plain"
-  template = " {{ .Path }}"
+  foreground = "#61AFEF"
+  template = "  {{ .Path }}"
   type = "path"
 
     [blocks.segments.properties]
@@ -143,17 +143,8 @@ type = "prompt"
   template = " {{ .EnvironmentName }} | "
 
   ########################################
-  # Time
+  # OS
   ########################################
-  # [[blocks.segments]]
-  # foreground = "#E5C07B"
-  # style = "plain"
-  # template = "[{{ .CurrentDate | date .Format }}] | "
-  # type = "time"
-  #
-  #   [blocks.segments.properties]
-  #   time_format = "15:04"
-
   [[blocks.segments]]
   type = "os"
   style = "plain"
@@ -175,7 +166,7 @@ type = "prompt"
   type = "root"
 
   [[blocks.segments]]
-  foreground = "#E06C75"
+  foreground = "#c27fd7"
   style = "plain"
   template = "┗❯"
   type = "text"
