@@ -33,6 +33,7 @@ return {
       ensure_installed = {
         "bash",
         "dockerfile",
+        "diff",
         "gitignore",
         "go",
         "gomod",
