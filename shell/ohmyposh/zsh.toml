@@ -133,7 +133,7 @@ type = "prompt"
   [[blocks.segments]]
   type = "kubectl"
   style = "plain"
-  foreground = "#9ec3f0"
+  foreground = "#61AFEF"
   template = '󱃾 {{ .Cluster | replace "arn:aws:eks:" "" | replace ":cluster/" " " | splitList " " | last }} | '
 
   [[blocks.segments]]
