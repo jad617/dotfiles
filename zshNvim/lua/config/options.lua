@@ -35,6 +35,7 @@ end
 
 -- [[ global options ]]
 opt.autoread = true
+opt.spell = true
 o.swapfile = true -- Toggle swapfile
 o.dir = "/tmp" -- Swapfile location
 o.showtabline = 2 -- Always enable tabline

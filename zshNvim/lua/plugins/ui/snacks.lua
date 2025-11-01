@@ -422,5 +422,14 @@ return {
       end,
       desc = "GitHub Pull Requests (all)",
     },
+    {
+      "<leader>sc",
+      function()
+        Snacks.picker.spelling({ layout = {
+          preset = "select",
+        } })
+      end,
+      desc = "GitHub Pull Requests (all)",
+    },
   },
 }
