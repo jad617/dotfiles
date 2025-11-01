@@ -17,7 +17,7 @@ type = "prompt"
   type = "shell"
   style = "plain"
   foreground = "#c27fd7"
-  template = "┏━ <#c27fd7> {{ .Name }} |</>"
+  template = "┏━  {{ .Name }} |"
 
     [blocks.segments.properties.mapped_shell_names]
     pwsh = "Shell"
