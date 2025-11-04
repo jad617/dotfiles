@@ -10,7 +10,9 @@ ZDOT=${ZDOTDIR:-$HOME}
 ##################################
 ZFUNC_DIR="$HOME/.zfunc"
 mkdir -p "$ZFUNC_DIR"
-fpath=("$ZFUNC_DIR" $fpath)
+# Add your custom terraform completion dir FIRST so it wins
+TF_COMP_DIR="$HOME/.config/zsh-completion/terraform"
+fpath=("$TF_COMP_DIR" "$ZFUNC_DIR" $fpath)
 
 ##################################
 # 1) Core Settings & History
@@ -27,6 +29,7 @@ zmodload zsh/complist
 autoload -Uz compinit
 zstyle ':completion:*' use-cache yes
 zstyle ':completion:*' cache-path "$ZDOT/.zcompcache"
+mkdir -p "$ZDOT/.zcompcache"
 setopt AUTO_LIST AUTO_MENU
 unsetopt MENU_COMPLETE
 zstyle ':completion:*' menu select=1
@@ -35,27 +38,36 @@ zstyle ':completion:*:cd:*' ignore-parents parent pwd
 zstyle ':completion:*' squeeze-slashes true
 [[ -n $LS_COLORS ]] && zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
 
-if [[ ! -s "$ZDOT/.zcompdump" || "$ZDOT/.zcompdump"(Nm-20) ]]; then
+# Rebuild dump if missing, stale, OR if your _terraform is newer
+# Fetch from: https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/refs/heads/master/plugins/terraform/_terraform
+if [[ ! -s "$ZDOT/.zcompdump" || "$ZDOT/.zcompdump"(Nm-20) || "$TF_COMP_DIR/_terraform" -nt "$ZDOT/.zcompdump" ]]; then
   compinit -i -C
 else
   compinit -i
 fi
 
-# Bash compat layer (only if something needs it)
-autoload -U +X bashcompinit && bashcompinit
-
 ##################################
 # 2.5) Terraform completion (v1.13+)
 ##################################
 if command -v terraform >/dev/null 2>&1; then
-  # One-time install if not present
-  if [[ ! -f "$ZFUNC_DIR/_terraform" ]]; then
-    terraform -install-autocomplete >/dev/null 2>&1
-  fi
-  # Load and bind completion if the function exists
-  if [[ -f "$ZFUNC_DIR/_terraform" ]]; then
+  # Prefer your checked-in completion if present
+  if [[ -f "$TF_COMP_DIR/_terraform" ]]; then
+    # Nuke any previous defs (bash/other) and bind native zsh completion
+    compdef -d terraform 2>/dev/null
+    unfunction _terraform 2>/dev/null
     autoload -Uz _terraform
     compdef _terraform terraform
+  else
+    # Fallback: one-time install into ~/.zfunc
+    if [[ ! -f "$ZFUNC_DIR/_terraform" ]]; then
+      terraform -install-autocomplete >/dev/null 2>&1
+    fi
+    if [[ -f "$ZFUNC_DIR/_terraform" ]]; then
+      compdef -d terraform 2>/dev/null
+      unfunction _terraform 2>/dev/null
+      autoload -Uz _terraform
+      compdef _terraform terraform
+    fi
   fi
 fi
 
@@ -192,5 +204,3 @@ fi
 ##################################
 [[ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
   source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-
-complete -o nospace -C /opt/homebrew/bin/terraform terraform
