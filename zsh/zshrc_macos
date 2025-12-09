@@ -17,9 +17,30 @@ fpath=("$TF_COMP_DIR" "$ZFUNC_DIR" $fpath)
 ##################################
 # 1) Core Settings & History
 ##################################
-setopt rm_star_silent share_history
+# Where history is stored
+HISTFILE="$ZDOT/.zsh_history"
+
+# How much to keep in memory and on disk
 HISTSIZE=200000
 SAVEHIST=200000
+
+# History behavior
+setopt rm_star_silent
+
+# Append to the history file instead of overwriting
+setopt APPEND_HISTORY
+
+# Write each command to the history file as soon as it’s executed
+setopt INC_APPEND_HISTORY
+
+# Share history across all sessions
+setopt SHARE_HISTORY
+
+# Optional but nice:
+setopt HIST_IGNORE_ALL_DUPS      # remove older duplicate entries
+setopt HIST_REDUCE_BLANKS        # trim extra spaces
+setopt HIST_IGNORE_SPACE         # lines starting with space not stored
+
 bindkey -e
 
 ##################################
@@ -86,7 +107,7 @@ select-word-style bash
 # 4) Home / End / Ctrl-Arrows (tmux + WezTerm safe)
 ##################################
 for map in emacs viins vicmd; do
-  # Home / End via terminfo + fallbacks
+  # --- Home / End from terminfo + fallbacks ---
   [[ -n ${terminfo[khome]} ]] && bindkey -M $map "${terminfo[khome]}" beginning-of-line
   [[ -n ${terminfo[kend]}  ]] && bindkey -M $map "${terminfo[kend]}"  end-of-line
   bindkey -M $map "\e[H"  beginning-of-line
@@ -96,15 +117,28 @@ for map in emacs viins vicmd; do
   bindkey -M $map "\e[1~" beginning-of-line
   bindkey -M $map "\e[4~" end-of-line
 
-  # Ctrl + Left / Right (common sequences across terminals/tmux)
-  [[ -n ${terminfo[kLFT5]} ]] && bindkey -M $map "${terminfo[kLFT5]}" backward-word
-  [[ -n ${terminfo[kRIT5]} ]] && bindkey -M $map "${terminfo[kRIT5]}" forward-word
-  bindkey -M $map "^[OD" backward-word
-  bindkey -M $map "^[OC" forward-word
-  bindkey -M $map "\e[1;5D" backward-word
-  bindkey -M $map "\e[1;5C" forward-word
-  bindkey -M $map "\e[5D" backward-word
-  bindkey -M $map "\e[5C" forward-word
+  # --- Plain Left / Right → char-wise movement ---
+  # Use terminfo if available (WezTerm with xterm-256color gives these)
+  [[ -n ${terminfo[kcub1]} ]] && bindkey -M $map "${terminfo[kcub1]}" backward-char
+  [[ -n ${terminfo[kcuf1]} ]] && bindkey -M $map "${terminfo[kcuf1]}" forward-char
+
+  # Fallbacks for plain arrows
+  bindkey -M $map "\e[D" backward-char
+  bindkey -M $map "\e[C" forward-char
+
+  # --- Ctrl + Left / Right → word-wise movement ---
+  # Prefer terminfo if it knows about ctrl-arrows
+  if [[ -n ${terminfo[kLFT5]} && -n ${terminfo[kRIT5]} ]]; then
+    bindkey -M $map "${terminfo[kLFT5]}" backward-word
+    bindkey -M $map "${terminfo[kRIT5]}" forward-word
+  else
+    # WezTerm defaults for Ctrl+Left / Ctrl+Right (xterm-style)
+    bindkey -M $map "\e[1;5D" backward-word
+    bindkey -M $map "\e[1;5C" forward-word
+    # Extra common variants some terms use
+    bindkey -M $map "\e[5D" backward-word
+    bindkey -M $map "\e[5C" forward-word
+  fi
 done
 
 ##################################
