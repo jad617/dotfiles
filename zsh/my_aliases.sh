@@ -144,6 +144,7 @@ alias gitdiff='git --no-pager diff'
 alias gitlog='git log --oneline'
 alias gitpull='git pull'
 alias gitundoall='git reset --hard HEAD'
+alias gitclean='git clean -fd'
 
 #Shortcuts
 alias v='nvim'
