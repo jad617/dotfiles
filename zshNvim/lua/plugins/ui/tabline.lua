@@ -3,62 +3,79 @@ return {
   version = "*",
   dependencies = { "nvim-tree/nvim-web-devicons" },
   event = "VeryLazy",
-  config = function()
-    local function two_layer_relpath(buf)
-      -- Prefer full path if available
+
+  opts = function(_, opts)
+    local function three_layer_relpath(buf)
       local full = buf.path or buf.name or ""
       if full == "" then
         return "[No Name]"
       end
 
-      -- Make it relative to cwd when possible
       local rel = vim.fn.fnamemodify(full, ":.")
-      -- If still absolute (different drive/root), keep as-is but still truncate
       local parts = vim.split(rel, "/", { plain = true, trimempty = true })
 
-      -- If it's just a filename or 1 dir + file, return it
-      if #parts <= 2 then
+      if #parts <= 3 then
         return table.concat(parts, "/")
       end
-
-      -- Return last 2 path components (dir/file)
-      return parts[#parts - 1] .. "/" .. parts[#parts]
+      return parts[#parts - 2] .. "/" .. parts[#parts - 1] .. "/" .. parts[#parts]
     end
 
-    require("bufferline").setup({
-      options = {
-        mode = "tabs",
-        separator_style = "thin",
-        show_buffer_close_icons = false,
-        show_close_icon = false,
-        diagnostics = false,
+    opts.options = opts.options or {}
+    opts.options.mode = "tabs"
+    opts.options.separator_style = "rounded"
+    opts.options.show_buffer_close_icons = false
+    opts.options.show_close_icon = false
+    opts.options.diagnostics = false
+    opts.options.truncate_names = false
+    opts.options.name_formatter = function(buf)
+      return " " .. three_layer_relpath(buf) .. " "
+    end
 
-        -- 👇 show relative path (2 layers)
-        name_formatter = function(buf)
-          return two_layer_relpath(buf)
-        end,
-      },
+    return opts
+  end,
+
+  config = function(_, opts)
+    vim.opt.termguicolors = true
+    vim.opt.showtabline = 2
+
+    require("bufferline").setup(opts)
+
+    local function force_pill()
+      -- Selected tab = green pill
+      vim.api.nvim_set_hl(0, "BufferLineTabSelected", {
+        fg = "#1e1e1e",
+        bg = "#99bc80",
+        bold = true,
+      })
+
+      -- Everything else transparent
+      vim.api.nvim_set_hl(0, "BufferLineFill", { bg = "NONE" })
+      vim.api.nvim_set_hl(0, "BufferLineBackground", { bg = "NONE" })
+      vim.api.nvim_set_hl(0, "BufferLineTab", { bg = "NONE" })
+      vim.api.nvim_set_hl(0, "BufferLineTabSeparator", { bg = "NONE" })
+      vim.api.nvim_set_hl(0, "BufferLineTabSeparatorSelected", { fg = "#99bc80", bg = "NONE" })
+    end
+
+    -- Apply now + after UI settles
+    force_pill()
+    vim.defer_fn(force_pill, 50)
+    vim.defer_fn(force_pill, 200)
+
+    -- Re-apply when theme changes (OneDark toggle triggers ColorScheme)
+    vim.api.nvim_create_autocmd("ColorScheme", {
+      callback = function()
+        force_pill()
+        vim.defer_fn(force_pill, 20)
+      end,
     })
 
-    local function fix_bufferline_bg()
-      local groups = {
-        "BufferLineFill",
-        "BufferLineBackground",
-        "BufferLineTab",
-        "BufferLineTabSelected",
-        "BufferLineTabSeparator",
-        "BufferLineTabSeparatorSelected",
-        "BufferLineSeparator",
-        "BufferLineSeparatorSelected",
-        "BufferLineOffsetSeparator",
-      }
-
-      for _, g in ipairs(groups) do
-        vim.api.nvim_set_hl(0, g, { bg = "NONE" })
-      end
-    end
-
-    fix_bufferline_bg()
-    vim.api.nvim_create_autocmd("ColorScheme", { callback = fix_bufferline_bg })
+    -- Re-apply after LazyVim finishes loading plugins (common override point)
+    vim.api.nvim_create_autocmd("User", {
+      pattern = "VeryLazy",
+      callback = function()
+        force_pill()
+        vim.defer_fn(force_pill, 20)
+      end,
+    })
   end,
 }
