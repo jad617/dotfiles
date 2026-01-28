@@ -13,6 +13,7 @@ return {
       -- [[ Key Bindings ]]
       ------------------------------------------------------------
       map("n", "<leader>gm", "<cmd>DiffviewOpen<CR>", options_silent)
+      map("n", "<leader>gd", "<cmd>DiffviewFileHistory %<CR>", options_silent)
     end,
   },
 
