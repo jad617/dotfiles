@@ -276,6 +276,16 @@ config.keys = {
 
 	-- Alt+w → open built-in workspace switcher (interactive)
 	{ key = "w", mods = "ALT", action = action.ShowLauncherArgs({ flags = "WORKSPACES" }) },
+
+	-- Let LEADER+d behave like screen's Ctrl+a d (detach)
+	{
+		key = "d",
+		mods = "LEADER",
+		action = action.Multiple({
+			action.SendKey({ key = "a", mods = "CTRL" }),
+			action.SendKey({ key = "d" }),
+		}),
+	},
 }
 
 return config
