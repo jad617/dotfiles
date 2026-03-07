@@ -34,6 +34,10 @@ export EDITOR=nvim
 # Bash
 export SHELLCHECK_OPTS="-e SC2086"
 
+
+#Claude
+[ -f ~/.claude_api_key ] && export ANTHROPIC_API_KEY=$(cat ~/.claude_api_key)
+
 #Github
 [ -f ~/.github_token ] && export GITHUB_TOKEN=$(cat ~/.github_token)
 
