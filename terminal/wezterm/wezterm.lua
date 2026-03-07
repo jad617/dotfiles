@@ -178,6 +178,15 @@ config.keys = {
 	{ key = "n", mods = "LEADER", action = action.ActivateTabRelative(1) },
 	{ key = "x", mods = "LEADER", action = action.CloseCurrentPane({ confirm = true }) },
 
+	-- Move current split to new tab
+	{
+		key = "!",
+		mods = "LEADER",
+		action = wezterm.action_callback(function(window, pane)
+			pane:move_to_new_tab()
+		end),
+	},
+
 	-- Rename tab (minimal prompt at bottom)
 	{
 		key = ",",
