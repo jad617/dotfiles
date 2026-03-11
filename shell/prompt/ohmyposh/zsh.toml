@@ -140,7 +140,7 @@ type = "prompt"
   type = "az"
   style = "plain"
   foreground = "#9ec3f0"
-  template = " {{ .EnvironmentName }} | "
+  template = '{{ if .Env.AZURE_ACTIVE }} {{ .EnvironmentName }} | {{ end }}'
 
   ########################################
   # OS

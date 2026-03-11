@@ -97,6 +97,19 @@ update-completions() {
     echo "Done. Restart your shell or run: exec zsh"
 }
 
+# Azure — track login state via env var so oh-my-posh segment is session-scoped
+az() {
+    if [[ "$1" == "login" ]]; then
+        command az "$@"
+        export AZURE_ACTIVE=1
+    elif [[ "$1" == "logout" ]]; then
+        command az "$@"
+        unset AZURE_ACTIVE
+    else
+        command az "$@"
+    fi
+}
+
 # Utilities
 tolower() { echo "$1" | awk '{print tolower($0)}'; }
 toupper() { echo "$1" | awk '{print toupper($0)}'; }
