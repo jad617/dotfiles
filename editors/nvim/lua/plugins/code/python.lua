@@ -8,7 +8,44 @@
 --   2. Create .venv with `uv venv` (falls back to python3 -m venv)
 --   3. Run `uv pip install -r` on every requirements*.txt found at root
 --      (falls back to pip inside the venv)
+--
+-- Progress is shown via Snacks.notifier spinner (updates in-place).
 ------------------------------------------------------------
+
+local SPINNER = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+
+-- Start a spinner notification that updates in-place.
+-- Returns a stop() function that resolves the notification.
+local function start_spinner(id, msg)
+  local idx = 1
+  local timer = vim.uv.new_timer()
+  timer:start(
+    0,
+    120,
+    vim.schedule_wrap(function()
+      vim.notify(SPINNER[idx] .. " " .. msg, vim.log.levels.INFO, {
+        id = id,
+        title = "Python",
+        timeout = false,
+      })
+      idx = (idx % #SPINNER) + 1
+    end)
+  )
+
+  return function(ok, done_msg)
+    timer:stop()
+    timer:close()
+    local level = ok and vim.log.levels.INFO or vim.log.levels.ERROR
+    local icon = ok and "✓" or "✗"
+    vim.schedule(function()
+      vim.notify(icon .. " " .. done_msg, level, {
+        id = id,
+        title = "Python",
+        timeout = ok and 3000 or 8000,
+      })
+    end)
+  end
+end
 
 local function find_root(bufnr)
   local file_dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p:h")
@@ -36,21 +73,34 @@ end
 
 local function install_reqs(root, venv, has_uv)
   local reqs = vim.fn.glob(root .. "/requirements*.txt", false, true)
-  if #reqs == 0 then
-    return
-  end
+  if #reqs == 0 then return end
+
+  local pending = #reqs
+  local all_ok = true
+
   for _, req in ipairs(reqs) do
     local name = vim.fn.fnamemodify(req, ":t")
+    local id = "python_install_" .. root .. "_" .. name
+    local stop = start_spinner(id, "Installing " .. name .. "…")
+
     local cmd = has_uv
         and { "uv", "pip", "install", "--python", venv .. "/bin/python", "-r", req }
       or { venv .. "/bin/pip", "install", "-r", req }
+
     vim.fn.jobstart(cmd, {
       cwd = root,
       on_exit = function(_, code)
-        if code == 0 then
-          vim.notify("[python] installed " .. name, vim.log.levels.INFO)
-        else
-          vim.notify("[python] failed to install " .. name, vim.log.levels.WARN)
+        local ok = code == 0
+        if not ok then all_ok = false end
+        stop(ok, ok and (name .. " installed") or (name .. " install failed"))
+        pending = pending - 1
+        if pending == 0 and not all_ok then
+          vim.schedule(function()
+            vim.notify("One or more requirements failed — check notifications above", vim.log.levels.WARN, {
+              title = "Python",
+              timeout = 8000,
+            })
+          end)
         end
       end,
     })
@@ -65,24 +115,25 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = "python",
   callback = function(ev)
     local root = find_root(ev.buf)
-    if _done[root] then
-      return
-    end
+    if _done[root] then return end
     _done[root] = true
 
     local venv = root .. "/.venv"
     local has_uv = vim.fn.exepath("uv") ~= ""
 
     if vim.fn.isdirectory(venv) == 0 then
+      local id = "python_venv_" .. root
+      local stop = start_spinner(id, "Creating .venv…")
       local cmd = has_uv and { "uv", "venv", venv } or { "python3", "-m", "venv", venv }
-      vim.notify("[python] creating .venv in " .. root, vim.log.levels.INFO)
+
       vim.fn.jobstart(cmd, {
         cwd = root,
         on_exit = function(_, code)
           if code ~= 0 then
-            vim.notify("[python] .venv creation failed", vim.log.levels.ERROR)
+            stop(false, ".venv creation failed")
             return
           end
+          stop(true, ".venv created")
           install_reqs(root, venv, has_uv)
         end,
       })
@@ -92,6 +143,4 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
--- No plugin needed — this file is pure autocmd config.
--- Return an empty table so lazy.nvim doesn't error when it sources this file.
 return {}
