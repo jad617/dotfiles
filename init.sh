@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Idempotent dotfiles bootstrap — macOS & Pop!_OS
+#
+# Usage on a fresh machine:
+#   bash <(curl -fsSL https://raw.githubusercontent.com/jad617/dotfiles/main/init.sh)
 # =============================================================================
 set -euo pipefail
 
@@ -79,6 +82,8 @@ install_macos() {
         pyenv-virtualenv \
         neovim \
         go \
+        eza \
+        zoxide \
         oh-my-posh \
         television \
         zellij \
@@ -115,6 +120,10 @@ install_macos() {
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
     fi
     clone_if_missing "https://github.com/romkatv/powerlevel10k.git" "$HOME/powerlevel10k"
+
+    # Nerd Font (MesloLGS NF — used by wezterm + oh-my-posh)
+    # macOS: install via brew cask
+    brew install --cask font-meslo-lg-nerd-font
 }
 
 # =============================================================================
@@ -142,9 +151,24 @@ install_linux() {
         curl \
         git \
         unzip \
-        jq
+        jq \
+        fontconfig
 
     mkdir -p ~/bin
+
+    # eza (macOS: brew, Linux: GitHub release)
+    if ! cmd_exists eza; then
+        EZA_VER=$(curl -s https://api.github.com/repos/eza-community/eza/releases/latest | jq -r '.tag_name')
+        curl -L "https://github.com/eza-community/eza/releases/download/${EZA_VER}/eza_x86_64-unknown-linux-musl.tar.gz" -o /tmp/eza.tar.gz
+        tar -xzf /tmp/eza.tar.gz -C /tmp
+        sudo mv /tmp/eza /usr/local/bin/
+        rm /tmp/eza.tar.gz
+    fi
+
+    # zoxide (macOS: brew, Linux: installer)
+    if ! cmd_exists zoxide; then
+        curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
+    fi
 
     # oh-my-posh
     if ! cmd_exists oh-my-posh; then
@@ -181,9 +205,22 @@ install_linux() {
         rm -rf /tmp/tv /tmp/tv.tar.gz
     fi
 
-    # cliphist (macOS: uses Maccy instead)
+    # cliphist — needs Go in PATH first (macOS: uses Maccy instead)
     if ! cmd_exists cliphist; then
+        export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
         go install go.senan.xyz/cliphist@latest
+    fi
+
+    # Nerd Font — MesloLGS NF (used by wezterm + oh-my-posh)
+    if ! fc-list | grep -qi "MesloLGS"; then
+        echo "==> Installing MesloLGS NF font"
+        FONT_DIR="$HOME/.local/share/fonts/MesloLGS"
+        mkdir -p "$FONT_DIR"
+        for variant in "Regular" "Bold" "Italic" "Bold%20Italic"; do
+            curl -fsSL "https://github.com/romkatv/powerlevel10k-media/raw/master/MesloLGS%20NF%20${variant}.ttf" \
+                -o "$FONT_DIR/MesloLGS NF ${variant//%20/ }.ttf"
+        done
+        fc-cache -fv "$FONT_DIR"
     fi
 
     # DevOps
@@ -231,6 +268,12 @@ install_linux() {
 # Common — after OS packages
 # =============================================================================
 install_common() {
+    # Set zsh as default shell
+    if [[ "$SHELL" != "$(which zsh)" ]]; then
+        echo "==> Setting zsh as default shell"
+        chsh -s "$(which zsh)"
+    fi
+
     # Tmux Plugin Manager
     clone_if_missing "https://github.com/tmux-plugins/tpm" "$HOME/.tmux/plugins/tpm"
 
@@ -273,13 +316,16 @@ create_macos_symlinks() {
 # =============================================================================
 create_linux_symlinks() {
     echo "==> Creating Linux symlinks"
-    symlink "$DOTFILES/shell/zsh/zshrc"                                                "$HOME/.zshrc"
-    symlink "$DOTFILES/terminal/tmux/tmux.conf"                                        "$HOME/.tmux.conf"
-    symlink "$DOTFILES/linux/wofi/config"                                              "$HOME/.config/wofi/config"
-    symlink "$DOTFILES/linux/wofi/style.css"                                           "$HOME/.config/wofi/style.css"
-    symlink "$DOTFILES/linux/autostart/cliphist-daemon.desktop"                        "$HOME/.config/autostart/cliphist-daemon.desktop"
-    symlink "$DOTFILES/linux/bin/clipboard-picker"                                     "$HOME/bin/clipboard-picker"
-    symlink "$DOTFILES/linux/cosmic/shortcuts/custom"                                  "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
+    symlink "$DOTFILES/shell/zsh/zshrc"                                                          "$HOME/.zshrc"
+    symlink "$DOTFILES/terminal/tmux/tmux.conf"                                                  "$HOME/.tmux.conf"
+    symlink "$DOTFILES/linux/wofi/config"                                                        "$HOME/.config/wofi/config"
+    symlink "$DOTFILES/linux/wofi/style.css"                                                     "$HOME/.config/wofi/style.css"
+    symlink "$DOTFILES/linux/autostart/cliphist-daemon.desktop"                                  "$HOME/.config/autostart/cliphist-daemon.desktop"
+    symlink "$DOTFILES/linux/bin/clipboard-picker"                                               "$HOME/bin/clipboard-picker"
+
+    # COSMIC shortcuts — create the dir in case it doesn't exist on a fresh install
+    mkdir -p "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1"
+    symlink "$DOTFILES/linux/cosmic/shortcuts/custom"                                            "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
 }
 
 # =============================================================================
@@ -301,4 +347,4 @@ case "$OS" in
 esac
 
 echo ""
-echo "==> Done! Restart your shell to apply changes."
+echo "==> Done! Log out and back in for the shell change to take effect."
