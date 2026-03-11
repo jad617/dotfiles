@@ -121,8 +121,12 @@ cd() {
 }
 
 _cd_parent() {
-  if [[ $words[-1] == '..' ]]; then
-    compadd -- $(command ls -d ../*/ 2>/dev/null)
+  local word=$words[-1]
+  if [[ $word == +([.]) && ${#word} -ge 2 ]]; then
+    # Resolve dots to a relative path (e.g. '....' → '../../..')
+    local n=${#word} path=".."
+    for ((i=2; i<=n; i++)); do path+="/.."; done
+    compadd -- $(command ls -d ${path}/*/ 2>/dev/null)
   else
     _cd
   fi
