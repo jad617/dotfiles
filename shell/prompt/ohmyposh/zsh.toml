@@ -84,7 +84,7 @@ type = "prompt"
   template = " Python<#c27fd7>{{ if .Venv }} [{{ end }}{{ .Venv }}{{ if .Venv }}]{{ end }}</> | "
 
     [blocks.segments.properties]
-    display_mode = "files"
+    display_mode = "environment"
 
   [[blocks.segments]]
   type = "terraform"
