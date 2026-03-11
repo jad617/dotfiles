@@ -335,7 +335,7 @@ install_devops_linux() {
         sudo apt install -y keyd
     fi
     sudo mkdir -p /etc/keyd
-    sudo cp "$DOTFILES/linux/keyd/default.conf" /etc/keyd/default.conf
+    sudo ln -sf "$DOTFILES/linux/keyd/default.conf" /etc/keyd/default.conf
     sudo systemctl enable --now keyd
 }
 
