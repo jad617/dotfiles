@@ -114,7 +114,8 @@ install_macos() {
         jandedobbeleer/oh-my-posh/oh-my-posh \
         zellij \
         node \
-        go
+        go \
+        uv
 
     brew install --cask wezterm@nightly
 
@@ -180,6 +181,11 @@ install_linux() {
     # zoxide (macOS: brew)
     if ! cmd_exists zoxide; then
         curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
+    fi
+
+    # uv — Python package manager (macOS: brew)
+    if ! cmd_exists uv; then
+        curl -LsSf https://astral.sh/uv/install.sh | sh
     fi
 
     # oh-my-posh

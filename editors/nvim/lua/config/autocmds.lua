@@ -111,6 +111,20 @@ vim.api.nvim_create_autocmd("TermOpen", {
   end,
 })
 
+-- Close terminal buffer silently on exit regardless of exit code.
+-- Snacks' auto_close=false disables its built-in handler (which shows an
+-- error notification on non-zero exit); this replaces it quietly.
+vim.api.nvim_create_autocmd("TermClose", {
+  group = "terminal_settings",
+  callback = function(ev)
+    vim.schedule(function()
+      if vim.api.nvim_buf_is_valid(ev.buf) then
+        vim.api.nvim_buf_delete(ev.buf, { force = true })
+      end
+    end)
+  end,
+})
+
 ------------------------------------------------------------
 -- highlight on yank
 ------------------------------------------------------------
