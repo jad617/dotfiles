@@ -10,10 +10,31 @@ return {
         function()
           return vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
         end,
-        icon = "",
-        separator = "",
+        icon = "",
+        separator = "",
         color = { fg = "#ff8050" },
       }
+
+      local python_venv = {
+        function()
+          -- 1. Prefer $VIRTUAL_ENV (venv activated in shell before nvim launched)
+          local venv = vim.env.VIRTUAL_ENV
+          if venv and venv ~= "" then
+            return "(" .. vim.fn.fnamemodify(venv, ":t") .. ")"
+          end
+          -- 2. Fall back: look for .venv at the LSP root or cwd
+          local clients = vim.lsp.get_clients({ bufnr = 0, name = "pyright" })
+          local root = (clients[1] and clients[1].config.root_dir) or vim.fn.getcwd()
+          if vim.fn.isdirectory(root .. "/.venv") == 1 then
+            return "(.venv)"
+          end
+          return ""
+        end,
+        cond = function() return vim.bo.filetype == "python" end,
+        icon = "",
+        color = { fg = "#E5C07B" },
+      }
+
       -- configure lualine with modified theme
       lualine.setup({
         options = {
@@ -39,6 +60,7 @@ return {
             },
             { "encoding" },
             { "fileformat" },
+            python_venv,
             { "filetype" },
           },
         },
