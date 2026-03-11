@@ -159,6 +159,8 @@ return {
         model = "claude-sonnet-4-6",
       })
 
+      vim.keymap.set({ "n", "v" }, "<leader>cp", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
+
       -- 🌟 Keymaps for buffer-level commands
       -- Review buffer
       vim.keymap.set("n", "<leader>cr", function()
