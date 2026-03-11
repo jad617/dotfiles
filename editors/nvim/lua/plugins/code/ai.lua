@@ -156,7 +156,7 @@ return {
       local chat = require("CopilotChat")
 
       chat.setup({
-        -- optional UI configs here (float, split, etc.)
+        model = "claude-sonnet-4-6",
       })
 
       -- 🌟 Keymaps for buffer-level commands
