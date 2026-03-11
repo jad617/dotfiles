@@ -112,10 +112,9 @@ end
 local function notify_pyright(venv)
   vim.schedule(function()
     for _, client in ipairs(vim.lsp.get_clients({ name = "pyright" })) do
-      local python_path = venv .. "/bin/python"
       client.config.settings = vim.tbl_deep_extend("force", client.config.settings or {}, {
         python = {
-          pythonPath = python_path,
+          pythonPath = venv .. "/bin/python",
           venvPath = vim.fn.fnamemodify(venv, ":h"),
           venv = vim.fn.fnamemodify(venv, ":t"),
         },
@@ -124,6 +123,21 @@ local function notify_pyright(venv)
     end
   end)
 end
+
+-- LspAttach hook: runs after pyright has actually started on a buffer.
+-- Handles the common case where the .venv already exists when opening the file.
+vim.api.nvim_create_autocmd("LspAttach", {
+  group = vim.api.nvim_create_augroup("PythonPyrightVenv", { clear = true }),
+  callback = function(ev)
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+    if not client or client.name ~= "pyright" then return end
+    local root = find_root(ev.buf)
+    local venv = root .. "/.venv"
+    if vim.fn.isdirectory(venv) == 1 then
+      notify_pyright(venv)
+    end
+  end,
+})
 
 -- Guard: only run setup once per project root per session
 local _done = {}
