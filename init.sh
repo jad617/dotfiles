@@ -61,7 +61,8 @@ install_go() {
     local latest
     latest=$(curl -s "https://go.dev/dl/?mode=json" | jq -r '.[0].version')
 
-    if cmd_exists go && [[ "$(go version | awk '{print $3}')" == "$latest" ]]; then
+    local go_bin="/usr/local/go/bin/go"
+    if [[ -x "$go_bin" ]] && [[ "$($go_bin version | awk '{print $3}')" == "$latest" ]]; then
         echo "  go $latest already installed"
         return
     fi
