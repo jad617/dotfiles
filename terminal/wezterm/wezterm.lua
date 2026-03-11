@@ -55,11 +55,12 @@ config.tab_and_split_indices_are_zero_based = true
 local LEADER_ICON = utf8.char(0x1f7e2) -- green circle
 
 wezterm.on("update-right-status", function(window, _)
-	-- Right: workspace name + clock
+	-- Right: broadcast indicator + workspace name + clock
 	local name = wezterm.mux.get_active_workspace()
 	local time = wezterm.strftime("%H:%M:%S")
+	local bcast = wezterm.GLOBAL.broadcast and "📡 " or ""
 	window:set_right_status(wezterm.format({
-		{ Text = " 󱂬  " .. name .. " | " .. time .. " " },
+		{ Text = bcast .. " 󱂬  " .. name .. " | " .. time .. " " },
 	}))
 
 	-- Left: leader active indicator
@@ -72,7 +73,7 @@ wezterm.on("update-right-status", function(window, _)
 		SOLID_LEFT_ARROW = utf8.char(0xe0b2)
 	end
 
-	if window:active_tab():tab_id() ~= 0 then
+	if window:active_tab():tab_index() ~= 0 then
 		ARROW_FOREGROUND = { Foreground = { Color = "#1e2030" } } -- mantle
 	end
 
@@ -158,6 +159,93 @@ local function shift_arrow_or_focus(dir, keyname)
 			window:perform_action(action.ActivatePaneDirection(dir), pane)
 		end
 	end)
+end
+
+--------------------------------------------------------------------------------
+-- Broadcast mode: send all keystrokes to every pane in the current tab
+--------------------------------------------------------------------------------
+local function broadcast_send(text)
+	return wezterm.action_callback(function(window, _)
+		for _, p in ipairs(window:active_tab():panes()) do
+			window:perform_action(action.SendString(text), p)
+		end
+	end)
+end
+
+local function broadcast_ctrl(c)
+	return wezterm.action_callback(function(window, _)
+		for _, p in ipairs(window:active_tab():panes()) do
+			window:perform_action(action.SendKey({ key = c, mods = "CTRL" }), p)
+		end
+	end)
+end
+
+local broadcast_keys = {
+	{ key = "a", mods = "LEADER", action = wezterm.action_callback(function(window, pane)
+		wezterm.GLOBAL.broadcast = false
+		window:perform_action(action.PopKeyTable, pane)
+		window:toast_notification("Broadcast", "OFF", nil, 2000)
+	end) },
+	-- Special keys
+	{ key = "Enter",      mods = "NONE", action = broadcast_send("\r") },
+	{ key = "Backspace",  mods = "NONE", action = broadcast_send("\x7f") },
+	{ key = "Tab",        mods = "NONE", action = broadcast_send("\t") },
+	{ key = "Space",      mods = "NONE", action = broadcast_send(" ") },
+	{ key = "Escape",     mods = "NONE", action = broadcast_send("\x1b") },
+	{ key = "UpArrow",    mods = "NONE", action = broadcast_send("\x1b[A") },
+	{ key = "DownArrow",  mods = "NONE", action = broadcast_send("\x1b[B") },
+	{ key = "RightArrow", mods = "NONE", action = broadcast_send("\x1b[C") },
+	{ key = "LeftArrow",  mods = "NONE", action = broadcast_send("\x1b[D") },
+	-- Plain special chars
+	{ key = "-",  mods = "NONE", action = broadcast_send("-") },
+	{ key = "=",  mods = "NONE", action = broadcast_send("=") },
+	{ key = "[",  mods = "NONE", action = broadcast_send("[") },
+	{ key = "]",  mods = "NONE", action = broadcast_send("]") },
+	{ key = "\\", mods = "NONE", action = broadcast_send("\\") },
+	{ key = ";",  mods = "NONE", action = broadcast_send(";") },
+	{ key = "'",  mods = "NONE", action = broadcast_send("'") },
+	{ key = ",",  mods = "NONE", action = broadcast_send(",") },
+	{ key = ".",  mods = "NONE", action = broadcast_send(".") },
+	{ key = "/",  mods = "NONE", action = broadcast_send("/") },
+	{ key = "`",  mods = "NONE", action = broadcast_send("`") },
+	-- Shift+number row
+	{ key = "1", mods = "SHIFT", action = broadcast_send("!") },
+	{ key = "2", mods = "SHIFT", action = broadcast_send("@") },
+	{ key = "3", mods = "SHIFT", action = broadcast_send("#") },
+	{ key = "4", mods = "SHIFT", action = broadcast_send("$") },
+	{ key = "5", mods = "SHIFT", action = broadcast_send("%") },
+	{ key = "6", mods = "SHIFT", action = broadcast_send("^") },
+	{ key = "7", mods = "SHIFT", action = broadcast_send("&") },
+	{ key = "8", mods = "SHIFT", action = broadcast_send("*") },
+	{ key = "9", mods = "SHIFT", action = broadcast_send("(") },
+	{ key = "0", mods = "SHIFT", action = broadcast_send(")") },
+	-- Shift+special chars
+	{ key = "-",  mods = "SHIFT", action = broadcast_send("_") },
+	{ key = "=",  mods = "SHIFT", action = broadcast_send("+") },
+	{ key = "[",  mods = "SHIFT", action = broadcast_send("{") },
+	{ key = "]",  mods = "SHIFT", action = broadcast_send("}") },
+	{ key = "\\", mods = "SHIFT", action = broadcast_send("|") },
+	{ key = ";",  mods = "SHIFT", action = broadcast_send(":") },
+	{ key = "'",  mods = "SHIFT", action = broadcast_send('"') },
+	{ key = ",",  mods = "SHIFT", action = broadcast_send("<") },
+	{ key = ".",  mods = "SHIFT", action = broadcast_send(">") },
+	{ key = "/",  mods = "SHIFT", action = broadcast_send("?") },
+	{ key = "`",  mods = "SHIFT", action = broadcast_send("~") },
+}
+-- Letters a-z (lower and upper)
+for b = string.byte("a"), string.byte("z") do
+	local c = string.char(b)
+	table.insert(broadcast_keys, { key = c, mods = "NONE",  action = broadcast_send(c) })
+	table.insert(broadcast_keys, { key = c, mods = "SHIFT", action = broadcast_send(c:upper()) })
+end
+-- Digits 0-9
+for b = string.byte("0"), string.byte("9") do
+	table.insert(broadcast_keys, { key = string.char(b), mods = "NONE", action = broadcast_send(string.char(b)) })
+end
+-- Ctrl+a-z
+for b = string.byte("a"), string.byte("z") do
+	local c = string.char(b)
+	table.insert(broadcast_keys, { key = c, mods = "CTRL", action = broadcast_ctrl(c) })
 end
 
 --------------------------------------------------------------------------------
@@ -252,18 +340,24 @@ config.keys = {
 	{ key = "-", mods = "ALT", action = alt_or_resize("-", action.AdjustPaneSize({ "Left", 5 })) },
 	{ key = "=", mods = "ALT", action = alt_or_resize("=", action.AdjustPaneSize({ "Right", 4 })) },
 
-	-- Zoom & swap
+	-- Zoom & swap & rotate
 	{ key = "z", mods = "LEADER", action = action.TogglePaneZoomState },
 	{ key = "s", mods = "LEADER", action = action.PaneSelect({ mode = "SwapWithActive" }) },
+	{ key = "m", mods = "LEADER", action = action.RotatePanes("Clockwise") },
+	{ key = "M", mods = "LEADER", action = action.RotatePanes("CounterClockwise") },
 
-	-- Search
+	-- Broadcast mode toggle (LEADER+a)
 	{
-		key = "f",
+		key = "a",
 		mods = "LEADER",
-		action = action.Multiple({
-			action.CopyMode("ClearPattern"),
-			action.Search({ CaseSensitiveString = "" }),
-		}),
+		action = wezterm.action_callback(function(window, pane)
+			wezterm.GLOBAL.broadcast = true
+			window:perform_action(
+				action.ActivateKeyTable({ name = "broadcast_mode", one_shot = false }),
+				pane
+			)
+			window:toast_notification("Broadcast", "ON", nil, 2000)
+		end),
 	},
 
 	-- <leader>w → create & switch to a new workspace
@@ -300,9 +394,8 @@ config.keys = {
 --------------------------------------------------------------------------------
 -- Copy mode (vim-like scroll + search)
 --------------------------------------------------------------------------------
-
--- Copy mode (vim-like navigation + search)
 config.key_tables = {
+	broadcast_mode = broadcast_keys,
 	copy_mode = {
 		-- Movement
 		{ key = "h",          mods = "NONE",  action = action.CopyMode("MoveLeft") },
