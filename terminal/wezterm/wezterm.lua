@@ -224,8 +224,10 @@ config.keys = {
 	},
 
 	-- Splits: h = right (side by side), v = down (top/bottom)
+	{ key = "h", mods = "LEADER", action = action.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
 	{ key = "j", mods = "LEADER", action = action.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
 	{ key = "v", mods = "LEADER", action = action.SplitPane({ direction = "Down", size = { Percent = 50 } }) },
+	{ key = "b", mods = "LEADER", action = action.SplitPane({ direction = "Down", size = { Percent = 50 } }) },
 
 	-- Navigate panes (Shift + Arrows) but pass to vim when in vim
 	{ key = "LeftArrow", mods = "SHIFT", action = shift_arrow_or_focus("Left", "LeftArrow") },
