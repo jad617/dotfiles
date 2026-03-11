@@ -213,7 +213,7 @@ install_linux() {
     fi
 
     # Nerd Font — MesloLGS NF
-    if ! fc-list | grep -qi "MesloLGS"; then
+    if [[ ! -d "$HOME/.local/share/fonts/MesloLGS" ]]; then
         echo "==> Installing MesloLGS NF font"
         FONT_DIR="$HOME/.local/share/fonts/MesloLGS"
         mkdir -p "$FONT_DIR"
@@ -265,11 +265,13 @@ install_devops_linux() {
     echo "==> Installing Linux DevOps tools"
 
     # Neovim nightly (macOS: brew --HEAD neovim)
-    echo "==> Installing Neovim nightly"
-    curl -LO --output-dir /tmp https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz
-    sudo tar -xzf /tmp/nvim-linux-x86_64.tar.gz -C /opt/
-    sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
-    rm /tmp/nvim-linux-x86_64.tar.gz
+    if ! cmd_exists nvim; then
+        echo "==> Installing Neovim nightly"
+        curl -LO --output-dir /tmp https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz
+        sudo tar -xzf /tmp/nvim-linux-x86_64.tar.gz -C /opt/
+        sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
+        rm /tmp/nvim-linux-x86_64.tar.gz
+    fi
 
     # AWS CLI
     if ! cmd_exists aws; then
