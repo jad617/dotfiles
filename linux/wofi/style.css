@@ -1,5 +1,5 @@
 window {
-    border: 3px solid #ff8c00;
+    border: 3px solid #ff8050;
     border-radius: 8px;
 }
 
@@ -10,9 +10,17 @@ window {
 #entry {
     padding: 6px 10px;
     border-radius: 4px;
+    color: #99bc80;
+    font-weight: bold;
 }
 
-#entry:selected {
-    background-color: #ff8c00;
-    color: #000000;
+#entry:selected,
+#entry:selected * {
+    background-color: #ff8050;
+    color: #1a1a1a;
+    font-weight: bold;
+}
+
+#input {
+    font-weight: bold;
 }
