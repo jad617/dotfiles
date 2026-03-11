@@ -93,6 +93,25 @@ vim.api.nvim_create_autocmd("FileType", {
 })
 
 ------------------------------------------------------------
+-- Terminal: copy on select, easy exit from insert mode
+------------------------------------------------------------
+vim.api.nvim_create_augroup("terminal_settings", { clear = true })
+vim.api.nvim_create_autocmd("TermOpen", {
+  group = "terminal_settings",
+  callback = function(ev)
+    local buf = ev.buf
+
+    -- Large scroll buffer
+    vim.opt_local.scrollback = 100000
+
+    -- Scroll up/down while staying in terminal insert mode
+    -- <C-\><C-o> executes one normal-mode command then returns to terminal insert mode
+    vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
+    vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
+  end,
+})
+
+------------------------------------------------------------
 -- highlight on yank
 ------------------------------------------------------------
 vim.cmd([[
