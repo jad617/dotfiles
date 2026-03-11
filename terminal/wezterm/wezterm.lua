@@ -55,11 +55,12 @@ config.tab_and_split_indices_are_zero_based = true
 local LEADER_ICON = utf8.char(0x1f7e2) -- green circle
 
 wezterm.on("update-right-status", function(window, _)
-	-- Right: workspace name + clock
+	-- Right: broadcast indicator + workspace name + clock
 	local name = wezterm.mux.get_active_workspace()
 	local time = wezterm.strftime("%H:%M:%S")
+	local bcast = wezterm.GLOBAL.broadcast and "📡 " or ""
 	window:set_right_status(wezterm.format({
-		{ Text = " 󱂬  " .. name .. " | " .. time .. " " },
+		{ Text = bcast .. " 󱂬  " .. name .. " | " .. time .. " " },
 	}))
 
 	-- Left: leader active indicator
@@ -72,7 +73,7 @@ wezterm.on("update-right-status", function(window, _)
 		SOLID_LEFT_ARROW = utf8.char(0xe0b2)
 	end
 
-	if window:active_tab():tab_id() ~= 0 then
+	if window:active_tab():tab_index() ~= 0 then
 		ARROW_FOREGROUND = { Foreground = { Color = "#1e2030" } } -- mantle
 	end
 
@@ -161,6 +162,93 @@ local function shift_arrow_or_focus(dir, keyname)
 end
 
 --------------------------------------------------------------------------------
+-- Broadcast mode: send all keystrokes to every pane in the current tab
+--------------------------------------------------------------------------------
+local function broadcast_send(text)
+	return wezterm.action_callback(function(window, _)
+		for _, p in ipairs(window:active_tab():panes()) do
+			window:perform_action(action.SendString(text), p)
+		end
+	end)
+end
+
+local function broadcast_ctrl(c)
+	return wezterm.action_callback(function(window, _)
+		for _, p in ipairs(window:active_tab():panes()) do
+			window:perform_action(action.SendKey({ key = c, mods = "CTRL" }), p)
+		end
+	end)
+end
+
+local broadcast_keys = {
+	{ key = "a", mods = "LEADER", action = wezterm.action_callback(function(window, pane)
+		wezterm.GLOBAL.broadcast = false
+		window:perform_action(action.PopKeyTable, pane)
+		window:toast_notification("Broadcast", "OFF", nil, 2000)
+	end) },
+	-- Special keys
+	{ key = "Enter",      mods = "NONE", action = broadcast_send("\r") },
+	{ key = "Backspace",  mods = "NONE", action = broadcast_send("\x7f") },
+	{ key = "Tab",        mods = "NONE", action = broadcast_send("\t") },
+	{ key = "Space",      mods = "NONE", action = broadcast_send(" ") },
+	{ key = "Escape",     mods = "NONE", action = broadcast_send("\x1b") },
+	{ key = "UpArrow",    mods = "NONE", action = broadcast_send("\x1b[A") },
+	{ key = "DownArrow",  mods = "NONE", action = broadcast_send("\x1b[B") },
+	{ key = "RightArrow", mods = "NONE", action = broadcast_send("\x1b[C") },
+	{ key = "LeftArrow",  mods = "NONE", action = broadcast_send("\x1b[D") },
+	-- Plain special chars
+	{ key = "-",  mods = "NONE", action = broadcast_send("-") },
+	{ key = "=",  mods = "NONE", action = broadcast_send("=") },
+	{ key = "[",  mods = "NONE", action = broadcast_send("[") },
+	{ key = "]",  mods = "NONE", action = broadcast_send("]") },
+	{ key = "\\", mods = "NONE", action = broadcast_send("\\") },
+	{ key = ";",  mods = "NONE", action = broadcast_send(";") },
+	{ key = "'",  mods = "NONE", action = broadcast_send("'") },
+	{ key = ",",  mods = "NONE", action = broadcast_send(",") },
+	{ key = ".",  mods = "NONE", action = broadcast_send(".") },
+	{ key = "/",  mods = "NONE", action = broadcast_send("/") },
+	{ key = "`",  mods = "NONE", action = broadcast_send("`") },
+	-- Shift+number row
+	{ key = "1", mods = "SHIFT", action = broadcast_send("!") },
+	{ key = "2", mods = "SHIFT", action = broadcast_send("@") },
+	{ key = "3", mods = "SHIFT", action = broadcast_send("#") },
+	{ key = "4", mods = "SHIFT", action = broadcast_send("$") },
+	{ key = "5", mods = "SHIFT", action = broadcast_send("%") },
+	{ key = "6", mods = "SHIFT", action = broadcast_send("^") },
+	{ key = "7", mods = "SHIFT", action = broadcast_send("&") },
+	{ key = "8", mods = "SHIFT", action = broadcast_send("*") },
+	{ key = "9", mods = "SHIFT", action = broadcast_send("(") },
+	{ key = "0", mods = "SHIFT", action = broadcast_send(")") },
+	-- Shift+special chars
+	{ key = "-",  mods = "SHIFT", action = broadcast_send("_") },
+	{ key = "=",  mods = "SHIFT", action = broadcast_send("+") },
+	{ key = "[",  mods = "SHIFT", action = broadcast_send("{") },
+	{ key = "]",  mods = "SHIFT", action = broadcast_send("}") },
+	{ key = "\\", mods = "SHIFT", action = broadcast_send("|") },
+	{ key = ";",  mods = "SHIFT", action = broadcast_send(":") },
+	{ key = "'",  mods = "SHIFT", action = broadcast_send('"') },
+	{ key = ",",  mods = "SHIFT", action = broadcast_send("<") },
+	{ key = ".",  mods = "SHIFT", action = broadcast_send(">") },
+	{ key = "/",  mods = "SHIFT", action = broadcast_send("?") },
+	{ key = "`",  mods = "SHIFT", action = broadcast_send("~") },
+}
+-- Letters a-z (lower and upper)
+for b = string.byte("a"), string.byte("z") do
+	local c = string.char(b)
+	table.insert(broadcast_keys, { key = c, mods = "NONE",  action = broadcast_send(c) })
+	table.insert(broadcast_keys, { key = c, mods = "SHIFT", action = broadcast_send(c:upper()) })
+end
+-- Digits 0-9
+for b = string.byte("0"), string.byte("9") do
+	table.insert(broadcast_keys, { key = string.char(b), mods = "NONE", action = broadcast_send(string.char(b)) })
+end
+-- Ctrl+a-z
+for b = string.byte("a"), string.byte("z") do
+	local c = string.char(b)
+	table.insert(broadcast_keys, { key = c, mods = "CTRL", action = broadcast_ctrl(c) })
+end
+
+--------------------------------------------------------------------------------
 -- Keys
 --------------------------------------------------------------------------------
 config.keys = {
@@ -182,19 +270,30 @@ config.keys = {
 		end),
 	},
 
-	-- Rename tab (minimal prompt at bottom)
+	-- Rename tab (pre-filled with current name)
 	{
 		key = ",",
 		mods = "LEADER",
-		action = action.PromptInputLine({
-			description = "",
-			action = wezterm.action_callback(function(window, _, line)
-				if line then
-					window:active_tab():set_title(line)
-				end
-			end),
-		}),
+		action = wezterm.action_callback(function(window, pane)
+			local current = window:active_tab():get_title()
+			window:perform_action(
+				action.PromptInputLine({
+					description = "",
+					initial_value = current,
+					action = wezterm.action_callback(function(win, _, line)
+						if line then
+							win:active_tab():set_title(line)
+						end
+					end),
+				}),
+				pane
+			)
+		end),
 	},
+
+	-- Shift+Backspace / Shift+Space behave as plain Backspace / Space (useful in prompts)
+	{ key = "Backspace", mods = "SHIFT", action = action.SendKey({ key = "Backspace", mods = "NONE" }) },
+	{ key = "phys:Space", mods = "SHIFT", action = action.SendKey({ key = "Space", mods = "NONE" }) },
 
 	-- Move tab to index (0-based); create missing tabs up to that index
 	{
@@ -241,18 +340,24 @@ config.keys = {
 	{ key = "-", mods = "ALT", action = alt_or_resize("-", action.AdjustPaneSize({ "Left", 5 })) },
 	{ key = "=", mods = "ALT", action = alt_or_resize("=", action.AdjustPaneSize({ "Right", 4 })) },
 
-	-- Zoom & swap
+	-- Zoom & swap & rotate
 	{ key = "z", mods = "LEADER", action = action.TogglePaneZoomState },
 	{ key = "s", mods = "LEADER", action = action.PaneSelect({ mode = "SwapWithActive" }) },
+	{ key = "m", mods = "LEADER", action = action.RotatePanes("Clockwise") },
+	{ key = "M", mods = "LEADER", action = action.RotatePanes("CounterClockwise") },
 
-	-- Search
+	-- Broadcast mode toggle (LEADER+a)
 	{
-		key = "f",
+		key = "a",
 		mods = "LEADER",
-		action = action.Multiple({
-			action.CopyMode("ClearPattern"),
-			action.Search({ CaseSensitiveString = "" }),
-		}),
+		action = wezterm.action_callback(function(window, pane)
+			wezterm.GLOBAL.broadcast = true
+			window:perform_action(
+				action.ActivateKeyTable({ name = "broadcast_mode", one_shot = false }),
+				pane
+			)
+			window:toast_notification("Broadcast", "ON", nil, 2000)
+		end),
 	},
 
 	-- <leader>w → create & switch to a new workspace
@@ -283,6 +388,88 @@ config.keys = {
 			action.SendKey({ key = "a", mods = "CTRL" }),
 			action.SendKey({ key = "d" }),
 		}),
+	},
+}
+
+--------------------------------------------------------------------------------
+-- Copy mode (vim-like scroll + search)
+--------------------------------------------------------------------------------
+config.key_tables = {
+	broadcast_mode = broadcast_keys,
+	copy_mode = {
+		-- Movement
+		{ key = "h",          mods = "NONE",  action = action.CopyMode("MoveLeft") },
+		{ key = "j",          mods = "NONE",  action = action.CopyMode("MoveDown") },
+		{ key = "k",          mods = "NONE",  action = action.CopyMode("MoveUp") },
+		{ key = "l",          mods = "NONE",  action = action.CopyMode("MoveRight") },
+		{ key = "w",          mods = "NONE",  action = action.CopyMode("MoveForwardWord") },
+		{ key = "b",          mods = "NONE",  action = action.CopyMode("MoveBackwardWord") },
+		{ key = "0",          mods = "NONE",  action = action.CopyMode("MoveToStartOfLine") },
+		{ key = "$",          mods = "SHIFT", action = action.CopyMode("MoveToEndOfLineContent") },
+		{ key = "g",          mods = "NONE",  action = action.CopyMode("MoveToScrollbackTop") },
+		{ key = "G",          mods = "SHIFT", action = action.CopyMode("MoveToScrollbackBottom") },
+		{ key = "u",          mods = "CTRL",  action = action.CopyMode({ MoveByPage = -0.5 }) },
+		{ key = "d",          mods = "CTRL",  action = action.CopyMode({ MoveByPage = 0.5 }) },
+		{ key = "UpArrow",    mods = "NONE",  action = action.CopyMode("MoveUp") },
+		{ key = "DownArrow",  mods = "NONE",  action = action.CopyMode("MoveDown") },
+		{ key = "LeftArrow",  mods = "NONE",  action = action.CopyMode("MoveLeft") },
+		{ key = "RightArrow", mods = "NONE",  action = action.CopyMode("MoveRight") },
+		{ key = "PageUp",     mods = "NONE",  action = action.CopyMode({ MoveByPage = -1 }) },
+		{ key = "PageDown",   mods = "NONE",  action = action.CopyMode({ MoveByPage = 1 }) },
+		-- Search
+		{ key = "/",  mods = "NONE",  action = action.Multiple({
+			action.Search({ CaseSensitiveString = "" }),
+			action.CopyMode("CycleMatchType"), -- cycle CaseSensitive → CaseInsensitive
+		}) },
+		{ key = "n",  mods = "NONE",  action = action.CopyMode("NextMatch") },
+		{ key = "N",  mods = "SHIFT", action = action.CopyMode("PriorMatch") },
+		-- Selection
+		{ key = "v",  mods = "NONE",  action = action.CopyMode({ SetSelectionMode = "Cell" }) },
+		{ key = "V",  mods = "SHIFT", action = action.CopyMode({ SetSelectionMode = "Line" }) },
+		-- Copy and exit
+		{ key = "y",     mods = "NONE", action = action.Multiple({
+			action.CopyTo("ClipboardAndPrimarySelection"),
+			action.CopyMode("Close"),
+		}) },
+		{ key = "Enter", mods = "NONE", action = action.Multiple({
+			action.CopyTo("ClipboardAndPrimarySelection"),
+			action.CopyMode("Close"),
+		}) },
+		-- Exit
+		{ key = "q",      mods = "NONE", action = action.CopyMode("Close") },
+		{ key = "Escape", mods = "NONE", action = action.CopyMode("Close") },
+	},
+	search_mode = {
+		{ key = "Escape",    mods = "NONE", action = action.CopyMode("Close") },
+		{ key = "Enter",     mods = "NONE", action = action.ActivateCopyMode },
+		{ key = "/",         mods = "NONE", action = action.CopyMode("ClearPattern") },
+		{ key = "UpArrow",   mods = "NONE", action = action.CopyMode("PriorMatch") },
+		{ key = "DownArrow", mods = "NONE", action = action.CopyMode("NextMatch") },
+		{ key = "n",         mods = "CTRL", action = action.CopyMode("NextMatch") },
+		{ key = "p",         mods = "CTRL", action = action.CopyMode("PriorMatch") },
+	},
+}
+
+-- Mouse scroll: enter copy mode on wheel up (pass through when inside vim)
+config.mouse_bindings = {
+	{
+		event = { Down = { streak = 1, button = { WheelUp = 1 } } },
+		mods = "NONE",
+		action = wezterm.action_callback(function(window, pane)
+			if is_vim(pane) then
+				window:perform_action(action.ScrollByCurrentEventWheelDelta, pane)
+			else
+				window:perform_action(action.ScrollByCurrentEventWheelDelta, pane)
+				window:perform_action(action.ActivateCopyMode, pane)
+			end
+		end),
+	},
+	{
+		event = { Down = { streak = 1, button = { WheelDown = 1 } } },
+		mods = "NONE",
+		action = wezterm.action_callback(function(window, pane)
+			window:perform_action(action.ScrollByCurrentEventWheelDelta, pane)
+		end),
 	},
 }
 
