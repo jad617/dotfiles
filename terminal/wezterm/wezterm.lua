@@ -169,6 +169,18 @@ end
 -- Keys
 --------------------------------------------------------------------------------
 config.keys = {
+	-- Paste via Ctrl+V (for Alt+V → wtype Ctrl+V flow), strip trailing newlines
+	{
+		key = "v",
+		mods = "CTRL",
+		action = wezterm.action_callback(function(window, pane)
+			local success, stdout = wezterm.run_child_process({ "wl-paste", "--no-newline" })
+			if success then
+				window:perform_action(action.SendString(stdout), pane)
+			end
+		end),
+	},
+
 	-- Reload config
 	{ key = "0", mods = "LEADER", action = action.ReloadConfiguration },
 

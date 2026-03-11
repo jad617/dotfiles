@@ -1,0 +1,18 @@
+window {
+    border: 3px solid #ff8c00;
+    border-radius: 8px;
+}
+
+#outer-box {
+    padding: 4px;
+}
+
+#entry {
+    padding: 6px 10px;
+    border-radius: 4px;
+}
+
+#entry:selected {
+    background-color: #ff8c00;
+    color: #000000;
+}
