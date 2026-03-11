@@ -6,7 +6,7 @@
         ],
         key: "h",
         description: Some("clipboard-picker"),
-    ): Spawn("/home/jelasmar/bin/clipboard-picker"),
+    ): Spawn("sh -c '$HOME/bin/clipboard-picker'"),
     (
         modifiers: [
             Super,

@@ -90,7 +90,7 @@
   "Bound Hosts" : [
 
   ],
-  "Working Directory" : "\/Users\/jelasmar",
+  "Working Directory" : "~",
   "Blinking Cursor" : false,
   "Use Tab Color" : false,
   "Sync Title" : false,
@@ -495,7 +495,7 @@
     "Alpha Component" : 1,
     "Green Component" : 0.86199951171875
   },
-  "Working Directory" : "\/Users\/jelasmar",
+  "Working Directory" : "~",
   "Use Tab Color" : false,
   "Blinking Cursor" : false,
   "Disable Window Resizing" : true,
