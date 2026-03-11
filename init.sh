@@ -387,7 +387,6 @@ create_common_symlinks() {
 create_macos_symlinks() {
     echo "==> Creating macOS symlinks"
     symlink "$DOTFILES/shell/zsh/zshrc"               "$HOME/.zshrc"
-    symlink "$DOTFILES/shell/zsh/p10k.zsh"            "$HOME/.p10k.zsh"
     symlink "$DOTFILES/terminal/tmux/macos_tmux.conf" "$HOME/.tmux.conf"
 
     # Caps Lock → letter 'a' via hidutil (persisted through launchd)
@@ -410,10 +409,21 @@ create_linux_symlinks() {
     symlink "$DOTFILES/linux/wofi/style.css"                                                     "$HOME/.config/wofi/style.css"
     symlink "$DOTFILES/linux/autostart/cliphist-daemon.desktop"                                  "$HOME/.config/autostart/cliphist-daemon.desktop"
     symlink "$DOTFILES/linux/bin/clipboard-picker"                                               "$HOME/bin/clipboard-picker"
+    chmod +x "$DOTFILES/linux/bin/clipboard-picker"
 
     # COSMIC shortcuts — create the dir in case it doesn't exist on a fresh install
     mkdir -p "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1"
     symlink "$DOTFILES/linux/cosmic/shortcuts/custom"                                            "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
+
+    # Start cliphist daemon for the current session (autostart handles future logins)
+    if command -v wl-paste >/dev/null 2>&1 && [[ -x "$HOME/go/bin/cliphist" ]]; then
+        if ! pgrep -f "wl-paste --watch" >/dev/null 2>&1; then
+            nohup wl-paste --watch "$HOME/go/bin/cliphist" store &>/dev/null &
+            echo "  cliphist daemon started"
+        else
+            echo "  cliphist daemon already running"
+        fi
+    fi
 }
 
 # =============================================================================
