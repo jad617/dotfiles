@@ -2,7 +2,7 @@
 Type=Application
 Name=cliphist daemon
 Comment=Clipboard history daemon
-Exec=/bin/bash -c "wl-paste --watch /home/jelasmar/go/bin/cliphist store"
+Exec=/bin/bash -c "wl-paste --watch $HOME/go/bin/cliphist store"
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
