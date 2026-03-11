@@ -10,7 +10,6 @@ local config = {}
 -- Global Config
 --------------------------------------------------------------------------------
 config.enable_kitty_graphics = true
-config.enable_wayland = true
 
 wezterm.on("gui-startup", function(cmd)
 	local tab, pane, window = mux.spawn_window(cmd or {})
@@ -33,6 +32,7 @@ if wezterm.target_triple:find("darwin") then
 elseif wezterm.target_triple:find("linux") then
 	-- Linux
 	config.font_size = 11
+	config.enable_wayland = true
 else
 	-- Default fallback
 	config.font_size = 12
@@ -48,16 +48,38 @@ config.tab_bar_at_bottom = true
 config.use_fancy_tab_bar = false
 config.tab_and_split_indices_are_zero_based = true
 
--- Workspaces
--- Show current workspace name on right side of status bar
-wezterm.on("update-right-status", function(window, pane)
+--------------------------------------------------------------------------------
+-- Status bar — workspace name + time (right) + leader indicator (left)
+-- Single handler: WezTerm only fires the last registered update-right-status
+--------------------------------------------------------------------------------
+local LEADER_ICON = utf8.char(0x1f7e2) -- green circle
+
+wezterm.on("update-right-status", function(window, _)
+	-- Right: workspace name + clock
 	local name = wezterm.mux.get_active_workspace()
-
-	-- Get current time
 	local time = wezterm.strftime("%H:%M:%S")
-
 	window:set_right_status(wezterm.format({
 		{ Text = " 󱂬  " .. name .. " | " .. time .. " " },
+	}))
+
+	-- Left: leader active indicator
+	local SOLID_LEFT_ARROW = ""
+	local ARROW_FOREGROUND = { Foreground = { Color = "#c6a0f6" } } -- mauve
+	local prefix = ""
+
+	if window:leader_is_active() then
+		prefix = " " .. LEADER_ICON .. " "
+		SOLID_LEFT_ARROW = utf8.char(0xe0b2)
+	end
+
+	if window:active_tab():tab_id() ~= 0 then
+		ARROW_FOREGROUND = { Foreground = { Color = "#1e2030" } } -- mantle
+	end
+
+	window:set_left_status(wezterm.format({
+		{ Text = prefix },
+		ARROW_FOREGROUND,
+		{ Text = SOLID_LEFT_ARROW },
 	}))
 end)
 
@@ -83,33 +105,6 @@ config.inactive_pane_hsb = {
 -- Leader key (Ctrl+a, tmux-style)
 --------------------------------------------------------------------------------
 config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
-
---------------------------------------------------------------------------------
--- Tiny status: show when leader is held (no extra badges)
---------------------------------------------------------------------------------
--- Choose the emoji you want here:
-local LEADER_ICON = utf8.char(0x1f7e2) -- green circle
-
-wezterm.on("update-right-status", function(window, _)
-	local SOLID_LEFT_ARROW = ""
-	local ARROW_FOREGROUND = { Foreground = { Color = "#c6a0f6" } } -- mauve
-	local prefix = ""
-
-	if window:leader_is_active() then
-		prefix = " " .. LEADER_ICON .. " "
-		SOLID_LEFT_ARROW = utf8.char(0xe0b2)
-	end
-
-	if window:active_tab():tab_id() ~= 0 then
-		ARROW_FOREGROUND = { Foreground = { Color = "#1e2030" } } -- mantle
-	end
-
-	window:set_left_status(wezterm.format({
-		{ Text = prefix }, -- no background override, inherits bar color
-		ARROW_FOREGROUND,
-		{ Text = SOLID_LEFT_ARROW },
-	}))
-end)
 
 --------------------------------------------------------------------------------
 -- Tab naming: show only current app, but allow renaming
@@ -169,23 +164,6 @@ end
 -- Keys
 --------------------------------------------------------------------------------
 config.keys = {
-	-- Paste via Ctrl+V (for Alt+V → wtype Ctrl+V flow), strip trailing newlines
-	-- Pass through to vim (visual block mode) when vim is in the foreground
-	{
-		key = "v",
-		mods = "CTRL",
-		action = wezterm.action_callback(function(window, pane)
-			if is_vim(pane) then
-				window:perform_action(action.SendKey({ key = "v", mods = "CTRL" }), pane)
-			else
-				local success, stdout = wezterm.run_child_process({ "wl-paste", "--no-newline" })
-				if success then
-					window:perform_action(action.SendString(stdout), pane)
-				end
-			end
-		end),
-	},
-
 	-- Reload config
 	{ key = "0", mods = "LEADER", action = action.ReloadConfiguration },
 
@@ -245,24 +223,15 @@ config.keys = {
 		}),
 	},
 
-	-- Normal splits (active pane)
+	-- Splits: h = right (side by side), v = down (top/bottom)
 	{ key = "j", mods = "LEADER", action = action.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
-	{ key = "h", mods = "LEADER", action = action.SplitPane({ direction = "Right", size = { Percent = 50 } }) },
-
 	{ key = "v", mods = "LEADER", action = action.SplitPane({ direction = "Down", size = { Percent = 50 } }) },
-	{ key = "b", mods = "LEADER", action = action.SplitPane({ direction = "Down", size = { Percent = 50 } }) },
 
 	-- Navigate panes (Shift + Arrows) but pass to vim when in vim
 	{ key = "LeftArrow", mods = "SHIFT", action = shift_arrow_or_focus("Left", "LeftArrow") },
 	{ key = "RightArrow", mods = "SHIFT", action = shift_arrow_or_focus("Right", "RightArrow") },
 	{ key = "UpArrow", mods = "SHIFT", action = shift_arrow_or_focus("Up", "UpArrow") },
 	{ key = "DownArrow", mods = "SHIFT", action = shift_arrow_or_focus("Down", "DownArrow") },
-
-	-- Swap panes (Ctrl+Shift+Arrow) via quick selector
-	{ key = "LeftArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
-	{ key = "RightArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
-	{ key = "UpArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
-	{ key = "DownArrow", mods = "CTRL|SHIFT", action = action.PaneSelect({ mode = "SwapWithActive" }) },
 
 	-- Resize panes (vim-aware)
 	{ key = ",", mods = "ALT", action = alt_or_resize(",", action.AdjustPaneSize({ "Up", 4 })) },
@@ -274,16 +243,17 @@ config.keys = {
 	{ key = "z", mods = "LEADER", action = action.TogglePaneZoomState },
 	{ key = "s", mods = "LEADER", action = action.PaneSelect({ mode = "SwapWithActive" }) },
 
-	-- Search: Alt+f or LEADER+f to open search
+	-- Search
 	{
 		key = "f",
 		mods = "LEADER",
 		action = action.Multiple({
-			action.CopyMode("ClearPattern"), -- wipe saved search
-			action.Search({ CaseSensitiveString = "" }), -- open empty
+			action.CopyMode("ClearPattern"),
+			action.Search({ CaseSensitiveString = "" }),
 		}),
 	},
-	-- <leader> w → create & switch to a new workspace
+
+	-- <leader>w → create & switch to a new workspace
 	{
 		key = "w",
 		mods = "LEADER",
@@ -303,7 +273,7 @@ config.keys = {
 	-- Alt+w → open built-in workspace switcher (interactive)
 	{ key = "w", mods = "ALT", action = action.ShowLauncherArgs({ flags = "WORKSPACES" }) },
 
-	-- Let LEADER+d behave like screen's Ctrl+a d (detach)
+	-- LEADER+d → detach (tmux-style Ctrl+a d)
 	{
 		key = "d",
 		mods = "LEADER",
@@ -313,5 +283,24 @@ config.keys = {
 		}),
 	},
 }
+
+-- Ctrl+V on Linux: paste via wl-paste, pass through to vim for visual block mode
+-- macOS uses WezTerm's default paste behavior
+if wezterm.target_triple:find("linux") then
+	table.insert(config.keys, {
+		key = "v",
+		mods = "CTRL",
+		action = wezterm.action_callback(function(window, pane)
+			if is_vim(pane) then
+				window:perform_action(action.SendKey({ key = "v", mods = "CTRL" }), pane)
+			else
+				local success, stdout = wezterm.run_child_process({ "wl-paste", "--no-newline" })
+				if success then
+					window:perform_action(action.SendString(stdout), pane)
+				end
+			end
+		end),
+	})
+end
 
 return config
