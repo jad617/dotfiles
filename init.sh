@@ -50,6 +50,33 @@ clone_if_missing() {
 cmd_exists() { command -v "$1" &>/dev/null; }
 
 # -----------------------------------------------------------------------------
+# Go — official installer (same on both OS)
+# -----------------------------------------------------------------------------
+install_go() {
+    local arch
+    if [[ "$(uname -m)" == "arm64" ]]; then arch="arm64"; else arch="amd64"; fi
+    local goos
+    if [[ "$OS" == "macos" ]]; then goos="darwin"; else goos="linux"; fi
+
+    local latest
+    latest=$(curl -s "https://go.dev/dl/?mode=json" | jq -r '.[0].version')
+
+    if cmd_exists go && [[ "$(go version | awk '{print $3}')" == "$latest" ]]; then
+        echo "  go $latest already installed"
+        return
+    fi
+
+    echo "==> Installing Go $latest"
+    local archive="${latest}.${goos}-${arch}.tar.gz"
+    curl -fsSL "https://go.dev/dl/${archive}" -o "/tmp/${archive}"
+    sudo rm -rf /usr/local/go
+    sudo tar -C /usr/local -xzf "/tmp/${archive}"
+    rm "/tmp/${archive}"
+    export PATH="/usr/local/go/bin:$PATH"
+    echo "  go $(go version)"
+}
+
+# -----------------------------------------------------------------------------
 # Clone dotfiles
 # -----------------------------------------------------------------------------
 mkdir -p ~/nodestack
@@ -78,7 +105,6 @@ install_macos() {
         watch \
         pyenv \
         pyenv-virtualenv \
-        go \
         eza \
         zoxide \
         oh-my-posh \
@@ -96,6 +122,8 @@ install_macos() {
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
     fi
     clone_if_missing "https://github.com/romkatv/powerlevel10k.git" "$HOME/powerlevel10k"
+
+    install_go
 
     # Nerd Font
     brew install --cask font-meslo-lg-nerd-font
@@ -122,7 +150,6 @@ install_linux() {
         ripgrep \
         tmux \
         watch \
-        golang \
         wl-clipboard \
         wofi \
         wtype \
@@ -185,9 +212,10 @@ install_linux() {
         rm -rf /tmp/tv /tmp/tv.tar.gz
     fi
 
+    install_go
+
     # cliphist — needs Go in PATH first (macOS: uses Maccy instead)
     if ! cmd_exists cliphist; then
-        export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
         go install go.senan.xyz/cliphist@latest
     fi
 
