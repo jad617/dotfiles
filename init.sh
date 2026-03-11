@@ -412,9 +412,10 @@ create_linux_symlinks() {
     symlink "$DOTFILES/linux/bin/clipboard-picker"                                               "$HOME/bin/clipboard-picker"
     chmod +x "$DOTFILES/linux/bin/clipboard-picker"
 
-    # COSMIC shortcuts — create the dir in case it doesn't exist on a fresh install
+    # COSMIC shortcuts — generate file with real home path substituted
     mkdir -p "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1"
-    symlink "$DOTFILES/linux/cosmic/shortcuts/custom"                                            "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
+    sed "s|/home/YOUR_USERNAME|$HOME|g" "$DOTFILES/linux/cosmic/shortcuts/custom" \
+        > "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
 
     # Start cliphist daemon for the current session (autostart handles future logins)
     if command -v wl-paste >/dev/null 2>&1 && [[ -x "$HOME/go/bin/cliphist" ]]; then
