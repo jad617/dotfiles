@@ -10,7 +10,6 @@ local config = {}
 -- Global Config
 --------------------------------------------------------------------------------
 config.enable_kitty_graphics = true
-config.enable_kitty_keyboard = true
 
 wezterm.on("gui-startup", function(cmd)
 	local tab, pane, window = mux.spawn_window(cmd or {})
