@@ -257,7 +257,7 @@ create_common_symlinks() {
 # =============================================================================
 create_macos_symlinks() {
     echo "==> Creating macOS symlinks"
-    symlink "$DOTFILES/shell/zsh/zshrc_macos"         "$HOME/.zshrc"
+    symlink "$DOTFILES/shell/zsh/zshrc"               "$HOME/.zshrc"
     symlink "$DOTFILES/shell/zsh/p10k.zsh"            "$HOME/.p10k.zsh"
     symlink "$DOTFILES/terminal/tmux/macos_tmux.conf" "$HOME/.tmux.conf"
 }
@@ -267,7 +267,7 @@ create_macos_symlinks() {
 # =============================================================================
 create_linux_symlinks() {
     echo "==> Creating Linux symlinks"
-    symlink "$DOTFILES/shell/zsh/zshrc_linux"                                          "$HOME/.zshrc"
+    symlink "$DOTFILES/shell/zsh/zshrc"                                                "$HOME/.zshrc"
     symlink "$DOTFILES/terminal/tmux/tmux.conf"                                        "$HOME/.tmux.conf"
     symlink "$DOTFILES/linux/wofi/config"                                              "$HOME/.config/wofi/config"
     symlink "$DOTFILES/linux/wofi/style.css"                                           "$HOME/.config/wofi/style.css"
