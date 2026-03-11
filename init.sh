@@ -412,11 +412,18 @@ create_linux_symlinks() {
     symlink "$DOTFILES/linux/bin/clipboard-picker"                                               "$HOME/bin/clipboard-picker"
     chmod +x "$DOTFILES/linux/bin/clipboard-picker"
 
-    # COSMIC shortcuts — generate once on first install (not a symlink, so GUI edits are preserved)
+    # COSMIC shortcuts — apply sed substitution and compare md5 of the result
+    # against the live file so template changes in git always propagate
     local cosmic_shortcuts="$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
+    local template="$DOTFILES/linux/cosmic/shortcuts/custom"
     mkdir -p "$(dirname "$cosmic_shortcuts")"
-    if [[ ! -f "$cosmic_shortcuts" ]]; then
-        sed "s|/home/YOUR_USERNAME|$HOME|g" "$DOTFILES/linux/cosmic/shortcuts/custom" > "$cosmic_shortcuts"
+    local expected_content expected_md5 live_md5
+    expected_content=$(sed "s|/home/YOUR_USERNAME|$HOME|g" "$template")
+    expected_md5=$(echo "$expected_content" | md5sum | awk '{print $1}')
+    live_md5=$(md5sum "$cosmic_shortcuts" 2>/dev/null | awk '{print $1}')
+    if [[ "$expected_md5" != "$live_md5" ]]; then
+        echo "$expected_content" > "$cosmic_shortcuts"
+        echo "  updated: $cosmic_shortcuts"
     fi
 
     # Start cliphist daemon for the current session (autostart handles future logins)
