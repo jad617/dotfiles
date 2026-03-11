@@ -236,6 +236,12 @@ install_common() {
 
     # Neovim Python support
     pip3 install neovim --break-system-packages 2>/dev/null || pip3 install neovim || true
+
+    # Zsh completions — fetch from upstream sources
+    echo "==> Fetching zsh completions"
+    local tf_comp="$HOME/.config/zsh-completion/terraform/_terraform"
+    mkdir -p "$(dirname "$tf_comp")"
+    curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/plugins/terraform/_terraform -o "$tf_comp"
 }
 
 # =============================================================================

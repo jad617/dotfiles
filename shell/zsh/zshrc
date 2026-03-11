@@ -6,12 +6,11 @@
 ZDOT=${ZDOTDIR:-$HOME}
 
 ##################################
-# 0.5) Function path for completions (Terraform writes here)
+# 0.5) Function path for completions
 ##################################
 ZFUNC_DIR="$HOME/.zfunc"
-mkdir -p "$ZFUNC_DIR"
-# Add your custom terraform completion dir FIRST so it wins
 TF_COMP_DIR="$HOME/.config/zsh-completion/terraform"
+mkdir -p "$ZFUNC_DIR" "$TF_COMP_DIR"
 fpath=("$TF_COMP_DIR" "$ZFUNC_DIR" $fpath)
 
 ##################################
@@ -59,38 +58,7 @@ zstyle ':completion:*:cd:*' ignore-parents parent pwd
 zstyle ':completion:*' squeeze-slashes true
 [[ -n $LS_COLORS ]] && zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
 
-# Rebuild dump if missing, stale, OR if your _terraform is newer
-# Fetch from: https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/refs/heads/master/plugins/terraform/_terraform
-if [[ ! -s "$ZDOT/.zcompdump" || "$ZDOT/.zcompdump"(Nm-20) || "$TF_COMP_DIR/_terraform" -nt "$ZDOT/.zcompdump" ]]; then
-  compinit -i -C
-else
-  compinit -i
-fi
-
-##################################
-# 2.5) Terraform completion (v1.13+)
-##################################
-if command -v terraform >/dev/null 2>&1; then
-  # Prefer your checked-in completion if present
-  if [[ -f "$TF_COMP_DIR/_terraform" ]]; then
-    # Nuke any previous defs (bash/other) and bind native zsh completion
-    compdef -d terraform 2>/dev/null
-    unfunction _terraform 2>/dev/null
-    autoload -Uz _terraform
-    compdef _terraform terraform
-  else
-    # Fallback: one-time install into ~/.zfunc
-    if [[ ! -f "$ZFUNC_DIR/_terraform" ]]; then
-      terraform -install-autocomplete >/dev/null 2>&1
-    fi
-    if [[ -f "$ZFUNC_DIR/_terraform" ]]; then
-      compdef -d terraform 2>/dev/null
-      unfunction _terraform 2>/dev/null
-      autoload -Uz _terraform
-      compdef _terraform terraform
-    fi
-  fi
-fi
+compinit -i
 
 ##################################
 # 3) Navigation & Search
@@ -241,4 +209,3 @@ fi
 
 autoload -U +X bashcompinit && bashcompinit
 complete -o nospace -C /usr/bin/terraform terraform
-

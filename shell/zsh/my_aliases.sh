@@ -88,6 +88,15 @@ dev_UP() {
     [ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
 }
 
+# Update zsh completions from upstream sources
+update-completions() {
+    local tf_comp="$HOME/.config/zsh-completion/terraform/_terraform"
+    mkdir -p "$(dirname "$tf_comp")"
+    echo "Updating terraform completion..."
+    curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/plugins/terraform/_terraform -o "$tf_comp"
+    echo "Done. Restart your shell or run: exec zsh"
+}
+
 # Utilities
 tolower() { echo "$1" | awk '{print tolower($0)}'; }
 toupper() { echo "$1" | awk '{print toupper($0)}'; }
