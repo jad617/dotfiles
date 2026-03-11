@@ -107,37 +107,26 @@ local function install_reqs(root, venv, has_uv)
   end
 end
 
--- Tell pyright to use the venv's interpreter so imports resolve correctly.
--- Sends workspace/didChangeConfiguration — pyright re-evaluates without restart.
-local function notify_pyright(venv)
-  vim.schedule(function()
-    for _, client in ipairs(vim.lsp.get_clients({ name = "pyright" })) do
-      client.config.settings = vim.tbl_deep_extend("force", client.config.settings or {}, {
-        python = {
-          pythonPath = venv .. "/bin/python",
-          venvPath = vim.fn.fnamemodify(venv, ":h"),
-          venv = vim.fn.fnamemodify(venv, ":t"),
-        },
-      })
-      client:notify("workspace/didChangeConfiguration", { settings = client.config.settings })
-    end
-  end)
+-- Write pyrightconfig.json next to the .venv so pyright always finds the
+-- right interpreter — more reliable than workspace/didChangeConfiguration.
+-- Only writes if the file doesn't already exist.
+local function write_pyrightconfig(root)
+  local config_path = root .. "/pyrightconfig.json"
+  if vim.fn.filereadable(config_path) == 1 then return end
+  local content = vim.json.encode({
+    venvPath = ".",
+    venv = ".venv",
+    pythonVersion = vim.fn.system(
+      root .. "/.venv/bin/python -c 'import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")'"):gsub(
+      "\n", ""),
+  })
+  local f = io.open(config_path, "w")
+  if f then
+    f:write(content)
+    f:close()
+    vim.notify("pyrightconfig.json written → " .. root, vim.log.levels.INFO, { title = "Python" })
+  end
 end
-
--- LspAttach hook: runs after pyright has actually started on a buffer.
--- Handles the common case where the .venv already exists when opening the file.
-vim.api.nvim_create_autocmd("LspAttach", {
-  group = vim.api.nvim_create_augroup("PythonPyrightVenv", { clear = true }),
-  callback = function(ev)
-    local client = vim.lsp.get_client_by_id(ev.data.client_id)
-    if not client or client.name ~= "pyright" then return end
-    local root = find_root(ev.buf)
-    local venv = root .. "/.venv"
-    if vim.fn.isdirectory(venv) == 1 then
-      notify_pyright(venv)
-    end
-  end,
-})
 
 -- Guard: only run setup once per project root per session
 local _done = {}
@@ -166,12 +155,12 @@ vim.api.nvim_create_autocmd("FileType", {
             return
           end
           stop(true, ".venv created")
-          notify_pyright(venv)
+          write_pyrightconfig(root)
           install_reqs(root, venv, has_uv)
         end,
       })
     else
-      notify_pyright(venv)
+      write_pyrightconfig(root)
       install_reqs(root, venv, has_uv)
     end
   end,
