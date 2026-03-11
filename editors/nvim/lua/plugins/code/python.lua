@@ -2,15 +2,25 @@
 -- Python: auto .venv creation + requirements install
 --
 -- On the first Python file opened per project root:
---   1. Detect project root (requirements*.txt / pyproject.toml / setup.py / .git)
+--   1. Detect project root via `git rev-parse --show-toplevel` (always the
+--      repo root); falls back to marker walk for non-git projects
 --   2. Create .venv with `uv venv` (falls back to python3 -m venv)
 --   3. Run `uv pip install -r` on every requirements*.txt found
 --      (falls back to pip inside the venv)
 ------------------------------------------------------------
 
 local function find_root(bufnr)
-  local markers = { "requirements.txt", "pyproject.toml", "setup.py", "setup.cfg", ".git" }
-  local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p:h")
+  local file_dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p:h")
+
+  -- Prefer git root so .venv always lands at the repo root
+  local git_root = vim.fn.systemlist("git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel")[1]
+  if vim.v.shell_error == 0 and git_root and git_root ~= "" then
+    return git_root
+  end
+
+  -- Fallback for non-git projects: walk up looking for project markers
+  local markers = { "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt" }
+  local path = file_dir
   while path and path ~= "/" do
     for _, m in ipairs(markers) do
       local full = path .. "/" .. m
