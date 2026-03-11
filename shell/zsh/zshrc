@@ -111,18 +111,30 @@ done
 # 5) cd helpers
 ##################################
 cd() {
-  if [[ $# -eq 1 && $1 == +([.]) ]]; then
-    local n=${#1} path=".."
-    for ((i=2; i<=n; i++)); do path+="/.."; done
-    builtin cd "$path"
+  # Multi-dot: ... → ../.., .... → ../../..  etc.
+  # Note: 'path' is a reserved zsh array (tied to PATH) — use 'dotpath'
+  if [[ $# -eq 1 && "$1" =~ '^[.]{2,}$' ]]; then
+    local n=${#1} dotpath=".."
+    for ((i=3; i<=n; i++)); do dotpath+="/.."; done
+    builtin cd "$dotpath"
   else
     builtin cd "$@"
   fi
 }
 
 _cd_parent() {
-  if [[ $words[-1] == '..' ]]; then
-    compadd -- $(command ls -d ../*/ 2>/dev/null)
+  local word=$words[-1]
+  if [[ "$word" =~ '^[.]{2,}$' ]]; then
+    local n=${#word} dotpath=".."
+    for ((i=3; i<=n; i++)); do dotpath+="/.."; done
+    local basepath
+    basepath=$(cd "$dotpath" 2>/dev/null && pwd) || return
+    local -a shortdirs=() d
+    for d in "$basepath"/*(N/); do shortdirs+=("${d##*/}"); done
+    [[ ${#shortdirs} -eq 0 ]] && return
+    local expl
+    _description directories expl 'directory'
+    compadd -Q -U -P "${dotpath}/" -S "/" "$expl[@]" -- "${shortdirs[@]}"
   else
     _cd
   fi
