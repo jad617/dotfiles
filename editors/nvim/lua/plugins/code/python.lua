@@ -107,6 +107,24 @@ local function install_reqs(root, venv, has_uv)
   end
 end
 
+-- Tell pyright to use the venv's interpreter so imports resolve correctly.
+-- Sends workspace/didChangeConfiguration — pyright re-evaluates without restart.
+local function notify_pyright(venv)
+  vim.schedule(function()
+    for _, client in ipairs(vim.lsp.get_clients({ name = "pyright" })) do
+      local python_path = venv .. "/bin/python"
+      client.config.settings = vim.tbl_deep_extend("force", client.config.settings or {}, {
+        python = {
+          pythonPath = python_path,
+          venvPath = vim.fn.fnamemodify(venv, ":h"),
+          venv = vim.fn.fnamemodify(venv, ":t"),
+        },
+      })
+      client:notify("workspace/didChangeConfiguration", { settings = client.config.settings })
+    end
+  end)
+end
+
 -- Guard: only run setup once per project root per session
 local _done = {}
 
@@ -134,10 +152,12 @@ vim.api.nvim_create_autocmd("FileType", {
             return
           end
           stop(true, ".venv created")
+          notify_pyright(venv)
           install_reqs(root, venv, has_uv)
         end,
       })
     else
+      notify_pyright(venv)
       install_reqs(root, venv, has_uv)
     end
   end,
