@@ -7,3 +7,6 @@
 
 **/.DS_Store
 .DS_Store
+
+# Generated zsh completions (fetched by init.sh)
+shell/zsh/completion/
