@@ -56,17 +56,15 @@ mkdir -p ~/nodestack
 clone_if_missing "https://github.com/jad617/dotfiles.git" "$DOTFILES"
 
 # =============================================================================
-# macOS
+# macOS — base tools
 # =============================================================================
 install_macos() {
-    echo "==> Installing macOS packages"
+    echo "==> Installing macOS base packages"
 
-    # Homebrew
     if ! cmd_exists brew; then
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
 
-    # Core
     brew install \
         zsh-syntax-highlighting \
         htop \
@@ -80,7 +78,6 @@ install_macos() {
         watch \
         pyenv \
         pyenv-virtualenv \
-        neovim \
         go \
         eza \
         zoxide \
@@ -89,48 +86,30 @@ install_macos() {
         zellij \
         wezterm
 
-    # DevOps
-    if ! cmd_exists aws; then
-        curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "/tmp/AWSCLIV2.pkg"
-        sudo installer -pkg /tmp/AWSCLIV2.pkg -target /
-        rm -f /tmp/AWSCLIV2.pkg
-    fi
-
-    brew tap hashicorp/tap
-    brew install \
-        hashicorp/tap/terraform \
-        terraform-docs \
-        ansible \
-        kubectl \
-        derailed/k9s/k9s \
-        mysql-client@8.0 \
-        helm
-
-    # UI
-    brew install --cask rectangle
-    brew install maccy   # macOS clipboard manager (Linux: cliphist+wofi)
-
     # Kitty
     if ! cmd_exists kitty; then
         curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
     fi
 
-    # Oh-My-Zsh + Powerlevel10k (macOS zshrc uses these)
+    # Oh-My-Zsh + Powerlevel10k
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
     fi
     clone_if_missing "https://github.com/romkatv/powerlevel10k.git" "$HOME/powerlevel10k"
 
-    # Nerd Font (MesloLGS NF — used by wezterm + oh-my-posh)
-    # macOS: install via brew cask
+    # Nerd Font
     brew install --cask font-meslo-lg-nerd-font
+
+    # macOS clipboard manager
+    brew install --cask rectangle
+    brew install maccy
 }
 
 # =============================================================================
-# Pop!_OS / Linux
+# Linux — base tools
 # =============================================================================
 install_linux() {
-    echo "==> Installing Linux packages"
+    echo "==> Installing Linux base packages"
 
     sudo apt update
     sudo apt install -y \
@@ -143,7 +122,6 @@ install_linux() {
         ripgrep \
         tmux \
         watch \
-        neovim \
         golang \
         wl-clipboard \
         wofi \
@@ -152,11 +130,13 @@ install_linux() {
         git \
         unzip \
         jq \
-        fontconfig
+        fontconfig \
+        nodejs \
+        npm
 
     mkdir -p ~/bin
 
-    # eza (macOS: brew, Linux: GitHub release)
+    # eza (macOS: brew)
     if ! cmd_exists eza; then
         EZA_VER=$(curl -s https://api.github.com/repos/eza-community/eza/releases/latest | jq -r '.tag_name')
         curl -L "https://github.com/eza-community/eza/releases/download/${EZA_VER}/eza_x86_64-unknown-linux-musl.tar.gz" -o /tmp/eza.tar.gz
@@ -165,7 +145,7 @@ install_linux() {
         rm /tmp/eza.tar.gz
     fi
 
-    # zoxide (macOS: brew, Linux: installer)
+    # zoxide (macOS: brew)
     if ! cmd_exists zoxide; then
         curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
     fi
@@ -175,7 +155,7 @@ install_linux() {
         curl -s https://ohmyposh.dev/install.sh | bash -s -- -d ~/.local/bin
     fi
 
-    # pyenv (macOS: brew, Linux: installer)
+    # pyenv (macOS: brew)
     if ! cmd_exists pyenv; then
         curl https://pyenv.run | bash
     fi
@@ -187,7 +167,7 @@ install_linux() {
         sudo apt update && sudo apt install -y wezterm
     fi
 
-    # zellij (macOS: brew, Linux: GitHub release)
+    # zellij (macOS: brew)
     if ! cmd_exists zellij; then
         ZELLIJ_VER=$(curl -s https://api.github.com/repos/zellij-org/zellij/releases/latest | jq -r '.tag_name')
         curl -L "https://github.com/zellij-org/zellij/releases/download/${ZELLIJ_VER}/zellij-x86_64-unknown-linux-musl.tar.gz" -o /tmp/zellij.tar.gz
@@ -196,7 +176,7 @@ install_linux() {
         rm /tmp/zellij.tar.gz
     fi
 
-    # television (macOS: brew, Linux: GitHub release)
+    # television (macOS: brew)
     if ! cmd_exists tv; then
         TV_VER=$(curl -s https://api.github.com/repos/alexpasmantier/television/releases/latest | jq -r '.tag_name')
         curl -L "https://github.com/alexpasmantier/television/releases/download/${TV_VER}/television-${TV_VER}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/tv.tar.gz
@@ -211,7 +191,7 @@ install_linux() {
         go install go.senan.xyz/cliphist@latest
     fi
 
-    # Nerd Font — MesloLGS NF (used by wezterm + oh-my-posh)
+    # Nerd Font — MesloLGS NF
     if ! fc-list | grep -qi "MesloLGS"; then
         echo "==> Installing MesloLGS NF font"
         FONT_DIR="$HOME/.local/share/fonts/MesloLGS"
@@ -222,8 +202,55 @@ install_linux() {
         done
         fc-cache -fv "$FONT_DIR"
     fi
+}
 
-    # DevOps
+# =============================================================================
+# DevOps tools — macOS
+# =============================================================================
+install_devops_macos() {
+    echo "==> Installing macOS DevOps tools"
+
+    # Neovim nightly (macOS: brew HEAD)
+    brew install --HEAD neovim
+
+    # AWS CLI
+    if ! cmd_exists aws; then
+        curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "/tmp/AWSCLIV2.pkg"
+        sudo installer -pkg /tmp/AWSCLIV2.pkg -target /
+        rm -f /tmp/AWSCLIV2.pkg
+    fi
+
+    brew tap hashicorp/tap
+    brew install \
+        hashicorp/tap/terraform \
+        hashicorp/tap/vault \
+        terraform-docs \
+        ansible \
+        kubectl \
+        derailed/k9s/k9s \
+        mysql-client@8.0 \
+        helm
+
+    # Claude CLI
+    if ! cmd_exists claude; then
+        npm install -g @anthropic-ai/claude-code
+    fi
+}
+
+# =============================================================================
+# DevOps tools — Linux
+# =============================================================================
+install_devops_linux() {
+    echo "==> Installing Linux DevOps tools"
+
+    # Neovim nightly (macOS: brew --HEAD neovim)
+    echo "==> Installing Neovim nightly"
+    curl -LO --output-dir /tmp https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz
+    sudo tar -xzf /tmp/nvim-linux-x86_64.tar.gz -C /opt/
+    sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
+    rm /tmp/nvim-linux-x86_64.tar.gz
+
+    # AWS CLI
     if ! cmd_exists aws; then
         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
         unzip -q /tmp/awscliv2.zip -d /tmp
@@ -231,23 +258,28 @@ install_linux() {
         rm -rf /tmp/aws /tmp/awscliv2.zip
     fi
 
-    if ! cmd_exists terraform; then
+    # HashiCorp apt repo (terraform + vault)
+    if ! cmd_exists terraform || ! cmd_exists vault; then
         wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
             | sudo tee /etc/apt/sources.list.d/hashicorp.list
-        sudo apt update && sudo apt install -y terraform
+        sudo apt update
+        sudo apt install -y terraform vault
     fi
 
+    # kubectl
     if ! cmd_exists kubectl; then
         curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
         sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
         rm kubectl
     fi
 
+    # helm
     if ! cmd_exists helm; then
         curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     fi
 
+    # k9s (macOS: brew)
     if ! cmd_exists k9s; then
         K9S_VER=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest | jq -r '.tag_name')
         curl -L "https://github.com/derailed/k9s/releases/download/${K9S_VER}/k9s_linux_amd64.tar.gz" -o /tmp/k9s.tar.gz
@@ -256,8 +288,14 @@ install_linux() {
         rm /tmp/k9s.tar.gz
     fi
 
+    # ansible
     if ! cmd_exists ansible; then
         sudo apt install -y ansible
+    fi
+
+    # Claude CLI
+    if ! cmd_exists claude; then
+        npm install -g @anthropic-ai/claude-code
     fi
 
     # mysql-client (macOS: mysql-client@8.0 via brew)
@@ -265,7 +303,7 @@ install_linux() {
 }
 
 # =============================================================================
-# Common — after OS packages
+# Common — after OS + DevOps packages
 # =============================================================================
 install_common() {
     # Set zsh as default shell
@@ -280,7 +318,7 @@ install_common() {
     # Neovim Python support
     pip3 install neovim --break-system-packages 2>/dev/null || pip3 install neovim || true
 
-    # Zsh completions — fetch from upstream sources
+    # Zsh completions — fetched from upstream, not tracked in dotfiles
     echo "==> Fetching zsh completions"
     local tf_comp="$HOME/.config/zsh-completion/terraform/_terraform"
     mkdir -p "$(dirname "$tf_comp")"
@@ -334,12 +372,14 @@ create_linux_symlinks() {
 case "$OS" in
     macos)
         install_macos
+        install_devops_macos
         install_common
         create_common_symlinks
         create_macos_symlinks
         ;;
     popos|linux)
         install_linux
+        install_devops_linux
         install_common
         create_common_symlinks
         create_linux_symlinks
