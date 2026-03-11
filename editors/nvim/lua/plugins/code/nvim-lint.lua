@@ -6,7 +6,7 @@ return {
 
     lint.linters_by_ft = {
       ansible = { "ansible_lint", "yamllint" },
-      python = { "pylint" }, --, "pflake8" },
+      -- python: diagnostics handled by ruff LSP
       yaml = { "yamllint" },
       text = { "proselint" },
       markdown = { "proselint" },
