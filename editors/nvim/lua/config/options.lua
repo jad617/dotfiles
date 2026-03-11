@@ -53,6 +53,7 @@ o.equalalways = false
 o.linebreak = true -- Wrap on word boundary
 o.textwidth = 0
 o.scrolloff = 15 -- Minimal number to keep above and below cursor: Set to 999 for cursor to always be in the middle
+vim.opt.guicursor = "n-v-c:block,i-ci-ve:ver25,r-cr:hor20,o:hor50,a:blinkon0"
 o.foldenable = false
 
 vim.o.undofile = false

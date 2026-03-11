@@ -56,6 +56,7 @@ export PYENV_ROOT="$HOME/.pyenv"
 ##################################
 [ -f ~/.claude_api_key ]  && export ANTHROPIC_API_KEY=$(cat ~/.claude_api_key)
 [ -f ~/.github_token ]    && export GITHUB_TOKEN=$(cat ~/.github_token)
+[ -f ~/.gemfury_token ]   && export FURY_AUTH=$(cat ~/.gemfury_token)
 
 ##################################
 # Keybindings
