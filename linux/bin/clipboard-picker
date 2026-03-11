@@ -1,0 +1,3 @@
+#!/bin/bash
+# Open clipboard history with wofi (floats naturally via wlr-layer-shell)
+/home/jelasmar/go/bin/cliphist list | wofi --dmenu --prompt "Clipboard" --insensitive | /home/jelasmar/go/bin/cliphist decode | wl-copy
