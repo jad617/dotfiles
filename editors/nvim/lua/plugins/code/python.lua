@@ -2,38 +2,35 @@
 -- Python: auto .venv creation + requirements install
 --
 -- On the first Python file opened per project root:
---   1. Detect project root via `git rev-parse --show-toplevel` (always the
---      repo root); falls back to marker walk for non-git projects
+--   1. Detect root: walk up from the file looking for requirements*.txt
+--      (use that level); if none found, fall back to git repo root;
+--      if not in a git repo, fall back to cwd
 --   2. Create .venv with `uv venv` (falls back to python3 -m venv)
---   3. Run `uv pip install -r` on every requirements*.txt found
+--   3. Run `uv pip install -r` on every requirements*.txt found at root
 --      (falls back to pip inside the venv)
 ------------------------------------------------------------
 
 local function find_root(bufnr)
   local file_dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":p:h")
 
-  -- Prefer git root so .venv always lands at the repo root
+  -- 1. Walk up looking for the nearest requirements*.txt
+  local path = file_dir
+  while path and path ~= "/" do
+    if #vim.fn.glob(path .. "/requirements*.txt", false, true) > 0 then
+      return path
+    end
+    local parent = vim.fn.fnamemodify(path, ":h")
+    if parent == path then break end
+    path = parent
+  end
+
+  -- 2. No requirements.txt found — fall back to git root
   local git_root = vim.fn.systemlist("git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel")[1]
   if vim.v.shell_error == 0 and git_root and git_root ~= "" then
     return git_root
   end
 
-  -- Fallback for non-git projects: walk up looking for project markers
-  local markers = { "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt" }
-  local path = file_dir
-  while path and path ~= "/" do
-    for _, m in ipairs(markers) do
-      local full = path .. "/" .. m
-      if vim.fn.filereadable(full) == 1 or vim.fn.isdirectory(full) == 1 then
-        return path
-      end
-    end
-    local parent = vim.fn.fnamemodify(path, ":h")
-    if parent == path then
-      break
-    end
-    path = parent
-  end
+  -- 3. Not a git repo either — use cwd
   return vim.fn.getcwd()
 end
 
