@@ -1,0 +1,44 @@
+{
+    (
+        modifiers: [
+            Ctrl,
+            Alt,
+        ],
+        key: "h",
+        description: Some("clipboard-picker"),
+    ): Spawn("/home/jelasmar/bin/clipboard-picker"),
+    (
+        modifiers: [
+            Super,
+        ],
+        key: "t",
+        description: Some("wezterm"),
+    ): Spawn("wezterm"),
+    (
+        modifiers: [
+            Ctrl,
+            Alt,
+        ],
+        key: "4",
+        description: Some("screenshot"),
+    ): Spawn("cosmic-screenshot "),
+    (
+        modifiers: [
+            Super,
+        ],
+    ): System(WorkspaceOverview),
+    (
+        modifiers: [
+            Alt,
+        ],
+        key: "c",
+        description: Some("copy"),
+    ): Spawn("wtype -s 100 -M ctrl -k c"),
+    (
+        modifiers: [
+            Alt,
+        ],
+        key: "v",
+        description: Some("paste"),
+    ): Spawn("wtype -m alt -s 100 -M ctrl -k v"),
+}

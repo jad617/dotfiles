@@ -1,0 +1,7 @@
+width=900
+height=600
+location=center
+prompt=Clipboard
+insensitive=true
+allow_markup=false
+no_actions=true
