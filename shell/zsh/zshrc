@@ -203,6 +203,31 @@ add-zsh-hook chpwd _pyenv_dir_check
 add-zsh-hook precmd _pyenv_dir_check
 
 ##################################
+# 8.5) Auto-activate .venv on cd
+##################################
+_auto_venv() {
+  local venv_dir
+  # Walk up from cwd looking for the nearest .venv
+  venv_dir="$(pwd)"
+  while [[ "$venv_dir" != "/" ]]; do
+    if [[ -f "$venv_dir/.venv/bin/activate" ]]; then
+      # Already active for this venv — skip
+      if [[ "$VIRTUAL_ENV" != "$venv_dir/.venv" ]]; then
+        source "$venv_dir/.venv/bin/activate"
+      fi
+      return
+    fi
+    venv_dir="$(dirname "$venv_dir")"
+  done
+  # No .venv found — deactivate if something is active
+  if [[ -n "$VIRTUAL_ENV" ]]; then
+    deactivate 2>/dev/null || true
+  fi
+}
+add-zsh-hook chpwd _auto_venv
+_auto_venv  # run once on shell start
+
+##################################
 # 9) Prompt & Theming
 ##################################
 if command -v oh-my-posh >/dev/null 2>&1; then
