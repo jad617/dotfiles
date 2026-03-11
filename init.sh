@@ -331,8 +331,13 @@ install_devops_linux() {
     # sudo apt install -y mysql-client
 
     # keyd — kernel-level key remapping (Wayland-compatible, macOS uses hidutil instead)
+    # Not in apt; build from source
     if ! cmd_exists keyd; then
-        sudo apt install -y keyd
+        sudo apt install -y gcc make libevdev-dev libudev-dev
+        git clone https://github.com/rvaiya/keyd.git /tmp/keyd
+        make -C /tmp/keyd
+        sudo make -C /tmp/keyd install
+        rm -rf /tmp/keyd
     fi
     sudo mkdir -p /etc/keyd
     sudo ln -sf "$DOTFILES/linux/keyd/default.conf" /etc/keyd/default.conf
