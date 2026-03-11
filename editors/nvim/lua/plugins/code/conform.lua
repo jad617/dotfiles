@@ -28,7 +28,7 @@ return {
       markdown = { "markdownlint", "trim_newlines", "trim_whitespace" },
 
       -- python
-      python = { "isort", "black", "trim_newlines", "trim_whitespace" },
+      python = { "ruff_format", "trim_newlines", "trim_whitespace" },
 
       -- terraform
       hcl = { "terraform_fmt", "trim_newlines", "trim_whitespace" },
