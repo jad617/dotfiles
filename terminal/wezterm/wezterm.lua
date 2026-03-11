@@ -182,19 +182,30 @@ config.keys = {
 		end),
 	},
 
-	-- Rename tab (minimal prompt at bottom)
+	-- Rename tab (pre-filled with current name)
 	{
 		key = ",",
 		mods = "LEADER",
-		action = action.PromptInputLine({
-			description = "",
-			action = wezterm.action_callback(function(window, _, line)
-				if line then
-					window:active_tab():set_title(line)
-				end
-			end),
-		}),
+		action = wezterm.action_callback(function(window, pane)
+			local current = window:active_tab():get_title()
+			window:perform_action(
+				action.PromptInputLine({
+					description = "",
+					initial_value = current,
+					action = wezterm.action_callback(function(win, _, line)
+						if line then
+							win:active_tab():set_title(line)
+						end
+					end),
+				}),
+				pane
+			)
+		end),
 	},
+
+	-- Shift+Backspace / Shift+Space behave as plain Backspace / Space (useful in prompts)
+	{ key = "Backspace", mods = "SHIFT", action = action.SendKey({ key = "Backspace", mods = "NONE" }) },
+	{ key = "phys:Space", mods = "SHIFT", action = action.SendKey({ key = "Space", mods = "NONE" }) },
 
 	-- Move tab to index (0-based); create missing tabs up to that index
 	{
@@ -283,6 +294,89 @@ config.keys = {
 			action.SendKey({ key = "a", mods = "CTRL" }),
 			action.SendKey({ key = "d" }),
 		}),
+	},
+}
+
+--------------------------------------------------------------------------------
+-- Copy mode (vim-like scroll + search)
+--------------------------------------------------------------------------------
+
+-- Copy mode (vim-like navigation + search)
+config.key_tables = {
+	copy_mode = {
+		-- Movement
+		{ key = "h",          mods = "NONE",  action = action.CopyMode("MoveLeft") },
+		{ key = "j",          mods = "NONE",  action = action.CopyMode("MoveDown") },
+		{ key = "k",          mods = "NONE",  action = action.CopyMode("MoveUp") },
+		{ key = "l",          mods = "NONE",  action = action.CopyMode("MoveRight") },
+		{ key = "w",          mods = "NONE",  action = action.CopyMode("MoveForwardWord") },
+		{ key = "b",          mods = "NONE",  action = action.CopyMode("MoveBackwardWord") },
+		{ key = "0",          mods = "NONE",  action = action.CopyMode("MoveToStartOfLine") },
+		{ key = "$",          mods = "SHIFT", action = action.CopyMode("MoveToEndOfLineContent") },
+		{ key = "g",          mods = "NONE",  action = action.CopyMode("MoveToScrollbackTop") },
+		{ key = "G",          mods = "SHIFT", action = action.CopyMode("MoveToScrollbackBottom") },
+		{ key = "u",          mods = "CTRL",  action = action.CopyMode({ MoveByPage = -0.5 }) },
+		{ key = "d",          mods = "CTRL",  action = action.CopyMode({ MoveByPage = 0.5 }) },
+		{ key = "UpArrow",    mods = "NONE",  action = action.CopyMode("MoveUp") },
+		{ key = "DownArrow",  mods = "NONE",  action = action.CopyMode("MoveDown") },
+		{ key = "LeftArrow",  mods = "NONE",  action = action.CopyMode("MoveLeft") },
+		{ key = "RightArrow", mods = "NONE",  action = action.CopyMode("MoveRight") },
+		{ key = "PageUp",     mods = "NONE",  action = action.CopyMode({ MoveByPage = -1 }) },
+		{ key = "PageDown",   mods = "NONE",  action = action.CopyMode({ MoveByPage = 1 }) },
+		-- Search
+		{ key = "/",  mods = "NONE",  action = action.Multiple({
+			action.Search({ CaseSensitiveString = "" }),
+			action.CopyMode("CycleMatchType"), -- cycle CaseSensitive → CaseInsensitive
+		}) },
+		{ key = "n",  mods = "NONE",  action = action.CopyMode("NextMatch") },
+		{ key = "N",  mods = "SHIFT", action = action.CopyMode("PriorMatch") },
+		-- Selection
+		{ key = "v",  mods = "NONE",  action = action.CopyMode({ SetSelectionMode = "Cell" }) },
+		{ key = "V",  mods = "SHIFT", action = action.CopyMode({ SetSelectionMode = "Line" }) },
+		-- Copy and exit
+		{ key = "y",     mods = "NONE", action = action.Multiple({
+			action.CopyTo("ClipboardAndPrimarySelection"),
+			action.CopyMode("Close"),
+		}) },
+		{ key = "Enter", mods = "NONE", action = action.Multiple({
+			action.CopyTo("ClipboardAndPrimarySelection"),
+			action.CopyMode("Close"),
+		}) },
+		-- Exit
+		{ key = "q",      mods = "NONE", action = action.CopyMode("Close") },
+		{ key = "Escape", mods = "NONE", action = action.CopyMode("Close") },
+	},
+	search_mode = {
+		{ key = "Escape",    mods = "NONE", action = action.CopyMode("Close") },
+		{ key = "Enter",     mods = "NONE", action = action.ActivateCopyMode },
+		{ key = "/",         mods = "NONE", action = action.CopyMode("ClearPattern") },
+		{ key = "UpArrow",   mods = "NONE", action = action.CopyMode("PriorMatch") },
+		{ key = "DownArrow", mods = "NONE", action = action.CopyMode("NextMatch") },
+		{ key = "n",         mods = "CTRL", action = action.CopyMode("NextMatch") },
+		{ key = "p",         mods = "CTRL", action = action.CopyMode("PriorMatch") },
+	},
+}
+
+-- Mouse scroll: enter copy mode on wheel up (pass through when inside vim)
+config.mouse_bindings = {
+	{
+		event = { Down = { streak = 1, button = { WheelUp = 1 } } },
+		mods = "NONE",
+		action = wezterm.action_callback(function(window, pane)
+			if is_vim(pane) then
+				window:perform_action(action.ScrollByCurrentEventWheelDelta, pane)
+			else
+				window:perform_action(action.ScrollByCurrentEventWheelDelta, pane)
+				window:perform_action(action.ActivateCopyMode, pane)
+			end
+		end),
+	},
+	{
+		event = { Down = { streak = 1, button = { WheelDown = 1 } } },
+		mods = "NONE",
+		action = wezterm.action_callback(function(window, pane)
+			window:perform_action(action.ScrollByCurrentEventWheelDelta, pane)
+		end),
 	},
 }
 

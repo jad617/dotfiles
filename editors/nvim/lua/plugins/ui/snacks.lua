@@ -155,9 +155,7 @@ return {
         height = 0.97,
         width = 0.90,
       },
-      -- start in insert, use your shell
       start_insert = true,
-      shell = "tmux",
     },
     styles = {
       zen = {
@@ -389,7 +387,8 @@ return {
     {
       "<A-i>",
       function()
-        Snacks.terminal()
+        -- Use PID as ID so each nvim instance gets its own isolated terminal
+        Snacks.terminal(nil, { id = tostring(vim.fn.getpid()) })
       end,
       desc = "Toggle terminal",
       mode = { "n", "t" },
