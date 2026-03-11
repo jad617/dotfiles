@@ -25,17 +25,7 @@ SAVEHIST=200000
 
 # History behavior
 setopt rm_star_silent
-
-# Append to the history file instead of overwriting
-setopt APPEND_HISTORY
-
-# Write each command to the history file as soon as it’s executed
-setopt INC_APPEND_HISTORY
-
-# Share history across all sessions
-setopt SHARE_HISTORY
-
-# Optional but nice:
+setopt SHARE_HISTORY             # share history across sessions (implies incremental append)
 setopt HIST_IGNORE_ALL_DUPS      # remove older duplicate entries
 setopt HIST_REDUCE_BLANKS        # trim extra spaces
 setopt HIST_IGNORE_SPACE         # lines starting with space not stored
@@ -58,7 +48,11 @@ zstyle ':completion:*:cd:*' ignore-parents parent pwd
 zstyle ':completion:*' squeeze-slashes true
 [[ -n $LS_COLORS ]] && zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
 
-compinit -i
+if [[ ! -s "$ZDOT/.zcompdump" || "$ZDOT/.zcompdump"(Nm-1) ]]; then
+  compinit -i
+else
+  compinit -i -C
+fi
 
 ##################################
 # 3) Navigation & Search
@@ -74,7 +68,7 @@ select-word-style bash
 ##################################
 # 4) Home / End / Ctrl-Arrows (tmux + WezTerm safe)
 ##################################
-for map in emacs viins vicmd; do
+for map in emacs; do
   # --- Home / End from terminfo + fallbacks ---
   [[ -n ${terminfo[khome]} ]] && bindkey -M $map "${terminfo[khome]}" beginning-of-line
   [[ -n ${terminfo[kend]}  ]] && bindkey -M $map "${terminfo[kend]}"  end-of-line
@@ -144,9 +138,9 @@ compdef _cd_parent cd
 if command -v kubectl >/dev/null 2>&1; then
   _kubectl_lazy() {
     unset -f _kubectl_lazy
-    local comp="$HOME/.config/completion/kubectl.sh"
+    local comp="$HOME/.config/zsh-completion/kubectl.zsh"
     if [[ ! -f $comp ]]; then
-      mkdir -p "$HOME/.config/completion"
+      mkdir -p "$HOME/.config/zsh-completion"
       kubectl completion zsh >| "$comp" 2>/dev/null
     fi
     source "$comp"
@@ -204,8 +198,9 @@ fi
 ##################################
 # 10) Syntax highlighting (last)
 ##################################
+# macOS (Homebrew)
 [[ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
   source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-
-autoload -U +X bashcompinit && bashcompinit
-complete -o nospace -C /usr/bin/terraform terraform
+# Linux (apt)
+[[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+  source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
