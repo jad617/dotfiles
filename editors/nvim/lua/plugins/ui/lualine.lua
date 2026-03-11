@@ -23,7 +23,7 @@ return {
             return "(" .. vim.fn.fnamemodify(venv, ":t") .. ")"
           end
           -- 2. Fall back: look for .venv at the LSP root or cwd
-          local clients = vim.lsp.get_clients({ bufnr = 0, name = "pyright" })
+          local clients = vim.lsp.get_clients({ bufnr = 0, name = "basedpyright" })
           local root = (clients[1] and clients[1].config.root_dir) or vim.fn.getcwd()
           if vim.fn.isdirectory(root .. "/.venv") == 1 then
             return "(.venv)"

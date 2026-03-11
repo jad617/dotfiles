@@ -10,7 +10,71 @@
 --      (falls back to pip inside the venv)
 --
 -- Progress is shown via Snacks.notifier spinner (updates in-place).
+--
+-- Pyright root_dir override:
+--   Always use the git repo root so sibling packages (e.g.
+--   applications/shared/) are visible. The active venv is picked up
+--   via $VIRTUAL_ENV (set by _auto_venv in zshrc).
 ------------------------------------------------------------
+
+-- Ruff doesn't provide go-to-definition or hover; disable those capabilities
+-- so basedpyright handles them exclusively and gd/K work correctly.
+vim.api.nvim_create_autocmd("LspAttach", {
+  group = vim.api.nvim_create_augroup("RuffCapabilities", { clear = true }),
+  callback = function(args)
+    local client = vim.lsp.get_client_by_id(args.data.client_id)
+    if not client or client.name ~= "ruff" then return end
+    client.server_capabilities.definitionProvider = false
+    client.server_capabilities.hoverProvider = false
+  end,
+})
+
+-- Pyright inherits Neovim's process environment when it spawns.
+-- BufReadPre fires before FileType (which triggers basedpyright start), so we
+-- can inject VIRTUAL_ENV + PYTHONPATH into vim.env in time.
+-- If basedpyright is already running (different project), restart it.
+local _last_venv = nil
+
+vim.api.nvim_create_autocmd("BufReadPre", {
+  group = vim.api.nvim_create_augroup("PyrightEnv", { clear = true }),
+  pattern = "*.py",
+  callback = function(ev)
+    local file_dir = vim.fn.fnamemodify(ev.file, ":h")
+
+    -- Walk up to find nearest .venv
+    local venv
+    local dir = file_dir
+    while dir ~= "/" do
+      if vim.fn.isdirectory(dir .. "/.venv") == 1 then
+        venv = dir .. "/.venv"
+        break
+      end
+      local parent = vim.fn.fnamemodify(dir, ":h")
+      if parent == dir then break end
+      dir = parent
+    end
+    if not venv or venv == _last_venv then return end
+    _last_venv = venv
+
+    -- Git root for PYTHONPATH (resolves sibling packages)
+    local git_root = vim.fn.systemlist(
+      "git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel"
+    )[1]
+
+    vim.env.VIRTUAL_ENV = venv
+    vim.env.PATH        = venv .. "/bin:" .. vim.env.PATH
+    if vim.v.shell_error == 0 and git_root ~= "" then
+      vim.env.PYTHONPATH = git_root
+    end
+
+    -- Restart basedpyright if already running so it picks up the new env
+    vim.schedule(function()
+      for _, client in ipairs(vim.lsp.get_clients({ name = "basedpyright" })) do
+        vim.lsp.stop_client(client.id, true)
+      end
+    end)
+  end,
+})
 
 local SPINNER = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
@@ -94,37 +158,25 @@ local function install_reqs(root, venv, has_uv)
         if not ok then all_ok = false end
         stop(ok, ok and (name .. " installed") or (name .. " install failed"))
         pending = pending - 1
-        if pending == 0 and not all_ok then
-          vim.schedule(function()
-            vim.notify("One or more requirements failed — check notifications above", vim.log.levels.WARN, {
-              title = "Python",
-              timeout = 8000,
-            })
-          end)
+        if pending == 0 then
+          if not all_ok then
+            vim.schedule(function()
+              vim.notify("One or more requirements failed — check notifications above", vim.log.levels.WARN, {
+                title = "Python",
+                timeout = 8000,
+              })
+            end)
+          else
+            -- Restart LSP so it picks up the newly installed packages
+            vim.schedule(function()
+              for _, client in ipairs(vim.lsp.get_clients({ name = "basedpyright" })) do
+                vim.lsp.stop_client(client.id, true)
+              end
+            end)
+          end
         end
       end,
     })
-  end
-end
-
--- Write pyrightconfig.json next to the .venv so pyright always finds the
--- right interpreter — more reliable than workspace/didChangeConfiguration.
--- Only writes if the file doesn't already exist.
-local function write_pyrightconfig(root)
-  local config_path = root .. "/pyrightconfig.json"
-  if vim.fn.filereadable(config_path) == 1 then return end
-  local content = vim.json.encode({
-    venvPath = ".",
-    venv = ".venv",
-    pythonVersion = vim.fn.system(
-      root .. "/.venv/bin/python -c 'import sys; print(f\"{sys.version_info.major}.{sys.version_info.minor}\")'"):gsub(
-      "\n", ""),
-  })
-  local f = io.open(config_path, "w")
-  if f then
-    f:write(content)
-    f:close()
-    vim.notify("pyrightconfig.json written → " .. root, vim.log.levels.INFO, { title = "Python" })
   end
 end
 
@@ -155,12 +207,10 @@ vim.api.nvim_create_autocmd("FileType", {
             return
           end
           stop(true, ".venv created")
-          write_pyrightconfig(root)
           install_reqs(root, venv, has_uv)
         end,
       })
     else
-      write_pyrightconfig(root)
       install_reqs(root, venv, has_uv)
     end
   end,
