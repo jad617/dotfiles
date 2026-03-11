@@ -281,7 +281,7 @@ install_devops_linux() {
 
     # HashiCorp apt repo (terraform + vault)
     if ! cmd_exists terraform || ! cmd_exists vault; then
-        curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --batch --no-tty --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+        curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --batch --no-tty --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
             | sudo tee /etc/apt/sources.list.d/hashicorp.list
         sudo apt update
