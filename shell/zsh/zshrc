@@ -206,21 +206,33 @@ add-zsh-hook precmd _pyenv_dir_check
 # 8.5) Auto-activate .venv on cd
 ##################################
 _auto_venv() {
-  local venv_dir
-  # Walk up from cwd looking for the nearest .venv
-  venv_dir="$(pwd)"
-  while [[ "$venv_dir" != "/" ]]; do
-    if [[ -f "$venv_dir/.venv/bin/activate" ]]; then
-      # Already active for this venv — skip
-      if [[ "$VIRTUAL_ENV" != "$venv_dir/.venv" ]]; then
-        source "$venv_dir/.venv/bin/activate"
-      fi
-      return
+  local venv=""
+
+  # 1. Walk UP from cwd — handles: file open inside a project subdir
+  local dir="$(pwd)"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/.venv/bin/activate" ]]; then
+      venv="$dir/.venv"
+      break
     fi
-    venv_dir="$(dirname "$venv_dir")"
+    dir="$(dirname "$dir")"
   done
-  # No .venv found — deactivate if something is active
-  if [[ -n "$VIRTUAL_ENV" ]]; then
+
+  # 2. Search DOWN within git root — handles: standing at repo root when
+  #    .venv lives in a subdir (e.g. applications/ms-clustering/.venv)
+  if [[ -z "$venv" ]]; then
+    local git_root
+    git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+    if [[ -n "$git_root" ]]; then
+      local found
+      found=$(find "$git_root" -maxdepth 5 -name "activate" -path "*/.venv/bin/activate" 2>/dev/null | head -1)
+      [[ -n "$found" ]] && venv="${found%/bin/activate}"
+    fi
+  fi
+
+  if [[ -n "$venv" ]]; then
+    [[ "$VIRTUAL_ENV" != "$venv" ]] && source "$venv/bin/activate"
+  elif [[ -n "$VIRTUAL_ENV" ]]; then
     deactivate 2>/dev/null || true
   fi
 }
