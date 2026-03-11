@@ -131,6 +131,7 @@ install_macos() {
     # macOS clipboard manager
     brew install --cask rectangle
     brew install maccy
+
 }
 
 # =============================================================================
@@ -328,6 +329,19 @@ install_devops_linux() {
 
     # mysql-client (macOS: mysql-client@8.0 via brew)
     # sudo apt install -y mysql-client
+
+    # keyd — kernel-level key remapping (Wayland-compatible, macOS uses hidutil instead)
+    # Not in apt; build from source
+    if ! cmd_exists keyd; then
+        sudo apt install -y gcc make libevdev-dev libudev-dev
+        git clone https://github.com/rvaiya/keyd.git /tmp/keyd
+        make -C /tmp/keyd
+        sudo make -C /tmp/keyd install
+        rm -rf /tmp/keyd
+    fi
+    sudo mkdir -p /etc/keyd
+    sudo ln -sf "$DOTFILES/linux/keyd/default.conf" /etc/keyd/default.conf
+    sudo systemctl enable --now keyd
 }
 
 # =============================================================================
@@ -373,8 +387,15 @@ create_common_symlinks() {
 create_macos_symlinks() {
     echo "==> Creating macOS symlinks"
     symlink "$DOTFILES/shell/zsh/zshrc"               "$HOME/.zshrc"
-    symlink "$DOTFILES/shell/zsh/p10k.zsh"            "$HOME/.p10k.zsh"
     symlink "$DOTFILES/terminal/tmux/macos_tmux.conf" "$HOME/.tmux.conf"
+
+    # Caps Lock → letter 'a' via hidutil (persisted through launchd)
+    local plist_src="$DOTFILES/mac/capslock.plist"
+    local plist_dst="$HOME/Library/LaunchAgents/com.user.capslock.plist"
+    symlink "$plist_src" "$plist_dst"
+    launchctl unload "$plist_dst" 2>/dev/null || true
+    launchctl load "$plist_dst"
+    echo "  capslock remapped to 'a' (hidutil)"
 }
 
 # =============================================================================
@@ -388,10 +409,21 @@ create_linux_symlinks() {
     symlink "$DOTFILES/linux/wofi/style.css"                                                     "$HOME/.config/wofi/style.css"
     symlink "$DOTFILES/linux/autostart/cliphist-daemon.desktop"                                  "$HOME/.config/autostart/cliphist-daemon.desktop"
     symlink "$DOTFILES/linux/bin/clipboard-picker"                                               "$HOME/bin/clipboard-picker"
+    chmod +x "$DOTFILES/linux/bin/clipboard-picker"
 
     # COSMIC shortcuts — create the dir in case it doesn't exist on a fresh install
     mkdir -p "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1"
     symlink "$DOTFILES/linux/cosmic/shortcuts/custom"                                            "$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
+
+    # Start cliphist daemon for the current session (autostart handles future logins)
+    if command -v wl-paste >/dev/null 2>&1 && [[ -x "$HOME/go/bin/cliphist" ]]; then
+        if ! pgrep -f "wl-paste --watch" >/dev/null 2>&1; then
+            nohup wl-paste --watch "$HOME/go/bin/cliphist" store &>/dev/null &
+            echo "  cliphist daemon started"
+        else
+            echo "  cliphist daemon already running"
+        fi
+    fi
 }
 
 # =============================================================================
