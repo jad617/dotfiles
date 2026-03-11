@@ -156,6 +156,7 @@ return {
         width = 0.90,
       },
       start_insert = true,
+      auto_close = false,
     },
     styles = {
       zen = {

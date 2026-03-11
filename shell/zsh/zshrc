@@ -231,12 +231,18 @@ _auto_venv() {
   fi
 
   if [[ -n "$venv" ]]; then
-    [[ "$VIRTUAL_ENV" != "$venv" ]] && source "$venv/bin/activate"
+    # Re-source activate if python doesn't resolve to the venv's python.
+    # Checking VIRTUAL_ENV/PATH is insufficient — pyenv precmd hooks can
+    # prepend shims to PATH after we set it, pushing venv/bin behind them.
+    if [[ "$(command -v python 2>/dev/null)" != "$venv/bin/python" ]]; then
+      source "$venv/bin/activate"
+    fi
   elif [[ -n "$VIRTUAL_ENV" ]]; then
     deactivate 2>/dev/null || true
   fi
 }
 add-zsh-hook chpwd _auto_venv
+add-zsh-hook precmd _auto_venv
 _auto_venv  # run once on shell start
 
 ##################################
