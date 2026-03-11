@@ -417,10 +417,12 @@ create_linux_symlinks() {
     local cosmic_shortcuts="$HOME/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom"
     local template="$DOTFILES/linux/cosmic/shortcuts/custom"
     mkdir -p "$(dirname "$cosmic_shortcuts")"
+    # Remove any existing symlink so writes go to a real file, not back into the repo
+    [[ -L "$cosmic_shortcuts" ]] && rm "$cosmic_shortcuts"
     local expected_content expected_md5 live_md5
     expected_content=$(sed "s|/home/YOUR_USERNAME|$HOME|g" "$template")
     expected_md5=$(echo "$expected_content" | md5sum | awk '{print $1}')
-    live_md5=$(md5sum "$cosmic_shortcuts" 2>/dev/null | awk '{print $1}')
+    live_md5=$(md5sum "$cosmic_shortcuts" 2>/dev/null | awk '{print $1}') || true
     if [[ "$expected_md5" != "$live_md5" ]]; then
         echo "$expected_content" > "$cosmic_shortcuts"
         echo "  updated: $cosmic_shortcuts"
