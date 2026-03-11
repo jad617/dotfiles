@@ -156,8 +156,10 @@ return {
       local chat = require("CopilotChat")
 
       chat.setup({
-        -- optional UI configs here (float, split, etc.)
+        model = "claude-sonnet-4-6",
       })
+
+      vim.keymap.set({ "n", "v" }, "<leader>cp", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
 
       -- 🌟 Keymaps for buffer-level commands
       -- Review buffer
