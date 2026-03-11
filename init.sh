@@ -108,7 +108,6 @@ install_macos() {
         eza \
         zoxide \
         oh-my-posh \
-        television \
         zellij \
         wezterm@nightly
 
@@ -183,8 +182,8 @@ install_linux() {
         curl -s https://ohmyposh.dev/install.sh | bash -s -- -d ~/.local/bin
     fi
 
-    # pyenv (macOS: brew)
-    if ! cmd_exists pyenv; then
+    # pyenv (macOS: brew) — check directory, not command, since pyenv may not be in PATH yet
+    if [[ ! -d "$HOME/.pyenv" ]]; then
         curl https://pyenv.run | bash
     fi
 
@@ -204,14 +203,6 @@ install_linux() {
         rm /tmp/zellij.tar.gz
     fi
 
-    # television (macOS: brew)
-    if ! cmd_exists tv; then
-        TV_VER=$(curl -s https://api.github.com/repos/alexpasmantier/television/releases/latest | jq -r '.tag_name')
-        curl -L "https://github.com/alexpasmantier/television/releases/download/${TV_VER}/television-${TV_VER}-x86_64-unknown-linux-musl.tar.gz" -o /tmp/tv.tar.gz
-        mkdir -p /tmp/tv && tar -xzf /tmp/tv.tar.gz -C /tmp/tv
-        sudo mv /tmp/tv/tv /usr/local/bin/
-        rm -rf /tmp/tv /tmp/tv.tar.gz
-    fi
 
     install_go
 
@@ -378,7 +369,6 @@ create_common_symlinks() {
     symlink "$DOTFILES/shell/prompt/ohmyposh"            "$HOME/.config/ohmyposh"
     symlink "$DOTFILES/terminal/zellij"                  "$HOME/.config/zellij"
     symlink "$DOTFILES/terminal/kitty"                   "$HOME/.config/kitty"
-    symlink "$DOTFILES/shell/zsh/television.config.toml" "$HOME/.config/television/config.toml"
 }
 
 # =============================================================================
