@@ -34,6 +34,11 @@ echo "==> Detected OS: $OS"
 symlink() {
     local src=$1 dst=$2
     mkdir -p "$(dirname "$dst")"
+    # If dst is a real directory (not a symlink), remove it first.
+    # ln -sf will otherwise create the symlink *inside* the directory.
+    if [[ -d "$dst" && ! -L "$dst" ]]; then
+        rm -rf "$dst"
+    fi
     ln -sf "$src" "$dst"
     echo "  linked: $dst"
 }
