@@ -6,7 +6,8 @@
         ],
         key: "h",
         description: Some("clipboard-picker"),
-    ): Spawn("sh -c '$HOME/bin/clipboard-picker'"),
+    // NOTE: update this path to match your home directory
+    ): Spawn("/home/YOUR_USERNAME/bin/clipboard-picker"),
     (
         modifiers: [
             Super,
