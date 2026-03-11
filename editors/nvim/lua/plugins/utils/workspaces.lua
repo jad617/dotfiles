@@ -150,8 +150,11 @@ return {
 
         select_mod.select(items, {
           title = "Workspaces",
-          layout = "ivy", -- try: "vertical", "dropdown", "vscode", "select"
-          win = { width = 0.9, height = 0.6 },
+          layout = {
+            preset = "ivy",
+            width  = 0.95,
+            height = 0.85,
+          },
           format_item = function(it)
             return it.text
           end,
