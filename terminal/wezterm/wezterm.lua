@@ -170,13 +170,18 @@ end
 --------------------------------------------------------------------------------
 config.keys = {
 	-- Paste via Ctrl+V (for Alt+V → wtype Ctrl+V flow), strip trailing newlines
+	-- Pass through to vim (visual block mode) when vim is in the foreground
 	{
 		key = "v",
 		mods = "CTRL",
 		action = wezterm.action_callback(function(window, pane)
-			local success, stdout = wezterm.run_child_process({ "wl-paste", "--no-newline" })
-			if success then
-				window:perform_action(action.SendString(stdout), pane)
+			if is_vim(pane) then
+				window:perform_action(action.SendKey({ key = "v", mods = "CTRL" }), pane)
+			else
+				local success, stdout = wezterm.run_child_process({ "wl-paste", "--no-newline" })
+				if success then
+					window:perform_action(action.SendString(stdout), pane)
+				end
 			end
 		end),
 	},
