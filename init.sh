@@ -111,9 +111,12 @@ install_macos() {
         pyenv-virtualenv \
         eza \
         zoxide \
-        oh-my-posh \
+        jandedobbeleer/oh-my-posh/oh-my-posh \
         zellij \
-        wezterm@nightly
+        node \
+        go
+
+    brew install --cask wezterm@nightly
 
     # Kitty
     if ! cmd_exists kitty; then
@@ -125,8 +128,6 @@ install_macos() {
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
     fi
     clone_if_missing "https://github.com/romkatv/powerlevel10k.git" "$HOME/powerlevel10k"
-
-    install_go
 
     # Nerd Font
     brew install --cask font-meslo-lg-nerd-font
@@ -365,6 +366,9 @@ install_common() {
     # Zsh completions — fetched from upstream, not tracked in dotfiles
     echo "==> Fetching zsh completions"
     local tf_comp="$HOME/.config/zsh-completion/terraform/_terraform"
+    # Remove broken symlink that would block directory creation
+    local tf_comp_root="$HOME/.config/zsh-completion"
+    [[ -L "$tf_comp_root" && ! -e "$tf_comp_root" ]] && rm "$tf_comp_root"
     mkdir -p "$(dirname "$tf_comp")"
     curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/plugins/terraform/_terraform -o "$tf_comp"
 }
@@ -394,8 +398,8 @@ create_macos_symlinks() {
     local plist_src="$DOTFILES/mac/capslock.plist"
     local plist_dst="$HOME/Library/LaunchAgents/com.user.capslock.plist"
     symlink "$plist_src" "$plist_dst"
-    launchctl unload "$plist_dst" 2>/dev/null || true
-    launchctl load "$plist_dst"
+    launchctl bootout "gui/$(id -u)" "$plist_dst" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$plist_dst"
     echo "  capslock remapped to 'a' (hidutil)"
 }
 
