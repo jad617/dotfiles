@@ -178,13 +178,13 @@ return {
     enabled = function()
       return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
     end,
-    build = "npm install -g @githubnext/github-copilot-cli",
+    build = "npm install -g @github/copilot",
     event = "VeryLazy",
     keys  = {
       {
         "<leader>sk",
-        function() require("sidekick.cli").toggle({ name = "claude" }) end,
-        desc = "Sidekick (Claude)",
+        function() require("sidekick.cli").toggle({ name = "copilot" }) end,
+        desc = "Sidekick (Copilot)",
       },
     },
     opts  = {},
