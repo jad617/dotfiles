@@ -13,7 +13,7 @@ M.lsp = {
     --   },
     -- },
   },
-  -- yamlls = {},
+  yamlls = {},
   basedpyright = {},
   ruff = {},
   tflint = {
@@ -135,6 +135,8 @@ M.linter = {
   "tflint",
   "stylua",
   "yamllint",
+  "hadolint",
+  "shellcheck",
 }
 
 return M
