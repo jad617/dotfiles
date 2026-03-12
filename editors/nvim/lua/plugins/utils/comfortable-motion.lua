@@ -1,35 +1,30 @@
-return {
-  {
-    "yuttie/comfortable-motion.vim",
-    enabled = true,
-    config = function()
-      ------------------------------------------------------------
-      -- [[ local vars ]]
-      ------------------------------------------------------------
-      local cmd = vim.cmd -- cmd
-      local map = vim.api.nvim_set_keymap -- set keys
-      local options = { noremap = true, silent = true }
+---------------------------------------------------------------------------
+-- Smooth scroll (pure Lua, replaces yuttie/comfortable-motion.vim)
+-- Keymaps: <C-o> scroll up, <C-p> scroll down (normal + insert)
+---------------------------------------------------------------------------
 
-      ------------------------------------------------------------
-      -- [[ Config ]]
-      ------------------------------------------------------------
-      cmd([[let g:comfortable_motion_no_default_key_mappings = 1]])
-      cmd([[let g:comfortable_motion_scroll_down_key = "j"]])
-      cmd([[let g:comfortable_motion_scroll_up_key = "k"]])
-      cmd([[let g:comfortable_motion_friction = 300.0]])
-      cmd([[let g:comfortable_motion_air_drag = 4.0]])
+local function smooth_scroll(lines)
+  local timer    = vim.uv.new_timer()
+  local remaining = math.abs(lines)
+  local dir      = lines > 0 and 1 or -1
+  local interval = 16  -- ~60 fps
 
-      ------------------------------------------------------------
-      -- [[ Key Bindings ]]
-      ------------------------------------------------------------
+  timer:start(0, interval, vim.schedule_wrap(function()
+    if remaining <= 0 then
+      timer:stop()
+      timer:close()
+      return
+    end
+    vim.cmd("normal! " .. dir .. "\x05") -- <C-e> / <C-y>
+    remaining = remaining - 1
+  end))
+end
 
-      -- [[ Default]]
-      map("n", "<C-o>", ":call comfortable_motion#flick(-75)<CR>", options)
-      map("n", "<C-p>", ":call comfortable_motion#flick(75)<CR>", options)
+local opts = { noremap = true, silent = true }
 
-      -- TODO: need to find a way to force this behavior
-      map("i", "<C-p>", "<C-c>:call comfortable_motion#flick(100)<CR>", options)
-      map("i", "<C-o>", "<C-c>:call comfortable_motion#flick(-100)<CR>", options)
-    end,
-  },
-}
+vim.keymap.set("n", "<C-p>", function() smooth_scroll(10)  end, opts)
+vim.keymap.set("n", "<C-o>", function() smooth_scroll(-10) end, opts)
+vim.keymap.set("i", "<C-p>", function() vim.cmd("stopinsert") smooth_scroll(10)  end, opts)
+vim.keymap.set("i", "<C-o>", function() vim.cmd("stopinsert") smooth_scroll(-10) end, opts)
+
+return {}
