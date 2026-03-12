@@ -5,10 +5,16 @@
 -- Format per line: name path timestamp
 --
 -- On VimEnter: auto-add the current git repo (idempotent)
--- <c-l>: open Snacks picker — name on left, directory preview on right
+-- <c-l>: open Snacks picker — Path list left, Preview right
 ---------------------------------------------------------------------------
 
 local DATA_FILE = vim.fn.stdpath("data") .. "/workspaces"
+
+local function set_workspace_hl()
+  vim.api.nvim_set_hl(0, "WorkspacePath", { fg = "#99bc80" })
+end
+set_workspace_hl()
+vim.api.nvim_create_autocmd("ColorScheme", { callback = set_workspace_hl })
 
 ---------------------------------------------------------------------------
 -- Storage helpers
@@ -18,7 +24,6 @@ local function load_workspaces()
   local f = io.open(DATA_FILE, "r")
   if not f then return items end
   for line in f:lines() do
-    -- format: name path [timestamp]  (space-separated; path has no spaces)
     local name, path = line:match("^(%S+)%s+(%S+)")
     if name and path and vim.fn.isdirectory(path) == 1 then
       items[#items + 1] = { name = name, path = path }
@@ -71,7 +76,6 @@ local function auto_add_workspace()
     if ws.name == name or ws.path == root then return end
   end
 
-  -- Ensure trailing slash for directory entries
   if root:sub(-1) ~= "/" then root = root .. "/" end
   workspaces[#workspaces + 1] = { name = name, path = root }
   save_workspaces(workspaces)
@@ -86,9 +90,7 @@ vim.api.nvim_create_autocmd("VimEnter", {
 })
 
 ---------------------------------------------------------------------------
--- Snacks picker — input on top, Project names left, Path right
--- (Snacks supports 3 window types: input / list / preview)
--- The preview window is repurposed to show the path of the selected item.
+-- Snacks picker — input top, Path (name+path) left, Preview right
 ---------------------------------------------------------------------------
 local function open_workspace_picker()
   local workspaces = load_workspaces()
@@ -97,28 +99,35 @@ local function open_workspace_picker()
     return
   end
 
+  local max_w = 0
+  for _, ws in ipairs(workspaces) do
+    local w = vim.fn.strdisplaywidth(ws.name)
+    if w > max_w then max_w = w end
+  end
+
   Snacks.picker({
-    title   = "Select",
-    finder  = function()
+    title  = "Select",
+    finder = function()
       local items = {}
       for _, ws in ipairs(workspaces) do
         items[#items + 1] = {
           text = ws.name,
           name = ws.name,
           path = ws.path,
+          file = ws.path,
         }
       end
       return items
     end,
-    -- List shows only the project name
-    format  = function(item)
-      return { { item.name, "SnacksPickerLabel" } }
+    format = function(item)
+      local pad = max_w - vim.fn.strdisplaywidth(item.name)
+      return {
+        { item.name .. string.rep(" ", pad + 2), "SnacksPickerLabel" },
+        { "│  ",                                 "SnacksPickerDelim" },
+        { vim.fn.fnamemodify(item.path, ":~"),   "WorkspacePath"     },
+      }
     end,
-    -- Preview window shows the path of the highlighted item
-    preview = function(ctx)
-      ctx.preview:reset()
-      ctx.preview:set_lines({ vim.fn.fnamemodify(ctx.item.path, ":~") })
-    end,
+    preview = "directory",
     confirm = function(picker, item)
       picker:close()
       if not item then return end
@@ -129,7 +138,7 @@ local function open_workspace_picker()
       vim.fn.chdir(item.path)
       Snacks.picker.files({ hidden = true, cwd = item.path })
     end,
-    layout  = {
+    layout = {
       layout = {
         box      = "vertical",
         backdrop = false,
@@ -139,8 +148,8 @@ local function open_workspace_picker()
         { win = "input", height = 1, border = true, title = " Select ", title_pos = "center" },
         {
           box = "horizontal",
-          { win = "list",    title = " Project ", title_pos = "center", border = true },
-          { win = "preview", title = " Path ",    title_pos = "center", width = 0.55, border = true },
+          { win = "list",    title = " Path ",    title_pos = "center", border = true },
+          { win = "preview", title = " Preview ", title_pos = "center", width = 0.25, border = true },
         },
       },
     },
