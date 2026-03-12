@@ -187,7 +187,13 @@ return {
         desc = "Sidekick (Copilot)",
       },
     },
-    opts  = {},
+    opts  = {
+      cli = {
+        tools = {
+          copilot = { cmd = { "github-copilot-cli", "--banner" } },
+        },
+      },
+    },
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
