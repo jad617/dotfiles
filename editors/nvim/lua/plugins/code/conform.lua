@@ -9,6 +9,8 @@ return {
       ["_"] = { "trim_newlines", "trim_whitespace" },
 
       -- yaml
+      sh         = { "shfmt" },
+      bash       = { "shfmt" },
       dockerfile = { "trim_newlines", "trim_whitespace" },
       helm = { "trim_newlines", "trim_whitespace" },
       kdl = { "trim_newlines", "trim_whitespace" },

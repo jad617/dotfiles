@@ -5,11 +5,16 @@ return {
     local lint = require("lint")
 
     lint.linters_by_ft = {
-      ansible = { "ansible_lint", "yamllint" },
+      ansible    = { "ansible_lint", "yamllint" },
+      go         = { "golangci-lint" },
+      terraform  = { "tflint" },
+      dockerfile = { "hadolint" },
+      sh         = { "shellcheck" },
+      bash       = { "shellcheck" },
+      yaml       = { "yamllint" },
+      text       = { "proselint" },
+      markdown   = { "proselint" },
       -- python: diagnostics handled by ruff LSP
-      yaml = { "yamllint" },
-      text = { "proselint" },
-      markdown = { "proselint" },
     }
 
     local lint_augroup = vim.api.nvim_create_augroup("lint", { clear = true })
