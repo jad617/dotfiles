@@ -198,8 +198,7 @@ return {
       local chat = require("CopilotChat")
 
       chat.setup({
-        model = "gpt-4o",                   -- default chat model
-        agent = "claude-sonnet-4-6",        -- agent mode uses Claude Sonnet 4.6
+        model = "claude-sonnet-4-6",
       })
 
       vim.keymap.set({ "n", "v" }, "<leader>cp", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
