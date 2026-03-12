@@ -5,9 +5,9 @@ return {
     local lint = require("lint")
 
     lint.linters_by_ft = {
-      ansible    = { "ansible_lint", "yamllint" },
+      ansible    = { "yamllint" },  -- ansiblels runs ansible-lint internally
       go         = { "golangci-lint" },
-      terraform  = { "tflint" },
+      -- terraform: tflint runs as LSP (tflint --langserver), no need to duplicate here
       dockerfile = { "hadolint" },
       sh         = { "shellcheck" },
       bash       = { "shellcheck" },
