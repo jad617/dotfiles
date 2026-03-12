@@ -178,6 +178,7 @@ return {
     enabled = function()
       return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
     end,
+    build = "npm install -g @githubnext/github-copilot-cli",
     event = "VeryLazy",
     keys  = {
       {
