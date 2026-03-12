@@ -40,9 +40,15 @@ autoload -Uz compinit
 zstyle ':completion:*' use-cache yes
 zstyle ':completion:*' cache-path "$ZDOT/.zcompcache"
 mkdir -p "$ZDOT/.zcompcache"
-setopt AUTO_LIST AUTO_MENU
+setopt AUTO_LIST AUTO_MENU COMPLETE_IN_WORD
 unsetopt MENU_COMPLETE
 zstyle ':completion:*' menu select=1
+# Partial/substring filename matching (mirrors oh-my-zsh behaviour)
+# e.g. "an-exa" completes "this-is-an-example.txt"
+zstyle ':completion:*' matcher-list \
+  'm:{a-zA-Z}={A-Za-z}' \
+  'm:{a-zA-Z}={A-Za-z} r:|[._-]=* r:|=*' \
+  'm:{a-zA-Z}={A-Za-z} l:|=* r:|=*'
 zstyle ':completion:*:cd:*' tag-order 'local-directories directory-stack path-directories'
 zstyle ':completion:*:cd:*' ignore-parents parent pwd
 zstyle ':completion:*' squeeze-slashes true
