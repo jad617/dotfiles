@@ -126,7 +126,7 @@ return {
         for _, it in ipairs(list) do
           local pad = max_name - vim.fn.strdisplaywidth(it.name)
           local left = it.name .. string.rep(" ", pad + 2) .. "│  "
-          local line = left .. it.path
+          local line = left .. vim.fn.fnamemodify(it.path, ":~")
           items[#items + 1] = { text = line, value = it }
         end
 
@@ -149,11 +149,21 @@ return {
         end
 
         select_mod.select(items, {
-          title = "Workspaces",
-          layout = {
-            preset = "ivy",
-            width  = 0.95,
-            height = 0.85,
+          prompt = "Select Project",
+          snacks = {
+            layout = {
+              width  = math.floor(vim.o.columns * 0.6),
+              height = math.floor(vim.o.lines   * 0.8),
+              layout = {
+                backdrop  = false,
+                box       = "vertical",
+                border    = "rounded",
+                title     = "{title}",
+                title_pos = "center",
+                { win = "input", height = 1, border = "bottom" },
+                { win = "list",  height = math.floor(vim.o.lines * 0.8) - 4, border = "none" },
+              },
+            },
           },
           format_item = function(it)
             return it.text
