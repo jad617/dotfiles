@@ -190,7 +190,7 @@ return {
     opts  = {
       cli = {
         tools = {
-          copilot = { cmd = { "github-copilot-cli", "--banner" } },
+          copilot = { cmd = { "github-copilot-cli" } },
         },
       },
     },
