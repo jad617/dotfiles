@@ -14,7 +14,7 @@ return {
           title = "Workspaces",
           icon = " ",
           action = function()
-            vim.cmd("Telescope workspaces")
+            vim.cmd("SnacksWorkspaces")
           end,
           key = "w",
           padding = 1,
@@ -191,9 +191,6 @@ return {
     picker = {
       formatters = {
         file = { truncate = "left" },
-      },
-      sources = {
-        projects = { title = "Select Project" },
       },
     },
   },
@@ -428,6 +425,29 @@ return {
         Snacks.picker.gh_pr({ state = "all" })
       end,
       desc = "GitHub Pull Requests (all)",
+    },
+    {
+      "gv",
+      function()
+        vim.cmd("vsplit")
+        vim.lsp.buf.definition()
+      end,
+      desc = "Goto Definition (vsplit)",
+    },
+    {
+      "gt",
+      function()
+        vim.cmd("tab split")
+        vim.lsp.buf.definition()
+      end,
+      desc = "Goto Definition (tab)",
+    },
+    {
+      "dl",
+      function()
+        vim.diagnostic.open_float(0, { scope = "b", max_width = 120 })
+      end,
+      desc = "Show buffer diagnostics",
     },
     {
       "<leader>sc",
