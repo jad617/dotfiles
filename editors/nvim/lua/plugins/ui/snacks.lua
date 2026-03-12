@@ -188,7 +188,14 @@ return {
         { "%.git$", "" },
       },
     },
-    picker = {},
+    picker = {
+      formatters = {
+        file = { truncate = "left" },
+      },
+      sources = {
+        projects = { title = "Select Project" },
+      },
+    },
   },
   keys = {
     {
