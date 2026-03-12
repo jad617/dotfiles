@@ -34,7 +34,6 @@ return {
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-treesitter/nvim-treesitter",
-      "nvim-telescope/telescope.nvim", -- slash-command picker
       "stevearc/dressing.nvim", -- nicer vim.ui.select
       "MeanderingProgrammer/render-markdown.nvim",
       "j-hui/fidget.nvim",
@@ -89,7 +88,7 @@ return {
           },
         },
         action_palette = {
-          provider = "telescope", -- use telescope for the action picker
+          provider = "default",
         },
         diff = {
           provider = "mini_diff", -- requires mini.diff; swap to "default" if not installed
