@@ -6,8 +6,7 @@
 local function smooth_scroll(lines)
   local timer     = vim.uv.new_timer()
   local remaining = math.abs(lines)
-  -- C-e = scroll down (ASCII 5), C-y = scroll up (ASCII 25)
-  local key       = lines > 0 and "\5" or "\25"
+  local key       = lines > 0 and "j" or "k"
 
   timer:start(0, 16, vim.schedule_wrap(function()
     if remaining <= 0 then
