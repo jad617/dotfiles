@@ -182,7 +182,7 @@ return {
     keys  = {
       {
         "<leader>sk",
-        function() require("sidekick.cli").open("copilot") end,
+        function() require("sidekick.cli").toggle({ name = "copilot" }) end,
         desc = "Sidekick (Copilot)",
       },
     },
