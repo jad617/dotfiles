@@ -34,7 +34,6 @@ return {
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-treesitter/nvim-treesitter",
-      "stevearc/dressing.nvim", -- nicer vim.ui.select
       "MeanderingProgrammer/render-markdown.nvim",
       "j-hui/fidget.nvim",
     },
