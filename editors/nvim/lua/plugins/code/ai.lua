@@ -127,24 +127,68 @@ return {
     },
   },
 
-  -- official copilot plugin
+  -- ─────────────────────────────────────────────────────────────────────────
+  -- 5. COPILOT.LUA — pure Lua inline suggestions (replaces copilot.vim)
+  --    Suggestions routed through cmp via copilot-cmp (no ghost text)
+  -- ─────────────────────────────────────────────────────────────────────────
   {
-    "github/copilot.vim",
+    "zbirenbaum/copilot.lua",
+    cmd   = "Copilot",
+    event = "InsertEnter",
     enabled = function()
       return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
     end,
-    config = function()
-      -- 🌟 Keymaps for inline suggestions
-      vim.g.copilot_no_tab_map = true
-      vim.api.nvim_set_keymap("i", "<C-J>", 'copilot#Accept("<CR>")', { silent = true, expr = true })
-    end,
+    opts = {
+      suggestion = { enabled = false }, -- handled by copilot-cmp
+      panel      = { enabled = false }, -- handled by copilot-cmp
+      filetypes  = { markdown = true, help = false },
+    },
   },
 
-  -- copilot chat plugin
+  -- ─────────────────────────────────────────────────────────────────────────
+  -- 6. COPILOT-CMP — routes Copilot suggestions into nvim-cmp menu
+  -- ─────────────────────────────────────────────────────────────────────────
+  {
+    "zbirenbaum/copilot-cmp",
+    enabled = function()
+      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
+    end,
+    dependencies = { "zbirenbaum/copilot.lua" },
+    config = true,
+  },
+
+  -- ─────────────────────────────────────────────────────────────────────────
+  -- 7. COPILOT-LSP — enables Next Edit Suggestions (NES)
+  --    Predicts where you'll edit next based on recent changes
+  -- ─────────────────────────────────────────────────────────────────────────
+  {
+    "copilotlsp-nvim/copilot-lsp",
+    enabled = function()
+      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
+    end,
+    event = "InsertEnter",
+    opts  = {},
+  },
+
+  -- ─────────────────────────────────────────────────────────────────────────
+  -- 8. SIDEKICK.NVIM — NES inline diffs + hunk navigation (by folke)
+  -- ─────────────────────────────────────────────────────────────────────────
+  {
+    "folke/sidekick.nvim",
+    enabled = function()
+      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
+    end,
+    event = "InsertEnter",
+    opts  = {},
+  },
+
+  -- ─────────────────────────────────────────────────────────────────────────
+  -- 9. COPILOT CHAT
+  -- ─────────────────────────────────────────────────────────────────────────
   {
     "CopilotC-Nvim/CopilotChat.nvim",
     dependencies = {
-      { "github/copilot.vim" }, -- official Copilot plugin (auth + inline suggestions)
+      { "zbirenbaum/copilot.lua" },
       { "nvim-lua/plenary.nvim" },
     },
     enabled = function()
@@ -154,7 +198,7 @@ return {
       local chat = require("CopilotChat")
 
       chat.setup({
-        model = "claude-sonnet-4-6",
+        model = "gpt-4o", -- default Copilot model
       })
 
       vim.keymap.set({ "n", "v" }, "<leader>cp", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
