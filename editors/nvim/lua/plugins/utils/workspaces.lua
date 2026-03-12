@@ -99,10 +99,21 @@ local function open_workspace_picker()
     return
   end
 
-  local max_w = 0
+  -- Compute dynamic column widths
+  local max_name_w = 0
+  local max_path_w = 0
   for _, ws in ipairs(workspaces) do
-    local w = vim.fn.strdisplaywidth(ws.name)
-    if w > max_w then max_w = w end
+    local nw = vim.fn.strdisplaywidth(ws.name)
+    local pw = vim.fn.strdisplaywidth(vim.fn.fnamemodify(ws.path, ":~"))
+    if nw > max_name_w then max_name_w = nw end
+    if pw > max_path_w then max_path_w = pw end
+  end
+  -- Available width in the Path panel (~75% of 80% picker, minus borders/separator)
+  local available_w = math.floor(vim.o.columns * 0.8 * 0.75) - 6
+  -- If everything fits, give the name column a little extra breathing room
+  local name_col_w = max_name_w
+  if max_name_w + max_path_w <= available_w then
+    name_col_w = max_name_w + 15
   end
 
   Snacks.picker({
@@ -120,7 +131,7 @@ local function open_workspace_picker()
       return items
     end,
     format = function(item)
-      local pad = max_w - vim.fn.strdisplaywidth(item.name)
+      local pad = name_col_w - vim.fn.strdisplaywidth(item.name)
       return {
         { item.name .. string.rep(" ", pad + 2), "SnacksPickerLabel" },
         { "│  ",                                 "SnacksPickerDelim" },
