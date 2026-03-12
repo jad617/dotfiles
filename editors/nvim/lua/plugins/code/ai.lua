@@ -178,7 +178,14 @@ return {
     enabled = function()
       return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
     end,
-    event = "InsertEnter",
+    event = "VeryLazy",
+    keys  = {
+      {
+        "<leader>sk",
+        function() require("sidekick.cli").open("copilot") end,
+        desc = "Sidekick (Copilot)",
+      },
+    },
     opts  = {},
   },
 
