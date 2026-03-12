@@ -117,7 +117,8 @@ local function open_workspace_picker()
   end
 
   Snacks.picker({
-    title  = "Select",
+    title    = "Select",
+    on_show  = function() vim.cmd("startinsert") end,
     finder = function()
       local items = {}
       for _, ws in ipairs(workspaces) do
