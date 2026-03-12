@@ -25,7 +25,10 @@ elif [[ -f /etc/os-release ]]; then
     fi
 fi
 
-[[ -z "$OS" ]] && { echo "Unsupported OS: $OSTYPE"; exit 1; }
+[[ -z "$OS" ]] && {
+    echo "Unsupported OS: $OSTYPE"
+    exit 1
+}
 echo "==> Detected OS: $OS"
 
 # -----------------------------------------------------------------------------
@@ -214,7 +217,6 @@ install_linux() {
         rm /tmp/zellij.tar.gz
     fi
 
-
     install_go
 
     # cliphist — needs Go in PATH first (macOS: uses Maccy instead)
@@ -294,8 +296,8 @@ install_devops_linux() {
     # HashiCorp apt repo (terraform + vault)
     if ! cmd_exists terraform || ! cmd_exists vault; then
         curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --batch --no-tty --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-        echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" \
-            | sudo tee /etc/apt/sources.list.d/hashicorp.list
+        echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" |
+            sudo tee /etc/apt/sources.list.d/hashicorp.list
         sudo apt update
     fi
     if ! cmd_exists terraform; then
@@ -384,12 +386,12 @@ install_common() {
 # =============================================================================
 create_common_symlinks() {
     echo "==> Creating common symlinks"
-    symlink "$DOTFILES/shell/zsh/my_aliases.sh"          "$HOME/.my_aliases.sh"
-    symlink "$DOTFILES/terminal/wezterm/wezterm.lua"     "$HOME/.wezterm.lua"
-    symlink "$DOTFILES/editors/nvim"                     "$HOME/.config/nvim"
-    symlink "$DOTFILES/shell/prompt/ohmyposh"            "$HOME/.config/ohmyposh"
-    symlink "$DOTFILES/terminal/zellij"                  "$HOME/.config/zellij"
-    symlink "$DOTFILES/terminal/kitty"                   "$HOME/.config/kitty"
+    symlink "$DOTFILES/shell/zsh/my_aliases.sh" "$HOME/.my_aliases.sh"
+    symlink "$DOTFILES/terminal/wezterm/wezterm.lua" "$HOME/.wezterm.lua"
+    symlink "$DOTFILES/editors/nvim" "$HOME/.config/nvim"
+    symlink "$DOTFILES/shell/prompt/ohmyposh" "$HOME/.config/ohmyposh"
+    symlink "$DOTFILES/terminal/zellij" "$HOME/.config/zellij"
+    symlink "$DOTFILES/terminal/kitty" "$HOME/.config/kitty"
 }
 
 # =============================================================================
@@ -397,7 +399,7 @@ create_common_symlinks() {
 # =============================================================================
 create_macos_symlinks() {
     echo "==> Creating macOS symlinks"
-    symlink "$DOTFILES/shell/zsh/zshrc"               "$HOME/.zshrc"
+    symlink "$DOTFILES/shell/zsh/zshrc" "$HOME/.zshrc"
     symlink "$DOTFILES/terminal/tmux/macos_tmux.conf" "$HOME/.tmux.conf"
 
     # Caps Lock → letter 'a' via hidutil (persisted through launchd)
@@ -414,12 +416,12 @@ create_macos_symlinks() {
 # =============================================================================
 create_linux_symlinks() {
     echo "==> Creating Linux symlinks"
-    symlink "$DOTFILES/shell/zsh/zshrc"                                                          "$HOME/.zshrc"
-    symlink "$DOTFILES/terminal/tmux/tmux.conf"                                                  "$HOME/.tmux.conf"
-    symlink "$DOTFILES/linux/wofi/config"                                                        "$HOME/.config/wofi/config"
-    symlink "$DOTFILES/linux/wofi/style.css"                                                     "$HOME/.config/wofi/style.css"
-    symlink "$DOTFILES/linux/autostart/cliphist-daemon.desktop"                                  "$HOME/.config/autostart/cliphist-daemon.desktop"
-    symlink "$DOTFILES/linux/bin/clipboard-picker"                                               "$HOME/bin/clipboard-picker"
+    symlink "$DOTFILES/shell/zsh/zshrc" "$HOME/.zshrc"
+    symlink "$DOTFILES/terminal/tmux/tmux.conf" "$HOME/.tmux.conf"
+    symlink "$DOTFILES/linux/wofi/config" "$HOME/.config/wofi/config"
+    symlink "$DOTFILES/linux/wofi/style.css" "$HOME/.config/wofi/style.css"
+    symlink "$DOTFILES/linux/autostart/cliphist-daemon.desktop" "$HOME/.config/autostart/cliphist-daemon.desktop"
+    symlink "$DOTFILES/linux/bin/clipboard-picker" "$HOME/bin/clipboard-picker"
     chmod +x "$DOTFILES/linux/bin/clipboard-picker"
 
     # COSMIC shortcuts — apply sed substitution and compare md5 of the result
@@ -434,7 +436,7 @@ create_linux_symlinks() {
     expected_md5=$(echo "$expected_content" | md5sum | awk '{print $1}')
     live_md5=$(md5sum "$cosmic_shortcuts" 2>/dev/null | awk '{print $1}') || true
     if [[ "$expected_md5" != "$live_md5" ]]; then
-        echo "$expected_content" > "$cosmic_shortcuts"
+        echo "$expected_content" >"$cosmic_shortcuts"
         echo "  updated: $cosmic_shortcuts"
     fi
 
@@ -453,20 +455,20 @@ create_linux_symlinks() {
 # Run
 # =============================================================================
 case "$OS" in
-    macos)
-        install_macos
-        install_devops_macos
-        install_common
-        create_common_symlinks
-        create_macos_symlinks
-        ;;
-    popos|linux)
-        install_linux
-        install_devops_linux
-        install_common
-        create_common_symlinks
-        create_linux_symlinks
-        ;;
+macos)
+    install_macos
+    install_devops_macos
+    install_common
+    create_common_symlinks
+    create_macos_symlinks
+    ;;
+popos | linux)
+    install_linux
+    install_devops_linux
+    install_common
+    create_common_symlinks
+    create_linux_symlinks
+    ;;
 esac
 
 echo ""
