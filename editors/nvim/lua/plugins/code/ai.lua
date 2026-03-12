@@ -158,40 +158,7 @@ return {
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
-  -- 7. COPILOT-LSP — enables Next Edit Suggestions (NES)
-  --    Predicts where you'll edit next based on recent changes
-  -- ─────────────────────────────────────────────────────────────────────────
-  {
-    "copilotlsp-nvim/copilot-lsp",
-    enabled = function()
-      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
-    end,
-    event = "InsertEnter",
-    opts  = {},
-  },
-
-  -- ─────────────────────────────────────────────────────────────────────────
-  -- 8. SIDEKICK.NVIM — NES inline diffs + hunk navigation (by folke)
-  -- ─────────────────────────────────────────────────────────────────────────
-  {
-    "folke/sidekick.nvim",
-    enabled = function()
-      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
-    end,
-    build = "npm install -g @github/copilot",
-    event = "VeryLazy",
-    keys  = {
-      {
-        "<leader>sk",
-        function() require("sidekick.cli").toggle({ name = "copilot" }) end,
-        desc = "Sidekick (Copilot)",
-      },
-    },
-    opts  = {},
-  },
-
-  -- ─────────────────────────────────────────────────────────────────────────
-  -- 9. COPILOT CHAT
+  -- 7. COPILOT CHAT
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "CopilotC-Nvim/CopilotChat.nvim",
