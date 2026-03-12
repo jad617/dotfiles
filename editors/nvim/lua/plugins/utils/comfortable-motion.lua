@@ -4,18 +4,18 @@
 ---------------------------------------------------------------------------
 
 local function smooth_scroll(lines)
-  local timer    = vim.uv.new_timer()
+  local timer     = vim.uv.new_timer()
   local remaining = math.abs(lines)
-  local dir      = lines > 0 and 1 or -1
-  local interval = 16  -- ~60 fps
+  -- C-e = scroll down (ASCII 5), C-y = scroll up (ASCII 25)
+  local key       = lines > 0 and "\5" or "\25"
 
-  timer:start(0, interval, vim.schedule_wrap(function()
+  timer:start(0, 16, vim.schedule_wrap(function()
     if remaining <= 0 then
       timer:stop()
       timer:close()
       return
     end
-    vim.cmd("normal! " .. dir .. "\x05") -- <C-e> / <C-y>
+    vim.api.nvim_feedkeys(key, "n", false)
     remaining = remaining - 1
   end))
 end
