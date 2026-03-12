@@ -2,9 +2,7 @@ return {
   {
     -- Renders Markdown in the browser
     "brianhuster/live-preview.nvim",
-    dependencies = {
-      "nvim-telescope/telescope.nvim",
-    },
+    dependencies = {},
     config = function()
       local map = vim.api.nvim_set_keymap
       local options = { noremap = true, silent = true }
