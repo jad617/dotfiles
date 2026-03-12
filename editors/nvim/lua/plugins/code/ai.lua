@@ -183,17 +183,11 @@ return {
     keys  = {
       {
         "<leader>sk",
-        function() require("sidekick.cli").toggle({ name = "copilot" }) end,
-        desc = "Sidekick (Copilot)",
+        function() require("sidekick.cli").toggle({ name = "claude" }) end,
+        desc = "Sidekick (Claude)",
       },
     },
-    opts  = {
-      cli = {
-        tools = {
-          copilot = { cmd = { "github-copilot-cli" } },
-        },
-      },
-    },
+    opts  = {},
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
