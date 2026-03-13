@@ -11,7 +11,11 @@ return {
   {
     "MeanderingProgrammer/render-markdown.nvim",
     ft = { "markdown", "codecompanion" },
+    keys = {
+      { "<leader>rm", "<cmd>RenderMarkdown toggle<cr>", desc = "Toggle Render Markdown" },
+    },
     opts = {
+      enabled = false, -- off by default; toggle with <leader>rm
       heading = { enabled = true },
       code = { enabled = true },
     },
@@ -169,6 +173,13 @@ return {
     enabled = function()
       return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
     end,
+    cmd = { "CopilotChat", "CopilotChatToggle", "CopilotChatReset" },
+    keys = {
+      { "<leader>cp", "<cmd>CopilotChatToggle<cr>", mode = { "n", "v" }, desc = "Toggle CopilotChat" },
+      { "<leader>cr", desc = "Copilot Review" },
+      { "<leader>ce", desc = "Copilot Explain" },
+      { "<leader>cf", desc = "Copilot Fix" },
+    },
     config = function()
       local chat = require("CopilotChat")
 

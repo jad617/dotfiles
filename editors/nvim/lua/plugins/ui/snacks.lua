@@ -97,7 +97,7 @@ return {
     --- * up_down: animate up or down based on the cursor position
     ---@field style? "out"|"up_down"|"down"|"up"
     animate = {
-      enabled = vim.fn.has("nvim-0.10") == 1,
+      enabled = false,
       style = "out",
       easing = "linear",
       duration = {

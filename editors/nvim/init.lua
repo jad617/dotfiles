@@ -1,3 +1,5 @@
+vim.loader.enable() -- bytecode cache — fastest single win for startup
+
 require("config.options")
 
 -- local enable_config = require("config.global_functions").FileNotTooBig()
