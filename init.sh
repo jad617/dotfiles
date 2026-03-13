@@ -122,22 +122,13 @@ install_macos() {
 
     brew install --cask wezterm@nightly
 
-    # Kitty
-    if ! cmd_exists kitty; then
-        curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
-    fi
-
-    # Oh-My-Zsh + Powerlevel10k
-    if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-    fi
-    clone_if_missing "https://github.com/romkatv/powerlevel10k.git" "$HOME/powerlevel10k"
-
     # Nerd Font
     brew install --cask font-meslo-lg-nerd-font
 
     # macOS clipboard manager
-    brew install --cask rectangle
+    if [[ ! -d "/Applications/Rectangle.app" ]]; then
+        brew install --cask rectangle
+    fi
     brew install maccy
 
 }
