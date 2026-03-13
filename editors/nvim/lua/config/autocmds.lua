@@ -109,20 +109,25 @@ vim.api.nvim_create_autocmd("TermOpen", {
 
 -- Auto-enter insert mode whenever a terminal window is focused.
 -- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
--- Also triggers a resize (+1/-1 column) to send SIGWINCH to the PTY, forcing
--- the shell to redraw the prompt at the correct position (fixes cursor drift).
+-- defer_fn(50ms) lets Snacks finish showing the float before we touch anything.
+-- chansend("\x0c") sends Ctrl+L to force zsh/bash to redraw the prompt cleanly,
+-- fixing the cursor-drift bug where typed chars appear at the wrong column.
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
   group = "terminal_settings",
   callback = function()
     if vim.bo.buftype ~= "terminal" then return end
     vim.cmd("startinsert")
-    vim.schedule(function()
+    local job_id = vim.b.terminal_job_id
+    vim.defer_fn(function()
       if vim.bo.buftype ~= "terminal" then return end
+      -- Nudge window size to send SIGWINCH so the PTY learns its real dimensions
       local win = vim.api.nvim_get_current_win()
       local w = vim.api.nvim_win_get_width(win)
       vim.api.nvim_win_set_width(win, w + 1)
       vim.api.nvim_win_set_width(win, w)
-    end)
+      -- Send Ctrl+L to force shell to repaint the prompt at the correct position
+      if job_id and job_id > 0 then vim.fn.chansend(job_id, "\x0c") end
+    end, 50)
   end,
 })
 
