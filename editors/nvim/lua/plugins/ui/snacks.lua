@@ -210,6 +210,14 @@ return {
                 ["<C-x>"] = "edit_split",
                 ["<C-t>"] = "edit_tab",
                 ["u"] = "explorer_up",
+                -- "." re-roots the picker AND changes vim's actual cwd so
+                -- the terminal (and other tools) follow the new directory
+                ["."] = function(picker)
+                  local dir = picker:dir()
+                  picker:set_cwd(dir)
+                  picker:find()
+                  if dir then vim.fn.chdir(dir) end
+                end,
                 -- Navigate to neovim splits directly (bypass smart-splits/wezterm)
                 ["<S-Right>"] = function() vim.cmd("wincmd l") end,
                 ["<S-Left>"] = function() vim.cmd("wincmd h") end,
