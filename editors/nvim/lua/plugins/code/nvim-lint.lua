@@ -2,9 +2,6 @@ return {
   "mfussenegger/nvim-lint",
   event = { "BufReadPre", "BufNewFile" },
   config = function()
-    -- Ensure mason-installed linters are on PATH
-    vim.env.PATH = vim.fn.stdpath("data") .. "/mason/bin:" .. vim.env.PATH
-
     local lint = require("lint")
 
     lint.linters_by_ft = {
