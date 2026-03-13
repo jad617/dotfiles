@@ -23,7 +23,9 @@ vim.api.nvim_create_autocmd("LspAttach", {
   group = vim.api.nvim_create_augroup("RuffCapabilities", { clear = true }),
   callback = function(args)
     local client = vim.lsp.get_client_by_id(args.data.client_id)
-    if not client or client.name ~= "ruff" then return end
+    if not client or client.name ~= "ruff" then
+      return
+    end
     client.server_capabilities.definitionProvider = false
     client.server_capabilities.hoverProvider = false
   end,
@@ -50,19 +52,21 @@ vim.api.nvim_create_autocmd("BufReadPre", {
         break
       end
       local parent = vim.fn.fnamemodify(dir, ":h")
-      if parent == dir then break end
+      if parent == dir then
+        break
+      end
       dir = parent
     end
-    if not venv or venv == _last_venv then return end
+    if not venv or venv == _last_venv then
+      return
+    end
     _last_venv = venv
 
     -- Git root for PYTHONPATH (resolves sibling packages)
-    local git_root = vim.fn.systemlist(
-      "git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel"
-    )[1]
+    local git_root = vim.fn.systemlist("git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel")[1]
 
     vim.env.VIRTUAL_ENV = venv
-    vim.env.PATH        = venv .. "/bin:" .. vim.env.PATH
+    vim.env.PATH = venv .. "/bin:" .. vim.env.PATH
     if vim.v.shell_error == 0 and git_root ~= "" then
       vim.env.PYTHONPATH = git_root
     end
@@ -121,7 +125,9 @@ local function find_root(bufnr)
       return path
     end
     local parent = vim.fn.fnamemodify(path, ":h")
-    if parent == path then break end
+    if parent == path then
+      break
+    end
     path = parent
   end
 
@@ -137,7 +143,9 @@ end
 
 local function install_reqs(root, venv, has_uv)
   local reqs = vim.fn.glob(root .. "/requirements*.txt", false, true)
-  if #reqs == 0 then return end
+  if #reqs == 0 then
+    return
+  end
 
   local pending = #reqs
   local all_ok = true
@@ -147,15 +155,15 @@ local function install_reqs(root, venv, has_uv)
     local id = "python_install_" .. root .. "_" .. name
     local stop = start_spinner(id, "Installing " .. name .. "…")
 
-    local cmd = has_uv
-        and { "uv", "pip", "install", "--python", venv .. "/bin/python", "-r", req }
-      or { venv .. "/bin/pip", "install", "-r", req }
+    local cmd = has_uv and { "uv", "pip", "install", "--python", venv .. "/bin/python", "-r", req } or { venv .. "/bin/pip", "install", "-r", req }
 
     vim.fn.jobstart(cmd, {
       cwd = root,
       on_exit = function(_, code)
         local ok = code == 0
-        if not ok then all_ok = false end
+        if not ok then
+          all_ok = false
+        end
         stop(ok, ok and (name .. " installed") or (name .. " install failed"))
         pending = pending - 1
         if pending == 0 then
@@ -188,7 +196,9 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = "python",
   callback = function(ev)
     local root = find_root(ev.buf)
-    if _done[root] then return end
+    if _done[root] then
+      return
+    end
     _done[root] = true
 
     local venv = root .. "/.venv"
