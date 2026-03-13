@@ -1,1 +1,1 @@
-return { "pearofducks/ansible-vim" }
+return { "pearofducks/ansible-vim", ft = { "yaml.ansible" } }
