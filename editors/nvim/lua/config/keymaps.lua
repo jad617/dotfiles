@@ -48,15 +48,8 @@ map("n", "<leader>t", ":e ~/todo<CR>", options) -- Replace 1 by 1
 -- map("i", "<c-/>", "<C-c>:FloatTermToggle<CR>", options_silent)
 
 ------------------------------------------------------------
--- [[ Neo-tree ]]
-------------------------------------------------------------
-map("n", "<C-n>", "<C-c>:Neotree action=show toggle=true<CR>", options_silent)
--- map(
---   "n",
---   "<C-n>",
---   '<C-c>:lua require("neo-tree.command").execute({ action = "show", toggle = true, dir = dir })<CR>',
---   options_silent
--- )
+-- [[ Snacks Explorer (handled in snacks.lua keys) ]]
+-- <C-n> → Snacks.explorer() toggle
 
 -- Jump to words Right|Left with Ctrl
 map("n", "<C-Right>", "e", {})

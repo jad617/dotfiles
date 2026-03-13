@@ -23,7 +23,7 @@ return {
         winwidth = 4,
       },
       ignore = {
-        filetype = { "NvimTree", "neo-tree", "undotree", "gundo" },
+        filetype = { "NvimTree", "snacks_picker_list", "undotree", "gundo" },
       },
       animation = {
         enable = true,
