@@ -17,6 +17,10 @@ local options = { noremap = true }
 -- opt.iskeyword:append({ "-", "." })
 opt.iskeyword:append({ "-" })
 
+-- Prevent nvim from auto-equalizing window widths (keeps explorer fixed)
+vim.o.equalalways = false
+vim.o.winminwidth = 10
+
 -- [[ clipboard options ]]
 -- o.clipboard = "unnamedplus"
 
