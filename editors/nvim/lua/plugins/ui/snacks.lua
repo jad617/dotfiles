@@ -215,6 +215,11 @@ return {
                 ["<S-Left>"] = function() vim.cmd("wincmd h") end,
                 ["<S-Up>"] = function() vim.cmd("wincmd k") end,
                 ["<S-Down>"] = function() vim.cmd("wincmd j") end,
+                -- Open terminal in current explorer cwd
+                ["<A-i>"] = function()
+                  local cwd = vim.fn.getcwd()
+                  Snacks.terminal(nil, { id = tostring(vim.fn.getpid()) .. ":" .. cwd, cwd = cwd })
+                end,
               },
             },
           },
@@ -379,8 +384,9 @@ return {
     {
       "<A-i>",
       function()
-        -- Use PID as ID so each nvim instance gets its own isolated terminal
-        Snacks.terminal(nil, { id = tostring(vim.fn.getpid()) })
+        -- Terminal is cwd-aware: each directory gets its own instance
+        local cwd = vim.fn.getcwd()
+        Snacks.terminal(nil, { id = tostring(vim.fn.getpid()) .. ":" .. cwd, cwd = cwd })
       end,
       desc = "Toggle terminal",
       mode = { "n", "t" },
