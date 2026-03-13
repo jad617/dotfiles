@@ -7,16 +7,12 @@ return {
   opts = function(_, opts)
     local function three_layer_relpath(buf)
       local full = buf.path or buf.name or ""
-      if full == "" then
-        return "[No Name]"
-      end
+      if full == "" then return "[No Name]" end
 
       local rel = vim.fn.fnamemodify(full, ":.")
       local parts = vim.split(rel, "/", { plain = true, trimempty = true })
 
-      if #parts <= 3 then
-        return table.concat(parts, "/")
-      end
+      if #parts <= 3 then return table.concat(parts, "/") end
       return parts[#parts - 2] .. "/" .. parts[#parts - 1] .. "/" .. parts[#parts]
     end
 
@@ -27,9 +23,7 @@ return {
     opts.options.show_close_icon = false
     opts.options.diagnostics = false
     opts.options.truncate_names = false
-    opts.options.name_formatter = function(buf)
-      return " " .. three_layer_relpath(buf) .. " "
-    end
+    opts.options.name_formatter = function(buf) return " " .. three_layer_relpath(buf) .. " " end
 
     return opts
   end,

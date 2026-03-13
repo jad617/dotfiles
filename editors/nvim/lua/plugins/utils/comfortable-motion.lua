@@ -23,9 +23,7 @@ end
 
 local opts = { noremap = true, silent = true }
 
--- stylua: ignore
-vim.keymap.set("n", "<C-p>", function() smooth_scroll(10)  end, opts)
--- stylua: ignore
+vim.keymap.set("n", "<C-p>", function() smooth_scroll(10) end, opts)
 vim.keymap.set("n", "<C-o>", function() smooth_scroll(-10) end, opts)
 -- stylua: ignore
 vim.keymap.set("i", "<C-p>", function() vim.cmd("stopinsert") smooth_scroll(10)  end, opts)
