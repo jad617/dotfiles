@@ -5,6 +5,8 @@ return {
   event = "VeryLazy",
 
   opts = function(_, opts)
+    local tab_name_fg = "#98C379"
+
     local function three_layer_relpath(buf)
       local full = buf.path or buf.name or ""
       if full == "" then return "[No Name]" end
@@ -24,6 +26,23 @@ return {
     opts.options.diagnostics = false
     opts.options.truncate_names = false
     opts.options.name_formatter = function(buf) return " " .. three_layer_relpath(buf) .. " " end
+    opts.highlights = vim.tbl_deep_extend("force", opts.highlights or {}, {
+      tab = { fg = tab_name_fg },
+      tab_selected = { fg = tab_name_fg, bold = true },
+      tab_separator = { fg = tab_name_fg },
+      tab_separator_selected = { fg = tab_name_fg },
+      tab_close = { fg = tab_name_fg },
+      background = { fg = tab_name_fg },
+      buffer = { fg = tab_name_fg },
+      buffer_visible = { fg = tab_name_fg },
+      buffer_selected = { fg = tab_name_fg, bold = true },
+      numbers = { fg = tab_name_fg },
+      numbers_visible = { fg = tab_name_fg },
+      numbers_selected = { fg = tab_name_fg },
+      close_button = { fg = tab_name_fg },
+      close_button_visible = { fg = tab_name_fg },
+      close_button_selected = { fg = tab_name_fg },
+    })
 
     return opts
   end,
@@ -33,43 +52,5 @@ return {
     vim.opt.showtabline = 2
 
     require("bufferline").setup(opts)
-
-    local function force_pill()
-      -- Selected tab = green pill
-      vim.api.nvim_set_hl(0, "BufferLineTabSelected", {
-        fg = "#1e1e1e",
-        bg = "#99bc80",
-        bold = true,
-      })
-
-      -- Everything else transparent
-      vim.api.nvim_set_hl(0, "BufferLineFill", { bg = "NONE" })
-      vim.api.nvim_set_hl(0, "BufferLineBackground", { bg = "NONE" })
-      vim.api.nvim_set_hl(0, "BufferLineTab", { bg = "NONE" })
-      vim.api.nvim_set_hl(0, "BufferLineTabSeparator", { bg = "NONE" })
-      vim.api.nvim_set_hl(0, "BufferLineTabSeparatorSelected", { fg = "#99bc80", bg = "NONE" })
-    end
-
-    -- Apply now + after UI settles
-    force_pill()
-    vim.defer_fn(force_pill, 50)
-    vim.defer_fn(force_pill, 200)
-
-    -- Re-apply when theme changes (OneDark toggle triggers ColorScheme)
-    vim.api.nvim_create_autocmd("ColorScheme", {
-      callback = function()
-        force_pill()
-        vim.defer_fn(force_pill, 20)
-      end,
-    })
-
-    -- Re-apply after LazyVim finishes loading plugins (common override point)
-    vim.api.nvim_create_autocmd("User", {
-      pattern = "VeryLazy",
-      callback = function()
-        force_pill()
-        vim.defer_fn(force_pill, 20)
-      end,
-    })
   end,
 }

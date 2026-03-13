@@ -33,24 +33,41 @@ local WIN_ANIM_STEPS = 10
 local WIN_ANIM_MS = 150
 local needs_initial_file_sync = vim.fn.argc() == 0
 
-local function get_explorer_picker()
+local function get_explorer_pickers()
   local snacks = rawget(_G, "Snacks")
   if type(snacks) ~= "table" or type(snacks.picker) ~= "table" then return nil end
   if type(snacks.picker.get) ~= "function" then return nil end
 
   local ok, pickers = pcall(snacks.picker.get, { source = "explorer" })
   if not ok or type(pickers) ~= "table" then return nil end
-  return pickers[1]
+  return pickers
+end
+
+local function get_explorer_picker()
+  local pickers = get_explorer_pickers()
+  if type(pickers) ~= "table" then return nil end
+  for _, picker in ipairs(pickers) do
+    if picker and not picker.closed then return picker end
+  end
+  return nil
 end
 
 local function get_current_tab_explorer_picker()
-  local picker = get_explorer_picker()
-  if not picker or picker.closed then return nil end
-  if type(picker.on_current_tab) == "function" then
-    local ok, on_current_tab = pcall(picker.on_current_tab, picker)
-    if not ok or not on_current_tab then return nil end
+  local pickers = get_explorer_pickers()
+  if type(pickers) ~= "table" then return nil end
+
+  local current_tab = vim.api.nvim_get_current_tabpage()
+  for _, picker in ipairs(pickers) do
+    if picker and not picker.closed then
+      if type(picker.on_current_tab) == "function" then
+        local ok, on_current_tab = pcall(picker.on_current_tab, picker)
+        if ok and on_current_tab then return picker end
+      elseif picker.list and picker.list.win and picker.list.win.win and vim.api.nvim_win_is_valid(picker.list.win.win) then
+        if vim.api.nvim_win_get_tabpage(picker.list.win.win) == current_tab then return picker end
+      end
+    end
   end
-  return picker
+  return nil
 end
 
 local function canon_path(path)
@@ -182,6 +199,32 @@ local function sync_explorer_to_current_buffer()
   return sync_explorer_file(file, picker)
 end
 
+local function tab_has_real_file_window(tabpage)
+  local tab = tabpage == 0 and vim.api.nvim_get_current_tabpage() or tabpage
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+    if vim.api.nvim_win_is_valid(w) then
+      local cfg = vim.api.nvim_win_get_config(w)
+      if cfg.relative == "" then
+        local buf = vim.api.nvim_win_get_buf(w)
+        local ft = vim.bo[buf].filetype
+        local name = vim.api.nvim_buf_get_name(buf)
+        if vim.bo[buf].buftype == "" and name ~= "" and not ft:match("^snacks_") then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+local function close_tab_explorer_when_no_files()
+  if tab_has_real_file_window(0) then return false end
+  local picker = get_current_tab_explorer_picker()
+  if not picker or picker.closed or type(picker.close) ~= "function" then return false end
+  local ok = pcall(picker.close, picker)
+  return ok
+end
+
 local function apply_layout_retry(attempts_left)
   local layout_ok = type(apply_window_layout) == "function" and apply_window_layout()
   if layout_ok then
@@ -283,6 +326,9 @@ vim.api.nvim_create_autocmd("WinClosed", {
       if ok and config.relative ~= "" then return end
     end
     vim.schedule(function()
+      -- If the current tab has no real file windows left, close its explorer pane.
+      close_tab_explorer_when_no_files()
+
       for _, w in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_is_valid(w) then
           local buf = vim.api.nvim_win_get_buf(w)
@@ -292,6 +338,22 @@ vim.api.nvim_create_autocmd("WinClosed", {
       end
       vim.cmd("qa!")
     end)
+  end,
+})
+
+vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
+  group = "snacks_explorer",
+  desc = "Close explorer when last file buffer in tab is deleted",
+  callback = function()
+    vim.schedule(function() close_tab_explorer_when_no_files() end)
+  end,
+})
+
+vim.api.nvim_create_autocmd("TabClosed", {
+  group = "snacks_explorer",
+  desc = "Close explorer only when destination tab has no file windows",
+  callback = function()
+    vim.schedule(function() close_tab_explorer_when_no_files() end)
   end,
 })
 
