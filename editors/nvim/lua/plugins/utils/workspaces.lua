@@ -10,9 +10,7 @@
 
 local DATA_FILE = vim.fn.stdpath("data") .. "/workspaces"
 
-local function set_workspace_hl()
-  vim.api.nvim_set_hl(0, "WorkspacePath", { fg = "#99bc80" })
-end
+local function set_workspace_hl() vim.api.nvim_set_hl(0, "WorkspacePath", { fg = "#99bc80" }) end
 set_workspace_hl()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = set_workspace_hl })
 
@@ -22,14 +20,10 @@ vim.api.nvim_create_autocmd("ColorScheme", { callback = set_workspace_hl })
 local function load_workspaces()
   local items = {}
   local f = io.open(DATA_FILE, "r")
-  if not f then
-    return items
-  end
+  if not f then return items end
   for line in f:lines() do
     local name, path = line:match("^(%S+)%s+(%S+)")
-    if name and path and vim.fn.isdirectory(path) == 1 then
-      items[#items + 1] = { name = name, path = path }
-    end
+    if name and path and vim.fn.isdirectory(path) == 1 then items[#items + 1] = { name = name, path = path } end
   end
   f:close()
   return items
@@ -38,9 +32,7 @@ end
 local function save_workspaces(workspaces)
   vim.fn.mkdir(vim.fn.fnamemodify(DATA_FILE, ":h"), "p")
   local f = io.open(DATA_FILE, "w")
-  if not f then
-    return
-  end
+  if not f then return end
   local ts = os.date("!%Y-%m-%dT%H:%M:%S")
   for _, ws in ipairs(workspaces) do
     f:write(ws.name .. " " .. ws.path .. " " .. ts .. "\n")
@@ -52,23 +44,17 @@ end
 -- Git repo detection
 ---------------------------------------------------------------------------
 local function get_git_repo_name_and_root()
-  local function trim(s)
-    return (s:gsub("%s+$", ""))
-  end
+  local function trim(s) return (s:gsub("%s+$", "")) end
   local remote = trim(vim.fn.system("git remote get-url origin 2>/dev/null"))
   local root = trim(vim.fn.system("git rev-parse --show-toplevel 2>/dev/null"))
-  if root == "" then
-    return nil, nil
-  end
+  if root == "" then return nil, nil end
 
   local name
   if remote ~= "" then
     name = remote:match("[:/](.-)%.git$")
     name = name and name:match("([^/]+)$") or nil
   end
-  if not name or name == "" then
-    name = root:match("([^/]+)$")
-  end
+  if not name or name == "" then name = root:match("([^/]+)$") end
   return name, root
 end
 
@@ -77,20 +63,14 @@ end
 ---------------------------------------------------------------------------
 local function auto_add_workspace()
   local name, root = get_git_repo_name_and_root()
-  if not name or not root then
-    return
-  end
+  if not name or not root then return end
 
   local workspaces = load_workspaces()
   for _, ws in ipairs(workspaces) do
-    if ws.name == name or ws.path == root then
-      return
-    end
+    if ws.name == name or ws.path == root then return end
   end
 
-  if root:sub(-1) ~= "/" then
-    root = root .. "/"
-  end
+  if root:sub(-1) ~= "/" then root = root .. "/" end
   workspaces[#workspaces + 1] = { name = name, path = root }
   save_workspaces(workspaces)
   vim.notify(("Added workspace: %s → %s"):format(name, root), vim.log.levels.INFO)
@@ -100,9 +80,7 @@ local aug = vim.api.nvim_create_augroup("WorkspaceAutoAdd", { clear = true })
 vim.api.nvim_create_autocmd("VimEnter", {
   group = aug,
   desc = "Auto-add current git repo as workspace",
-  callback = function()
-    vim.schedule(auto_add_workspace)
-  end,
+  callback = function() vim.schedule(auto_add_workspace) end,
 })
 
 ---------------------------------------------------------------------------
@@ -121,26 +99,18 @@ local function open_workspace_picker()
   for _, ws in ipairs(workspaces) do
     local nw = vim.fn.strdisplaywidth(ws.name)
     local pw = vim.fn.strdisplaywidth(vim.fn.fnamemodify(ws.path, ":~"))
-    if nw > max_name_w then
-      max_name_w = nw
-    end
-    if pw > max_path_w then
-      max_path_w = pw
-    end
+    if nw > max_name_w then max_name_w = nw end
+    if pw > max_path_w then max_path_w = pw end
   end
   -- Available width in the Path panel (~75% of 80% picker, minus borders/separator)
   local available_w = math.floor(vim.o.columns * 0.8 * 0.75) - 6
   -- If everything fits, give the name column a little extra breathing room
   local name_col_w = max_name_w
-  if max_name_w + max_path_w <= available_w then
-    name_col_w = max_name_w + 15
-  end
+  if max_name_w + max_path_w <= available_w then name_col_w = max_name_w + 15 end
 
   Snacks.picker({
     title = "Select",
-    on_show = function()
-      vim.cmd("startinsert")
-    end,
+    on_show = function() vim.cmd("startinsert") end,
     finder = function()
       local items = {}
       for _, ws in ipairs(workspaces) do
@@ -164,9 +134,7 @@ local function open_workspace_picker()
     preview = "directory",
     confirm = function(picker, item)
       picker:close()
-      if not item then
-        return
-      end
+      if not item then return end
       if vim.fn.isdirectory(item.path) == 0 then
         vim.notify("Workspace path missing: " .. item.path, vim.log.levels.ERROR)
         return
