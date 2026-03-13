@@ -27,6 +27,15 @@ vim.api.nvim_create_autocmd("UiEnter", {
   end,
 })
 
+-- Re-root the explorer when vim's cwd changes (e.g. after pressing "." in explorer)
+vim.api.nvim_create_autocmd("DirChanged", {
+  group = "snacks_explorer",
+  desc = "Refresh Snacks explorer root when cwd changes",
+  callback = function()
+    vim.schedule(function() Snacks.explorer({ cwd = vim.fn.getcwd() }) end)
+  end,
+})
+
 ------------------------------------------------------------
 -- [[ Auto Reload if file changed ]]
 ------------------------------------------------------------

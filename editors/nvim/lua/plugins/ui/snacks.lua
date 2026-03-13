@@ -210,6 +210,11 @@ return {
                 ["<C-x>"] = "edit_split",
                 ["<C-t>"] = "edit_tab",
                 ["u"] = "explorer_up",
+                -- Navigate to neovim splits directly (bypass smart-splits/wezterm)
+                ["<S-Right>"] = function() vim.cmd("wincmd l") end,
+                ["<S-Left>"] = function() vim.cmd("wincmd h") end,
+                ["<S-Up>"] = function() vim.cmd("wincmd k") end,
+                ["<S-Down>"] = function() vim.cmd("wincmd j") end,
               },
             },
           },
