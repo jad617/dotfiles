@@ -109,10 +109,21 @@ vim.api.nvim_create_autocmd("TermOpen", {
 
 -- Auto-enter insert mode whenever a terminal window is focused.
 -- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
+-- Also triggers a resize (+1/-1 column) to send SIGWINCH to the PTY, forcing
+-- the shell to redraw the prompt at the correct position (fixes cursor drift).
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
   group = "terminal_settings",
-  pattern = "term://*",
-  callback = function() vim.cmd("startinsert") end,
+  callback = function()
+    if vim.bo.buftype ~= "terminal" then return end
+    vim.cmd("startinsert")
+    vim.schedule(function()
+      if vim.bo.buftype ~= "terminal" then return end
+      local win = vim.api.nvim_get_current_win()
+      local w = vim.api.nvim_win_get_width(win)
+      vim.api.nvim_win_set_width(win, w + 1)
+      vim.api.nvim_win_set_width(win, w)
+    end)
+  end,
 })
 
 -- Close terminal buffer silently on exit regardless of exit code.
