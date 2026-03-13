@@ -6,7 +6,7 @@
 -- -- [[ Auto Open Workspace List ]]
 -- ------------------------------------------------------------
 -- https://github.com/AstroNvim/AstroNvim/issues/344#issuecomment-1214143220
-vim.api.nvim_create_augroup("workspaces", {})
+vim.api.nvim_create_augroup("workspaces", { clear = true })
 vim.api.nvim_create_autocmd("UiEnter", {
   desc = "Open workspaces automatically",
   group = "workspaces",
@@ -18,7 +18,7 @@ vim.api.nvim_create_autocmd("UiEnter", {
 ------------------------------------------------------------
 -- [[ Auto Open Snacks Explorer ]]
 ------------------------------------------------------------
-vim.api.nvim_create_augroup("snacks_explorer", {})
+vim.api.nvim_create_augroup("snacks_explorer", { clear = true })
 
 local EXPLORER_WIDTH = 30 -- fixed sidebar width in columns
 local win_expand_layout
@@ -31,6 +31,7 @@ local WIN_MIN_WIDTH = 10
 local WIN_RESIZE_MIN_COLUMNS = 80
 local WIN_ANIM_STEPS = 10
 local WIN_ANIM_MS = 150
+local needs_initial_file_sync = vim.fn.argc() == 0
 
 local function get_explorer_picker()
   local snacks = rawget(_G, "Snacks")
@@ -40,6 +41,23 @@ local function get_explorer_picker()
   local ok, pickers = pcall(snacks.picker.get, { source = "explorer" })
   if not ok or type(pickers) ~= "table" then return nil end
   return pickers[1]
+end
+
+local function get_current_tab_explorer_picker()
+  local picker = get_explorer_picker()
+  if not picker or picker.closed then return nil end
+  if type(picker.on_current_tab) == "function" then
+    local ok, on_current_tab = pcall(picker.on_current_tab, picker)
+    if not ok or not on_current_tab then return nil end
+  end
+  return picker
+end
+
+local function canon_path(path)
+  if not path or path == "" then return "" end
+  -- Keep path style aligned with picker cwd (avoid realpath symlink expansion),
+  -- otherwise explorer may add internal parent directories repeatedly.
+  return vim.fs.normalize(path)
 end
 
 -- Resize the explorer's root split window directly.
@@ -64,13 +82,109 @@ local function fix_explorer_width()
 end
 _G.fix_explorer_width = fix_explorer_width
 
+local function fix_explorer_current_file_highlight()
+  local picker = get_current_tab_explorer_picker() or get_explorer_picker()
+  if not (picker and picker.list and picker.list.win) then return false end
+
+  local list_win = picker.list.win.win
+  if not (list_win and vim.api.nvim_win_is_valid(list_win)) then return false end
+
+  vim.wo[list_win].cursorline = true
+
+  local snacks = rawget(_G, "Snacks")
+  if type(snacks) == "table" and type(snacks.util) == "table" and type(snacks.util.winhl) == "function" then
+    local merged = snacks.util.winhl(vim.wo[list_win].winhighlight, {
+      CursorLine = "SnacksPickerListCursorLine",
+    })
+    if type(snacks.util.wo) == "function" then
+      snacks.util.wo(list_win, { winhighlight = merged })
+      return true
+    end
+  end
+
+  local winhl = vim.wo[list_win].winhighlight or ""
+  if winhl:match("CursorLine:") then
+    winhl = winhl:gsub("CursorLine:[^,]*", "CursorLine:SnacksPickerListCursorLine")
+  else
+    winhl = (winhl == "" and "" or (winhl .. ",")) .. "CursorLine:SnacksPickerListCursorLine"
+  end
+  vim.wo[list_win].winhighlight = winhl
+  return true
+end
+
+local function sync_explorer_file(file, picker)
+  if not file or file == "" then return false end
+  file = canon_path(file)
+  picker = picker or get_current_tab_explorer_picker() or get_explorer_picker()
+  if not picker or picker.closed then return false end
+
+  if type(picker.iter) == "function" and picker.list and type(picker.list.view) == "function" then
+    for item, idx in picker:iter() do
+      if item and item.file and canon_path(item.file) == file then
+        pcall(picker.list.view, picker.list, idx)
+        return true
+      end
+    end
+  end
+
+  if type(picker.current) == "function" then
+    local ok_current, item = pcall(picker.current, picker)
+    if ok_current and item and item.file and canon_path(item.file) == file then
+      return true
+    end
+  end
+
+  local ok_actions, actions = pcall(require, "snacks.explorer.actions")
+  if ok_actions and type(actions.reveal) == "function" then
+    local ok_reveal, revealed = pcall(actions.reveal, picker, file)
+    if ok_reveal and revealed then
+      return true
+    end
+  end
+
+  local snacks = rawget(_G, "Snacks")
+  if type(snacks) == "table" and type(snacks.explorer) == "table" and type(snacks.explorer.reveal) == "function" then
+    pcall(snacks.explorer.reveal, { file = file })
+  end
+  if type(picker.current) == "function" then
+    local ok_current, item = pcall(picker.current, picker)
+    if ok_current and item and item.file and canon_path(item.file) == file then
+      return true
+    end
+  end
+  return false
+end
+
+local function sync_explorer_to_current_buffer()
+  local picker = get_current_tab_explorer_picker()
+  if not picker then return false end
+
+  local buf = vim.api.nvim_get_current_buf()
+  if vim.bo[buf].buftype ~= "" then return false end
+  local file = vim.api.nvim_buf_get_name(buf)
+  return sync_explorer_file(file, picker)
+end
+
 local function apply_layout_retry(attempts_left)
-  if type(apply_window_layout) == "function" and apply_window_layout() then
+  local layout_ok = type(apply_window_layout) == "function" and apply_window_layout()
+  if layout_ok then
     return
   end
   if attempts_left > 0 then
     vim.defer_fn(function() apply_layout_retry(attempts_left - 1) end, 40)
   end
+end
+
+local function sync_startup_file_retry(file, attempts_left, picker_ref)
+  if attempts_left <= 0 then return end
+  local picker
+  if type(picker_ref) == "function" then
+    local ok, p = pcall(picker_ref)
+    if ok then picker = p end
+  end
+  local synced = sync_explorer_file(file, picker)
+  if synced then return end
+  vim.defer_fn(function() sync_startup_file_retry(file, attempts_left - 1, picker_ref) end, 200)
 end
 
 -- Open the explorer whenever a real file buffer appears in a tab that
@@ -86,19 +200,38 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
     local buf = ev.buf
     -- Only for real file buffers
     if vim.bo[buf].buftype ~= "" then return end
-    if vim.api.nvim_buf_get_name(buf) == "" then return end
-    -- Skip if explorer sidebar is already visible in this tab
-    -- (float snacks windows like the workspace picker don't count)
-    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
-      local is_float = vim.api.nvim_win_get_config(w).relative ~= ""
-      if ft:match("^snacks_") and not is_float then return end
+    local file = vim.api.nvim_buf_get_name(buf)
+    if file == "" then return end
+    local startup_file = canon_path(file)
+    if needs_initial_file_sync then needs_initial_file_sync = false end
+    local current_tab_picker = get_current_tab_explorer_picker()
+    if current_tab_picker then
+      local picker_ref = type(current_tab_picker.ref) == "function" and current_tab_picker:ref() or nil
+      vim.defer_fn(function()
+        local synced = sync_explorer_file(startup_file, current_tab_picker)
+        fix_explorer_current_file_highlight()
+        if not synced then
+          sync_startup_file_retry(startup_file, 8, picker_ref)
+        end
+      end, 40)
+      return
     end
     vim.schedule(function()
-      Snacks.explorer()
+      Snacks.explorer({
+        on_show = function(picker)
+          local picker_ref = type(picker.ref) == "function" and picker:ref() or nil
+          vim.defer_fn(function()
+            local synced = sync_explorer_file(startup_file, picker)
+            fix_explorer_current_file_highlight()
+            if not synced then
+              sync_startup_file_retry(startup_file, 8, picker_ref)
+            end
+          end, 40)
+        end,
+      })
       vim.defer_fn(function()
         vim.cmd("wincmd p")
-        apply_layout_retry(10)
+        apply_layout_retry(25)
       end, 80)
     end)
   end,
@@ -229,6 +362,7 @@ end
 
 apply_window_layout = function()
   local explorer_fixed = fix_explorer_width()
+  local highlight_fixed = fix_explorer_current_file_highlight()
   local normal, min_col = get_normal_wins()
 
   if #normal == 2 then
@@ -237,7 +371,7 @@ apply_window_layout = function()
     win_expand_layout(normal, min_col)
   end
 
-  return explorer_fixed
+  return explorer_fixed and highlight_fixed
 end
 
 vim.api.nvim_create_augroup("win_expand", { clear = true })
@@ -262,6 +396,24 @@ vim.api.nvim_create_autocmd("WinClosed", {
   desc = "Rebalance remaining splits after a window is closed",
   callback = function()
     vim.schedule(function() apply_window_layout() end)
+  end,
+})
+
+vim.api.nvim_create_augroup("snacks_explorer_highlight", { clear = true })
+vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
+  group = "snacks_explorer_highlight",
+  desc = "Keep explorer current-file highlight color consistent",
+  callback = function()
+    vim.schedule(function()
+      local synced = sync_explorer_to_current_buffer()
+      fix_explorer_current_file_highlight()
+      if not synced then
+        vim.defer_fn(function()
+          sync_explorer_to_current_buffer()
+          fix_explorer_current_file_highlight()
+        end, 300)
+      end
+    end)
   end,
 })
 
