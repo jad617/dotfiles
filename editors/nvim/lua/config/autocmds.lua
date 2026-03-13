@@ -107,6 +107,14 @@ vim.api.nvim_create_autocmd("TermOpen", {
   end,
 })
 
+-- Auto-enter insert mode whenever a terminal window is focused.
+-- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
+vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
+  group = "terminal_settings",
+  pattern = "term://*",
+  callback = function() vim.cmd("startinsert") end,
+})
+
 -- Close terminal buffer silently on exit regardless of exit code.
 -- Snacks' auto_close=false disables its built-in handler (which shows an
 -- error notification on non-zero exit); this replaces it quietly.

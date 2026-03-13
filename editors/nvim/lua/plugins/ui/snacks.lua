@@ -338,10 +338,6 @@ return {
       function()
         -- Use PID as ID so each nvim instance gets its own isolated terminal
         Snacks.terminal(nil, { id = tostring(vim.fn.getpid()) })
-        -- Re-enter insert mode every time the terminal is shown, not just on creation
-        vim.schedule(function()
-          if vim.bo.buftype == "terminal" then vim.cmd("startinsert") end
-        end)
       end,
       desc = "Toggle terminal",
       mode = { "n", "t" },
