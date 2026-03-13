@@ -2,6 +2,12 @@
 -- Window picker works with neo-tree
 return {
   "anuvyklack/windows.nvim",
+  keys = {
+    { "<C-w>z", "<Cmd>WindowsMaximize<CR>" },
+    { "<C-w>_", "<Cmd>WindowsMaximizeVertically<CR>" },
+    { "<C-w>|", "<Cmd>WindowsMaximizeHorizontally<CR>" },
+    { "<C-w>=", "<Cmd>WindowsEqualize<CR>" },
+  },
   dependencies = {
     "anuvyklack/middleclass",
     "anuvyklack/animation.nvim",
@@ -26,20 +32,5 @@ return {
         easing = "in_out_sine",
       },
     })
-
-    ------------------------------------------------------------
-    -- [[ local vars ]]
-    ------------------------------------------------------------
-    local function cmd(command)
-      return table.concat({ "<Cmd>", command, "<CR>" })
-    end
-
-    ------------------------------------------------------------
-    -- [[ Key Bindings ]]
-    ------------------------------------------------------------
-    vim.keymap.set("n", "<C-w>z", cmd("WindowsMaximize"))
-    vim.keymap.set("n", "<C-w>_", cmd("WindowsMaximizeVertically"))
-    vim.keymap.set("n", "<C-w>|", cmd("WindowsMaximizeHorizontally"))
-    vim.keymap.set("n", "<C-w>=", cmd("WindowsEqualize"))
   end,
 }
