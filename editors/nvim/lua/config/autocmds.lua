@@ -31,9 +31,12 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
     -- Only for real file buffers
     if vim.bo[buf].buftype ~= "" then return end
     if vim.api.nvim_buf_get_name(buf) == "" then return end
-    -- Skip if explorer is already visible in this tab
+    -- Skip if explorer sidebar is already visible in this tab
+    -- (float snacks windows like the workspace picker don't count)
     for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype:match("^snacks_") then return end
+      local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
+      local is_float = vim.api.nvim_win_get_config(w).relative ~= ""
+      if ft:match("^snacks_") and not is_float then return end
     end
     vim.schedule(function()
       Snacks.explorer()
