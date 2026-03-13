@@ -253,7 +253,11 @@ return {
       "<C-n>",
       function()
         Snacks.explorer()
-        vim.defer_fn(function() vim.cmd("wincmd p") end, 50)
+        vim.defer_fn(function()
+          -- fix_explorer_width is defined in autocmds.lua and exposed globally
+          if _G.fix_explorer_width then _G.fix_explorer_width() end
+          vim.cmd("wincmd p")
+        end, 80)
       end,
       desc = "Toggle file explorer",
     },
