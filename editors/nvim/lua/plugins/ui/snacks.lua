@@ -204,6 +204,17 @@ return {
           hidden = false,
           ignored = false,
           win = {
+            input = {
+              keys = {
+                ["<Esc>"] = function()
+                  local picker = Snacks.picker.get({ source = "explorer" })[1]
+                  if not (picker and picker.input) then return end
+                  picker.input:set("", "")
+                  picker:find()
+                  picker:focus("list", { show = true })
+                end,
+              },
+            },
             list = {
               keys = {
                 ["<C-v>"] = "edit_vsplit",

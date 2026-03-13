@@ -73,6 +73,23 @@ local function fix_explorer_width()
   local root_win = layout.root.win
   if vim.api.nvim_win_is_valid(root_win) then
     vim.wo[root_win].winfixwidth = true
+    local snacks = rawget(_G, "Snacks")
+    if type(snacks) == "table" and type(snacks.util) == "table" and type(snacks.util.winhl) == "function" then
+      local merged = snacks.util.winhl(vim.wo[root_win].winhighlight, {
+        WinSeparator = "SnacksExplorerSeparator",
+      })
+      if type(snacks.util.wo) == "function" then
+        snacks.util.wo(root_win, { winhighlight = merged })
+      end
+    else
+      local winhl = vim.wo[root_win].winhighlight or ""
+      if winhl:match("WinSeparator:") then
+        winhl = winhl:gsub("WinSeparator:[^,]*", "WinSeparator:SnacksExplorerSeparator")
+      else
+        winhl = (winhl == "" and "" or (winhl .. ",")) .. "WinSeparator:SnacksExplorerSeparator"
+      end
+      vim.wo[root_win].winhighlight = winhl
+    end
     if vim.api.nvim_win_get_width(root_win) ~= EXPLORER_WIDTH then
       vim.api.nvim_win_set_width(root_win, EXPLORER_WIDTH)
     end
@@ -175,6 +192,14 @@ local function apply_layout_retry(attempts_left)
   end
 end
 
+local function apply_explorer_style_retry(attempts_left)
+  if attempts_left <= 0 then return end
+  local sep_ok = fix_explorer_width()
+  local hl_ok = fix_explorer_current_file_highlight()
+  if sep_ok and hl_ok then return end
+  vim.defer_fn(function() apply_explorer_style_retry(attempts_left - 1) end, 120)
+end
+
 local function sync_startup_buf_retry(buf, attempts_left, picker_ref)
   if attempts_left <= 0 then return end
   if not (buf and vim.api.nvim_buf_is_valid(buf)) then return end
@@ -216,6 +241,7 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
       vim.defer_fn(function()
         local synced = sync_explorer_file(vim.api.nvim_buf_get_name(startup_buf), current_tab_picker)
         fix_explorer_current_file_highlight()
+        apply_explorer_style_retry(6)
         if not synced then
           sync_startup_buf_retry(startup_buf, 8, picker_ref)
         end
@@ -229,6 +255,7 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
           vim.defer_fn(function()
             local synced = sync_explorer_file(vim.api.nvim_buf_get_name(startup_buf), picker)
             fix_explorer_current_file_highlight()
+            apply_explorer_style_retry(6)
             if not synced then
               sync_startup_buf_retry(startup_buf, 8, picker_ref)
             end
@@ -238,6 +265,7 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
       vim.defer_fn(function()
         vim.cmd("wincmd p")
         apply_layout_retry(25)
+        apply_explorer_style_retry(6)
       end, 80)
     end)
   end,
