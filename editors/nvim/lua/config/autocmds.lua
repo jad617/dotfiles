@@ -104,6 +104,34 @@ vim.api.nvim_create_autocmd("TermOpen", {
     -- <C-\><C-o> executes one normal-mode command then returns to terminal insert mode
     vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
     vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
+
+    -- Shift+Arrow in terminal mode navigates WezTerm panes directly.
+    -- Bypasses smart-splits so we never accidentally focus a Neovim buffer
+    -- from the floating terminal.
+    local wez_dirs = { Left = "<S-Left>", Right = "<S-Right>", Up = "<S-Up>", Down = "<S-Down>" }
+    for dir, key in pairs(wez_dirs) do
+      vim.keymap.set("t", key, function()
+        vim.fn.system("wezterm cli activate-pane-direction " .. dir)
+      end, { buffer = buf, noremap = true, silent = true })
+    end
+  end,
+})
+
+-- Auto-enter insert mode whenever a terminal window is focused.
+-- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
+-- defer_fn(50ms) lets Snacks finish showing the float before we touch anything.
+-- chansend("\x03") sends Ctrl+C which cancels any partial input and forces
+-- zsh/bash to redraw a clean prompt at the correct column (fixes cursor drift).
+vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
+  group = "terminal_settings",
+  callback = function()
+    if vim.bo.buftype ~= "terminal" then return end
+    vim.cmd("startinsert")
+    local job_id = vim.b.terminal_job_id
+    vim.defer_fn(function()
+      if vim.bo.buftype ~= "terminal" then return end
+      if job_id and job_id > 0 then vim.fn.chansend(job_id, "\x03") end
+    end, 50)
   end,
 })
 
