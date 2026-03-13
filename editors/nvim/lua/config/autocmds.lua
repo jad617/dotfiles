@@ -19,11 +19,26 @@ vim.api.nvim_create_autocmd("UiEnter", {
 -- [[ Auto Open Snacks Explorer ]]
 ------------------------------------------------------------
 vim.api.nvim_create_augroup("snacks_explorer", {})
-vim.api.nvim_create_autocmd("UiEnter", {
-  desc = "Open Snacks explorer automatically when file arg is given",
+
+-- Open the explorer whenever a real file buffer appears in a tab that
+-- doesn't already have an explorer panel (covers: workspace selection,
+-- nvim <file>, opening a file in a new tab).
+vim.api.nvim_create_autocmd("BufWinEnter", {
   group = "snacks_explorer",
-  callback = function()
-    if vim.fn.argc() > 0 then vim.schedule(function() Snacks.explorer.reveal() end) end
+  desc = "Auto-open explorer when a file buffer appears",
+  callback = function(ev)
+    local buf = ev.buf
+    -- Only for real file buffers
+    if vim.bo[buf].buftype ~= "" then return end
+    if vim.api.nvim_buf_get_name(buf) == "" then return end
+    -- Skip if explorer is already visible in this tab
+    for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype:match("^snacks_") then return end
+    end
+    vim.schedule(function()
+      Snacks.explorer()
+      vim.defer_fn(function() vim.cmd("wincmd p") end, 50)
+    end)
   end,
 })
 
