@@ -104,6 +104,16 @@ vim.api.nvim_create_autocmd("TermOpen", {
     -- <C-\><C-o> executes one normal-mode command then returns to terminal insert mode
     vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
     vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
+
+    -- Shift+Arrow in terminal mode navigates WezTerm panes directly.
+    -- Bypasses smart-splits so we never accidentally focus a Neovim buffer
+    -- from the floating terminal.
+    local wez_dirs = { Left = "<S-Left>", Right = "<S-Right>", Up = "<S-Up>", Down = "<S-Down>" }
+    for dir, key in pairs(wez_dirs) do
+      vim.keymap.set("t", key, function()
+        vim.fn.system("wezterm cli activate-pane-direction " .. dir)
+      end, { buffer = buf, noremap = true, silent = true })
+    end
   end,
 })
 
