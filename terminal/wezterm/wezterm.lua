@@ -256,7 +256,7 @@ config.keys = {
 	{ key = "0", mods = "LEADER", action = action.ReloadConfiguration },
 
 	-- Tabs
-	{ key = "c", mods = "LEADER", action = action.SpawnTab("DefaultDomain") },
+	{ key = "c", mods = "LEADER", action = action.SpawnCommandInNewTab({ cwd = wezterm.home_dir }) },
 	{ key = "p", mods = "LEADER", action = action.ActivateTabRelative(-1) },
 	{ key = "n", mods = "LEADER", action = action.ActivateTabRelative(1) },
 	{ key = "x", mods = "LEADER", action = action.CloseCurrentPane({ confirm = true }) },
@@ -311,7 +311,7 @@ config.keys = {
 				end)
 				local count = (ok and tabs and #tabs) or 1
 				while count <= idx do
-					window:perform_action(action.SpawnTab("DefaultDomain"), pane)
+					window:perform_action(action.SpawnCommandInNewTab({ cwd = wezterm.home_dir }), pane)
 					ok, tabs = pcall(function()
 						return window:tabs()
 					end)
