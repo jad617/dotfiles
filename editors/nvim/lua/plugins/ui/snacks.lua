@@ -209,7 +209,15 @@ return {
                 ["<C-v>"] = "edit_vsplit",
                 ["<C-x>"] = "edit_split",
                 ["<C-t>"] = "edit_tab",
-                ["u"] = "explorer_up",
+                -- "u" and "." sync vim's actual cwd so the terminal follows
+                ["u"] = function()
+                  local picker = Snacks.picker.get({ source = "explorer" })[1]
+                  if not picker then return end
+                  local dir = vim.fs.dirname(picker:cwd())
+                  picker:set_cwd(dir)
+                  picker:find()
+                  if dir then vim.fn.chdir(dir) end
+                end,
                 -- "." re-roots the picker AND changes vim's actual cwd so
                 -- the terminal (and other tools) follow the new directory
                 ["."] = function()
