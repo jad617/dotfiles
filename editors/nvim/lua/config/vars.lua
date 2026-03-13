@@ -25,6 +25,7 @@ M.lsp = {
   terraformls = {
     filetypes = { "terraform" },
     pattern = { "*.tf" },
+    cmd = { "terraform-ls", "serve", "-log-file", "/dev/null" },
   }, -- terraform
   lua_ls = { -- lua
     settings = {
