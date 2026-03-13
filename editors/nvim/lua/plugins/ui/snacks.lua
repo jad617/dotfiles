@@ -212,7 +212,9 @@ return {
                 ["u"] = "explorer_up",
                 -- "." re-roots the picker AND changes vim's actual cwd so
                 -- the terminal (and other tools) follow the new directory
-                ["."] = function(picker)
+                ["."] = function()
+                  local picker = Snacks.picker.get({ source = "explorer" })[1]
+                  if not picker then return end
                   local dir = picker:dir()
                   picker:set_cwd(dir)
                   picker:find()
