@@ -185,6 +185,7 @@ return {
       },
     },
     picker = {
+      ui_select = true,
       formatters = {
         file = { truncate = "left" },
       },
