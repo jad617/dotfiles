@@ -57,15 +57,11 @@ vim.api.nvim_create_autocmd("BufReadPre", {
     _last_venv = venv
 
     -- Git root for PYTHONPATH (resolves sibling packages)
-    local git_root = vim.fn.systemlist(
-      "git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel"
-    )[1]
+    local git_root = vim.fn.systemlist("git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel")[1]
 
     vim.env.VIRTUAL_ENV = venv
-    vim.env.PATH        = venv .. "/bin:" .. vim.env.PATH
-    if vim.v.shell_error == 0 and git_root ~= "" then
-      vim.env.PYTHONPATH = git_root
-    end
+    vim.env.PATH = venv .. "/bin:" .. vim.env.PATH
+    if vim.v.shell_error == 0 and git_root ~= "" then vim.env.PYTHONPATH = git_root end
 
     -- Restart basedpyright if already running so it picks up the new env
     vim.schedule(function()
@@ -101,13 +97,15 @@ local function start_spinner(id, msg)
     timer:close()
     local level = ok and vim.log.levels.INFO or vim.log.levels.ERROR
     local icon = ok and "✓" or "✗"
-    vim.schedule(function()
-      vim.notify(icon .. " " .. done_msg, level, {
-        id = id,
-        title = "Python",
-        timeout = ok and 3000 or 8000,
-      })
-    end)
+    vim.schedule(
+      function()
+        vim.notify(icon .. " " .. done_msg, level, {
+          id = id,
+          title = "Python",
+          timeout = ok and 3000 or 8000,
+        })
+      end
+    )
   end
 end
 
@@ -117,9 +115,7 @@ local function find_root(bufnr)
   -- 1. Walk up looking for the nearest requirements*.txt
   local path = file_dir
   while path and path ~= "/" do
-    if #vim.fn.glob(path .. "/requirements*.txt", false, true) > 0 then
-      return path
-    end
+    if #vim.fn.glob(path .. "/requirements*.txt", false, true) > 0 then return path end
     local parent = vim.fn.fnamemodify(path, ":h")
     if parent == path then break end
     path = parent
@@ -127,9 +123,7 @@ local function find_root(bufnr)
 
   -- 2. No requirements.txt found — fall back to git root
   local git_root = vim.fn.systemlist("git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel")[1]
-  if vim.v.shell_error == 0 and git_root and git_root ~= "" then
-    return git_root
-  end
+  if vim.v.shell_error == 0 and git_root and git_root ~= "" then return git_root end
 
   -- 3. Not a git repo either — use cwd
   return vim.fn.getcwd()
@@ -147,9 +141,7 @@ local function install_reqs(root, venv, has_uv)
     local id = "python_install_" .. root .. "_" .. name
     local stop = start_spinner(id, "Installing " .. name .. "…")
 
-    local cmd = has_uv
-        and { "uv", "pip", "install", "--python", venv .. "/bin/python", "-r", req }
-      or { venv .. "/bin/pip", "install", "-r", req }
+    local cmd = has_uv and { "uv", "pip", "install", "--python", venv .. "/bin/python", "-r", req } or { venv .. "/bin/pip", "install", "-r", req }
 
     vim.fn.jobstart(cmd, {
       cwd = root,
@@ -160,12 +152,14 @@ local function install_reqs(root, venv, has_uv)
         pending = pending - 1
         if pending == 0 then
           if not all_ok then
-            vim.schedule(function()
-              vim.notify("One or more requirements failed — check notifications above", vim.log.levels.WARN, {
-                title = "Python",
-                timeout = 8000,
-              })
-            end)
+            vim.schedule(
+              function()
+                vim.notify("One or more requirements failed — check notifications above", vim.log.levels.WARN, {
+                  title = "Python",
+                  timeout = 8000,
+                })
+              end
+            )
           else
             -- Restart LSP so it picks up the newly installed packages
             vim.schedule(function()

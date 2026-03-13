@@ -14,7 +14,7 @@ M.lsp = {
     -- },
   },
   yamlls = {
-    filetypes = { "yaml", "yaml.ansible" },  -- exclude helm (handled by helm_ls)
+    filetypes = { "yaml", "yaml.ansible" }, -- exclude helm (handled by helm_ls)
   },
   basedpyright = {},
   ruff = {},
@@ -65,9 +65,7 @@ M.lsp = {
               vim.fn.expand("~/.config/wezterm"),
             }
             for _, path in ipairs(extra) do
-              if uv.fs_stat(path) then
-                table.insert(lib, path)
-              end
+              if uv.fs_stat(path) then table.insert(lib, path) end
             end
             return lib
           end)(),
