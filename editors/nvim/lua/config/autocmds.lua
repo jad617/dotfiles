@@ -49,12 +49,19 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
 vim.api.nvim_create_autocmd("WinClosed", {
   group = "snacks_explorer",
   desc = "Quit nvim if only the snacks explorer remains",
-  callback = function()
+  callback = function(ev)
+    -- If a float closed (e.g. workspace picker), a file is about to open — don't quit yet
+    local win_id = tonumber(ev.match)
+    if win_id then
+      local ok, config = pcall(vim.api.nvim_win_get_config, win_id)
+      if ok and config.relative ~= "" then return end
+    end
     vim.schedule(function()
       for _, w in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_is_valid(w) then
-          local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
-          if not ft:match("^snacks_") then return end
+          local buf = vim.api.nvim_win_get_buf(w)
+          -- A real file window: normal buftype with an actual file path
+          if vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) ~= "" then return end
         end
       end
       vim.cmd("qa!")

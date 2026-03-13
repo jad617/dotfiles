@@ -57,9 +57,9 @@ map("n", "<C-Left>", "ge", {})
 map("v", "<C-Right>", "e", {})
 map("v", "<C-Left>", "ge", {})
 
--- Exit without saving: C-q
-map("n", "<C-d>", ":q!<CR><CR>", {})
-map("i", "<C-d>", "<C-c>:q!<CR>", {})
+-- Exit without saving: C-d
+map("n", "<C-d>", "<cmd>q!<cr>", {})
+map("i", "<C-d>", "<cmd>q!<cr>", {})
 
 -- Save only: C-x
 map("n", "<C-x>", ":w<CR>", options_silent)
