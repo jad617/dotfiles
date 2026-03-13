@@ -14,7 +14,7 @@ M.lsp = {
     -- },
   },
   yamlls = {
-    filetypes = { "yaml", "yaml.ansible" },  -- exclude helm (handled by helm_ls)
+    filetypes = { "yaml", "yaml.ansible" }, -- exclude helm (handled by helm_ls)
   },
   basedpyright = {},
   ruff = {},

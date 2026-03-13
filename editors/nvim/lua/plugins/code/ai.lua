@@ -137,15 +137,15 @@ return {
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "zbirenbaum/copilot.lua",
-    cmd   = "Copilot",
+    cmd = "Copilot",
     event = "InsertEnter",
     enabled = function()
       return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
     end,
     opts = {
       suggestion = { enabled = false }, -- handled by copilot-cmp
-      panel      = { enabled = false }, -- handled by copilot-cmp
-      filetypes  = { markdown = true, help = false },
+      panel = { enabled = false }, -- handled by copilot-cmp
+      filetypes = { markdown = true, help = false },
     },
   },
 
