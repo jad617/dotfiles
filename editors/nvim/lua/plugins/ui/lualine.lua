@@ -31,7 +31,9 @@ return {
           end
           return ""
         end,
-        cond = function() return vim.bo.filetype == "python" end,
+        cond = function()
+          return vim.bo.filetype == "python"
+        end,
         icon = "",
         color = { fg = "#E5C07B" },
       }

@@ -3,6 +3,7 @@
 -- Keymaps: <C-o> scroll up, <C-p> scroll down (normal + insert)
 ---------------------------------------------------------------------------
 
+-- stylua: ignore start
 local function smooth_scroll(lines)
   local timer     = vim.uv.new_timer()
   local remaining = math.abs(lines)
@@ -25,5 +26,6 @@ vim.keymap.set("n", "<C-p>", function() smooth_scroll(10)  end, opts)
 vim.keymap.set("n", "<C-o>", function() smooth_scroll(-10) end, opts)
 vim.keymap.set("i", "<C-p>", function() vim.cmd("stopinsert") smooth_scroll(10)  end, opts)
 vim.keymap.set("i", "<C-o>", function() vim.cmd("stopinsert") smooth_scroll(-10) end, opts)
+-- stylua: ignore end
 
 return {}
