@@ -223,7 +223,10 @@ return {
   keys = {
     {
       "<C-n>",
-      function() Snacks.explorer() end,
+      function()
+        Snacks.explorer()
+        vim.cmd("wincmd p") -- return focus to previous buffer
+      end,
       desc = "Toggle file explorer",
     },
     {
