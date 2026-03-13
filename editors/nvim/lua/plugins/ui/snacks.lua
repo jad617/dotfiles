@@ -142,7 +142,7 @@ return {
       win = { style = "input" },
       expand = true,
     },
-    notifier = { enabled = true },
+    notifier = { enabled = false },
     terminal = {
       win = {
         style = "float",
