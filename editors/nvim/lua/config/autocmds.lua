@@ -11,9 +11,7 @@ vim.api.nvim_create_autocmd("UiEnter", {
   desc = "Open workspaces automatically",
   group = "workspaces",
   callback = function()
-    if vim.fn.argc() == 0 then
-      vim.fn.execute("SnacksWorkspaces")
-    end
+    if vim.fn.argc() == 0 then vim.fn.execute("SnacksWorkspaces") end
   end,
 })
 
@@ -86,9 +84,7 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
 ------------------------------------------------------------
 vim.api.nvim_create_autocmd("FileType", {
   group = vim.api.nvim_create_augroup("FixTerraformCommentString", { clear = true }),
-  callback = function(ev)
-    vim.bo[ev.buf].commentstring = "# %s"
-  end,
+  callback = function(ev) vim.bo[ev.buf].commentstring = "# %s" end,
   pattern = { "terraform", "hcl" },
 })
 
@@ -118,9 +114,7 @@ vim.api.nvim_create_autocmd("TermClose", {
   group = "terminal_settings",
   callback = function(ev)
     vim.schedule(function()
-      if vim.api.nvim_buf_is_valid(ev.buf) then
-        vim.api.nvim_buf_delete(ev.buf, { force = true })
-      end
+      if vim.api.nvim_buf_is_valid(ev.buf) then vim.api.nvim_buf_delete(ev.buf, { force = true }) end
     end)
   end,
 })

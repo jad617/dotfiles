@@ -23,9 +23,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
   group = vim.api.nvim_create_augroup("RuffCapabilities", { clear = true }),
   callback = function(args)
     local client = vim.lsp.get_client_by_id(args.data.client_id)
-    if not client or client.name ~= "ruff" then
-      return
-    end
+    if not client or client.name ~= "ruff" then return end
     client.server_capabilities.definitionProvider = false
     client.server_capabilities.hoverProvider = false
   end,
@@ -52,14 +50,10 @@ vim.api.nvim_create_autocmd("BufReadPre", {
         break
       end
       local parent = vim.fn.fnamemodify(dir, ":h")
-      if parent == dir then
-        break
-      end
+      if parent == dir then break end
       dir = parent
     end
-    if not venv or venv == _last_venv then
-      return
-    end
+    if not venv or venv == _last_venv then return end
     _last_venv = venv
 
     -- Git root for PYTHONPATH (resolves sibling packages)
@@ -67,9 +61,7 @@ vim.api.nvim_create_autocmd("BufReadPre", {
 
     vim.env.VIRTUAL_ENV = venv
     vim.env.PATH = venv .. "/bin:" .. vim.env.PATH
-    if vim.v.shell_error == 0 and git_root ~= "" then
-      vim.env.PYTHONPATH = git_root
-    end
+    if vim.v.shell_error == 0 and git_root ~= "" then vim.env.PYTHONPATH = git_root end
 
     -- Restart basedpyright if already running so it picks up the new env
     vim.schedule(function()
@@ -105,13 +97,15 @@ local function start_spinner(id, msg)
     timer:close()
     local level = ok and vim.log.levels.INFO or vim.log.levels.ERROR
     local icon = ok and "✓" or "✗"
-    vim.schedule(function()
-      vim.notify(icon .. " " .. done_msg, level, {
-        id = id,
-        title = "Python",
-        timeout = ok and 3000 or 8000,
-      })
-    end)
+    vim.schedule(
+      function()
+        vim.notify(icon .. " " .. done_msg, level, {
+          id = id,
+          title = "Python",
+          timeout = ok and 3000 or 8000,
+        })
+      end
+    )
   end
 end
 
@@ -121,21 +115,15 @@ local function find_root(bufnr)
   -- 1. Walk up looking for the nearest requirements*.txt
   local path = file_dir
   while path and path ~= "/" do
-    if #vim.fn.glob(path .. "/requirements*.txt", false, true) > 0 then
-      return path
-    end
+    if #vim.fn.glob(path .. "/requirements*.txt", false, true) > 0 then return path end
     local parent = vim.fn.fnamemodify(path, ":h")
-    if parent == path then
-      break
-    end
+    if parent == path then break end
     path = parent
   end
 
   -- 2. No requirements.txt found — fall back to git root
   local git_root = vim.fn.systemlist("git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel")[1]
-  if vim.v.shell_error == 0 and git_root and git_root ~= "" then
-    return git_root
-  end
+  if vim.v.shell_error == 0 and git_root and git_root ~= "" then return git_root end
 
   -- 3. Not a git repo either — use cwd
   return vim.fn.getcwd()
@@ -143,9 +131,7 @@ end
 
 local function install_reqs(root, venv, has_uv)
   local reqs = vim.fn.glob(root .. "/requirements*.txt", false, true)
-  if #reqs == 0 then
-    return
-  end
+  if #reqs == 0 then return end
 
   local pending = #reqs
   local all_ok = true
@@ -161,19 +147,19 @@ local function install_reqs(root, venv, has_uv)
       cwd = root,
       on_exit = function(_, code)
         local ok = code == 0
-        if not ok then
-          all_ok = false
-        end
+        if not ok then all_ok = false end
         stop(ok, ok and (name .. " installed") or (name .. " install failed"))
         pending = pending - 1
         if pending == 0 then
           if not all_ok then
-            vim.schedule(function()
-              vim.notify("One or more requirements failed — check notifications above", vim.log.levels.WARN, {
-                title = "Python",
-                timeout = 8000,
-              })
-            end)
+            vim.schedule(
+              function()
+                vim.notify("One or more requirements failed — check notifications above", vim.log.levels.WARN, {
+                  title = "Python",
+                  timeout = 8000,
+                })
+              end
+            )
           else
             -- Restart LSP so it picks up the newly installed packages
             vim.schedule(function()
@@ -196,9 +182,7 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = "python",
   callback = function(ev)
     local root = find_root(ev.buf)
-    if _done[root] then
-      return
-    end
+    if _done[root] then return end
     _done[root] = true
 
     local venv = root .. "/.venv"

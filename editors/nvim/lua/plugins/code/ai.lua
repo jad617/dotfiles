@@ -139,9 +139,7 @@ return {
     "zbirenbaum/copilot.lua",
     cmd = "Copilot",
     event = "InsertEnter",
-    enabled = function()
-      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
-    end,
+    enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
     opts = {
       suggestion = { enabled = false }, -- handled by copilot-cmp
       panel = { enabled = false }, -- handled by copilot-cmp
@@ -154,9 +152,7 @@ return {
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "zbirenbaum/copilot-cmp",
-    enabled = function()
-      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
-    end,
+    enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
     dependencies = { "zbirenbaum/copilot.lua" },
     config = true,
   },
@@ -170,9 +166,7 @@ return {
       { "zbirenbaum/copilot.lua" },
       { "nvim-lua/plenary.nvim" },
     },
-    enabled = function()
-      return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0
-    end,
+    enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
     cmd = { "CopilotChat", "CopilotChatToggle", "CopilotChatReset" },
     keys = {
       { "<leader>cp", "<cmd>CopilotChatToggle<cr>", mode = { "n", "v" }, desc = "Toggle CopilotChat" },
@@ -191,32 +185,40 @@ return {
 
       -- 🌟 Keymaps for buffer-level commands
       -- Review buffer
-      vim.keymap.set("n", "<leader>cr", function()
-        chat.ask("Review this buffer and suggest improvements.", { selection = false })
-      end, { desc = "Copilot Review Buffer" })
+      vim.keymap.set(
+        "n",
+        "<leader>cr",
+        function() chat.ask("Review this buffer and suggest improvements.", { selection = false }) end,
+        { desc = "Copilot Review Buffer" }
+      )
 
       -- Explain buffer
-      vim.keymap.set("n", "<leader>ce", function()
-        chat.ask("Explain this buffer in detail.", { selection = false })
-      end, { desc = "Copilot Explain Buffer" })
+      vim.keymap.set("n", "<leader>ce", function() chat.ask("Explain this buffer in detail.", { selection = false }) end, { desc = "Copilot Explain Buffer" })
 
       -- Fix issues in buffer
-      vim.keymap.set("n", "<leader>cf", function()
-        chat.ask("Find bugs or errors in this buffer and suggest fixes.", { selection = false })
-      end, { desc = "Copilot Fix Buffer" })
+      vim.keymap.set(
+        "n",
+        "<leader>cf",
+        function() chat.ask("Find bugs or errors in this buffer and suggest fixes.", { selection = false }) end,
+        { desc = "Copilot Fix Buffer" }
+      )
 
       -- 🌟 Visual mode: run on selection only
-      vim.keymap.set("v", "<leader>cr", function()
-        chat.ask("Review this code and suggest improvements.", { selection = true })
-      end, { desc = "Copilot Review Selection" })
+      vim.keymap.set(
+        "v",
+        "<leader>cr",
+        function() chat.ask("Review this code and suggest improvements.", { selection = true }) end,
+        { desc = "Copilot Review Selection" }
+      )
 
-      vim.keymap.set("v", "<leader>ce", function()
-        chat.ask("Explain this code.", { selection = true })
-      end, { desc = "Copilot Explain Selection" })
+      vim.keymap.set("v", "<leader>ce", function() chat.ask("Explain this code.", { selection = true }) end, { desc = "Copilot Explain Selection" })
 
-      vim.keymap.set("v", "<leader>cf", function()
-        chat.ask("Find bugs in this code and suggest fixes.", { selection = true })
-      end, { desc = "Copilot Fix Selection" })
+      vim.keymap.set(
+        "v",
+        "<leader>cf",
+        function() chat.ask("Find bugs in this code and suggest fixes.", { selection = true }) end,
+        { desc = "Copilot Fix Selection" }
+      )
     end,
   },
 }
