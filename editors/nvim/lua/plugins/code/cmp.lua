@@ -60,9 +60,7 @@ return {
           name = "buffer",
           -- https://github.com/hrsh7th/cmp-buffer#get_bufnrs-type-fun-number
           option = {
-            get_bufnrs = function()
-              return vim.api.nvim_list_bufs()
-            end,
+            get_bufnrs = function() return vim.api.nvim_list_bufs() end,
           },
         },
         { name = "path" }, -- file system paths
@@ -85,9 +83,7 @@ return {
     ------------------------------------------------------------
     -- [[ LuaSnip Config ]]
     ------------------------------------------------------------
-    local checkbox = function()
-      return { "- [ ] " }
-    end
+    local checkbox = function() return { "- [ ] " } end
     -- Define your snippets
     luasnip.add_snippets(nil, {
       all = {

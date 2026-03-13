@@ -5,15 +5,15 @@ return {
     local lint = require("lint")
 
     lint.linters_by_ft = {
-      ansible    = { "yamllint" },  -- ansiblels runs ansible-lint internally
-      go         = { "golangci-lint" },
+      ansible = { "yamllint" }, -- ansiblels runs ansible-lint internally
+      go = { "golangci-lint" },
       -- terraform: tflint runs as LSP (tflint --langserver), no need to duplicate here
       dockerfile = { "hadolint" },
-      sh         = { "shellcheck" },
-      bash       = { "shellcheck" },
-      yaml       = { "yamllint" },
-      text       = { "proselint" },
-      markdown   = { "proselint" },
+      sh = { "shellcheck" },
+      bash = { "shellcheck" },
+      yaml = { "yamllint" },
+      text = { "proselint" },
+      markdown = { "proselint" },
       -- python: diagnostics handled by ruff LSP
     }
 
@@ -21,9 +21,7 @@ return {
 
     vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
       group = lint_augroup,
-      callback = function()
-        lint.try_lint()
-      end,
+      callback = function() lint.try_lint() end,
     })
   end,
 }
