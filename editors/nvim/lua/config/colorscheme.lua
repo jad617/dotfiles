@@ -33,6 +33,8 @@ vim.cmd("highlight SnacksPickerPreview guibg=#242b38 gui=bold")
 -- Snacks picker title color
 vim.cmd("highlight SnacksPickerPreviewTitle guifg=#c27fd7 gui=bold")
 vim.cmd("highlight SnacksPickerBoxTitle guifg=#c27fd7 gui=bold")
+-- Explorer uses SnacksPickerListCursorLine when focused, CursorLine when unfocused
+vim.cmd("highlight CursorLine guibg=#98C379 guifg=#282c34 gui=bold")
 vim.cmd("highlight SnacksPickerListCursorLine guibg=#98C379 guifg=#282c34 gui=bold")
 
 -- Snacks terminal color

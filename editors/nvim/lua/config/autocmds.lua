@@ -175,16 +175,22 @@ local function apply_layout_retry(attempts_left)
   end
 end
 
-local function sync_startup_file_retry(file, attempts_left, picker_ref)
+local function sync_startup_buf_retry(buf, attempts_left, picker_ref)
   if attempts_left <= 0 then return end
+  if not (buf and vim.api.nvim_buf_is_valid(buf)) then return end
+  if vim.bo[buf].buftype ~= "" then return end
+  local file = vim.api.nvim_buf_get_name(buf)
+  if file == "" then return end
+
   local picker
   if type(picker_ref) == "function" then
     local ok, p = pcall(picker_ref)
     if ok then picker = p end
   end
   local synced = sync_explorer_file(file, picker)
+  fix_explorer_current_file_highlight()
   if synced then return end
-  vim.defer_fn(function() sync_startup_file_retry(file, attempts_left - 1, picker_ref) end, 200)
+  vim.defer_fn(function() sync_startup_buf_retry(buf, attempts_left - 1, picker_ref) end, 200)
 end
 
 -- Open the explorer whenever a real file buffer appears in a tab that
@@ -202,16 +208,16 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
     if vim.bo[buf].buftype ~= "" then return end
     local file = vim.api.nvim_buf_get_name(buf)
     if file == "" then return end
-    local startup_file = canon_path(file)
+    local startup_buf = buf
     if needs_initial_file_sync then needs_initial_file_sync = false end
     local current_tab_picker = get_current_tab_explorer_picker()
     if current_tab_picker then
       local picker_ref = type(current_tab_picker.ref) == "function" and current_tab_picker:ref() or nil
       vim.defer_fn(function()
-        local synced = sync_explorer_file(startup_file, current_tab_picker)
+        local synced = sync_explorer_file(vim.api.nvim_buf_get_name(startup_buf), current_tab_picker)
         fix_explorer_current_file_highlight()
         if not synced then
-          sync_startup_file_retry(startup_file, 8, picker_ref)
+          sync_startup_buf_retry(startup_buf, 8, picker_ref)
         end
       end, 40)
       return
@@ -221,10 +227,10 @@ vim.api.nvim_create_autocmd("BufWinEnter", {
         on_show = function(picker)
           local picker_ref = type(picker.ref) == "function" and picker:ref() or nil
           vim.defer_fn(function()
-            local synced = sync_explorer_file(startup_file, picker)
+            local synced = sync_explorer_file(vim.api.nvim_buf_get_name(startup_buf), picker)
             fix_explorer_current_file_highlight()
             if not synced then
-              sync_startup_file_retry(startup_file, 8, picker_ref)
+              sync_startup_buf_retry(startup_buf, 8, picker_ref)
             end
           end, 40)
         end,
