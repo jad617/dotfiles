@@ -27,6 +27,23 @@ vim.api.nvim_create_autocmd("UiEnter", {
   end,
 })
 
+-- Quit neovim when the explorer is the only window left (close_if_last_window)
+vim.api.nvim_create_autocmd("WinClosed", {
+  group = "snacks_explorer",
+  desc = "Quit nvim if only the snacks explorer remains",
+  callback = function()
+    vim.schedule(function()
+      for _, w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(w) then
+          local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
+          if not ft:match("^snacks_") then return end
+        end
+      end
+      vim.cmd("qa!")
+    end)
+  end,
+})
+
 ------------------------------------------------------------
 -- [[ Auto Reload if file changed ]]
 ------------------------------------------------------------
