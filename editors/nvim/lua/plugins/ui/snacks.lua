@@ -225,7 +225,7 @@ return {
       "<C-n>",
       function()
         Snacks.explorer()
-        vim.cmd("wincmd p") -- return focus to previous buffer
+        vim.defer_fn(function() vim.cmd("wincmd p") end, 50)
       end,
       desc = "Toggle file explorer",
     },
