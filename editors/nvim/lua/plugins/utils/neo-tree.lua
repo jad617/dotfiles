@@ -1,5 +1,7 @@
 return {
-  "nvim-neo-tree/neo-tree.nvim",
+  {
+    "nvim-neo-tree/neo-tree.nvim",
+    enabled = false, -- replaced by Snacks explorer
   branch = "v3.x",
   dependencies = {
     "nvim-lua/plenary.nvim",
@@ -144,5 +146,6 @@ return {
         enabled = false,
       },
     },
+  },
   },
 }

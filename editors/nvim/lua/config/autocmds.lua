@@ -16,18 +16,14 @@ vim.api.nvim_create_autocmd("UiEnter", {
 })
 
 ------------------------------------------------------------
--- [[ Auto Open Neotree ]]
+-- [[ Auto Open Snacks Explorer ]]
 ------------------------------------------------------------
--- https://github.com/AstroNvim/AstroNvim/issues/344#issuecomment-1214143220
-vim.api.nvim_create_augroup("neotree", {})
+vim.api.nvim_create_augroup("snacks_explorer", {})
 vim.api.nvim_create_autocmd("UiEnter", {
-  desc = "Open Neotree automatically",
-  group = "neotree",
+  desc = "Open Snacks explorer automatically when file arg is given",
+  group = "snacks_explorer",
   callback = function()
-    if vim.fn.argc() > 0 then
-      vim.cmd("Neotree action=show toggle=true dir=")
-      vim.cmd("Neotree action=show toggle=true dir=")
-    end
+    if vim.fn.argc() > 0 then vim.schedule(function() Snacks.explorer.reveal() end) end
   end,
 })
 

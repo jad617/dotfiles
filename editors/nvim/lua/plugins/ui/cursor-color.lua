@@ -25,7 +25,7 @@ return {
 
       -- Disable modes highlights in specified filetypes
       -- Please PR commonly ignored filetypes
-      ignore_filetypes = { "NvimTree", "TelescopePrompt", "neo-tree" },
+      ignore_filetypes = { "NvimTree", "TelescopePrompt", "snacks_picker_list" },
     })
 
     vim.api.nvim_create_autocmd({ "InsertLeave", "ModeChanged" }, {

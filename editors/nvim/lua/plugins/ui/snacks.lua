@@ -189,9 +189,43 @@ return {
       formatters = {
         file = { truncate = "left" },
       },
+      sources = {
+        explorer = {
+          -- Sidebar layout (left panel, no preview by default)
+          layout = { preset = "sidebar", preview = false },
+          -- Keep explorer open when navigating away
+          auto_close = false,
+          -- Always reveal current file
+          follow_file = true,
+          -- Show git status and diagnostics
+          git_status = true,
+          diagnostics = true,
+          -- Start with dotfiles and gitignored hidden (toggle with H / I)
+          hidden = false,
+          ignored = false,
+          win = {
+            list = {
+              keys = {
+                ["<C-v>"] = "edit_vsplit",
+                ["<C-x>"] = "edit_split",
+                ["<C-t>"] = "edit_tab",
+                ["u"] = "explorer_up",
+              },
+            },
+          },
+        },
+      },
+    },
+    explorer = {
+      replace_netrw = true,
     },
   },
   keys = {
+    {
+      "<C-n>",
+      function() Snacks.explorer() end,
+      desc = "Toggle file explorer",
+    },
     {
       "<leader>z",
       function() Snacks.zen() end,
