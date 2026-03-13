@@ -239,6 +239,30 @@ return {
                   picker:find()
                   if dir then vim.fn.chdir(dir) end
                 end,
+                -- Recursively open the currently selected directory tree
+                ["z"] = function()
+                  local picker = Snacks.picker.get({ source = "explorer" })[1]
+                  if not picker then return end
+                  local item = picker:current()
+                  if not (item and item.dir and item.file) then return end
+
+                  local Tree = require("snacks.explorer.tree")
+                  local Actions = require("snacks.explorer.actions")
+                  local node = Tree:find(item.file)
+                  if not node then return end
+
+                  local function open_recursive(n)
+                    if not n.dir then return end
+                    n.open = true
+                    Tree:expand(n)
+                    for _, child in pairs(n.children) do
+                      if child.dir then open_recursive(child) end
+                    end
+                  end
+
+                  open_recursive(node)
+                  Actions.update(picker, { target = item.file, refresh = true })
+                end,
                 -- Navigate to neovim splits directly (bypass smart-splits/wezterm)
                 ["<S-Right>"] = function() vim.cmd("wincmd l") end,
                 ["<S-Left>"] = function() vim.cmd("wincmd h") end,
