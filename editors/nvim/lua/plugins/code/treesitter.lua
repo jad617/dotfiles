@@ -29,6 +29,8 @@ return {
       },
       -- ensure these language parsers are installed
       ensure_installed = {
+        "css",
+        "tsx",
         "bash",
         "dockerfile",
         "diff",
