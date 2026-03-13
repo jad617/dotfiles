@@ -27,9 +27,7 @@ if vim.fn.has("wsl") == 1 then
 
     group = vim.api.nvim_create_augroup("Yank", { clear = true }),
 
-    callback = function()
-      vim.fn.system("clip.exe", vim.fn.getreg('"'))
-    end,
+    callback = function() vim.fn.system("clip.exe", vim.fn.getreg('"')) end,
   })
 end
 
@@ -105,9 +103,7 @@ cmd([[au BufNewFile,BufRead hosts,all setf yaml]])
 ------------------------------------------------------------
 -- [[ FileType ]]
 ------------------------------------------------------------
-cmd(
-  [[au FileType bash,sh,lua,yaml,json,html,markdown,hcl,helm setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]]
-)
+cmd([[au FileType bash,sh,lua,yaml,json,html,markdown,hcl,helm setlocal tabstop=2 expandtab shiftwidth=2 softtabstop=2]])
 cmd([[au FileType python,go,groovy setlocal tabstop=4 expandtab shiftwidth=4 softtabstop=4]])
 
 ------------------------------------------------------------
