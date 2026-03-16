@@ -496,6 +496,48 @@ vim.api.nvim_create_autocmd("WinClosed", {
 })
 
 vim.api.nvim_create_augroup("snacks_explorer_highlight", { clear = true })
+
+-- Dark bg for explorer sidebar via per-window winhighlight.
+-- Uses explicit highlight groups (no transparent bg) so border/separator
+-- colours are preserved and don't fall through to wrong globals.
+local EXPLORER_WHL = table.concat({
+  "NormalFloat:ExplorerNormal",
+  "Normal:ExplorerNormal",
+  "FloatBorder:ExplorerBorder",
+  "FloatTitle:ExplorerBorder",
+  "WinSeparator:ExplorerSeparator",
+}, ",")
+
+local function set_explorer_whl(w)
+  if not vim.api.nvim_win_is_valid(w) then return end
+  local cur = vim.wo[w].winhighlight or ""
+  -- Merge: our keys win because we append last; same-key last-wins in winhighlight
+  local merged = cur == "" and EXPLORER_WHL or (cur .. "," .. EXPLORER_WHL)
+  vim.wo[w].winhighlight = merged
+end
+
+_G.apply_explorer_bg = function(picker)
+  if not picker then
+    local Snacks = rawget(_G, "Snacks")
+    if not (Snacks and Snacks.picker) then return end
+    local ok, pickers = pcall(Snacks.picker.get, { source = "explorer" })
+    if not ok or not pickers then return end
+    for _, p in ipairs(pickers) do _G.apply_explorer_bg(p) end
+    return
+  end
+  if not picker.layout then return end
+  for _, win_obj in pairs(picker.layout.wins or {}) do
+    if type(win_obj) == "table" and win_obj.win then
+      set_explorer_whl(win_obj.win)
+    end
+  end
+  for _, win_obj in pairs(picker.layout.box_wins or {}) do
+    if type(win_obj) == "table" and win_obj.win then
+      set_explorer_whl(win_obj.win)
+    end
+  end
+end
+
 vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
   group = "snacks_explorer_highlight",
   desc = "Keep explorer current-file highlight color consistent",
@@ -503,12 +545,12 @@ vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
     vim.schedule(function()
       local synced = sync_explorer_to_current_buffer()
       fix_explorer_current_file_highlight()
-      if not synced then
-        vim.defer_fn(function()
-          sync_explorer_to_current_buffer()
-          fix_explorer_current_file_highlight()
-        end, 300)
-      end
+      if _G.apply_explorer_bg then _G.apply_explorer_bg() end
+      vim.defer_fn(function()
+        if not synced then sync_explorer_to_current_buffer() end
+        fix_explorer_current_file_highlight()
+        if _G.apply_explorer_bg then _G.apply_explorer_bg() end
+      end, 200)
     end)
   end,
 })

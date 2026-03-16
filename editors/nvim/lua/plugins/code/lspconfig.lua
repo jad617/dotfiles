@@ -4,7 +4,17 @@ return {
   dependencies = {
     "nvim-lua/plenary.nvim",
     "hrsh7th/cmp-nvim-lsp",
-    { "folke/lazydev.nvim", ft = "lua", opts = {} },
+    {
+      "folke/lazydev.nvim",
+      ft = "lua",
+      opts = {
+        library = {
+          { path = "${3rd}/luv/library", words = { "vim%.uv" } },
+          -- wezterm types if present
+          { path = vim.fn.expand("~/.local/share/wezterm-types"), words = { "wezterm" } },
+        },
+      },
+    },
   },
   config = function()
     -- import lspconfig plugin
@@ -76,6 +86,11 @@ return {
 
         opts.desc = "Restart LSP"
         keymap.set("n", "<leader>rs", ":LspRestart<CR>", opts) -- mapping to restart lsp if necessary
+
+        -- Disable built-in LSP document color (using nvim-colorizer instead)
+        if vim.lsp.document_color then
+          vim.lsp.document_color.enable(false, ev.buf)
+        end
       end,
     })
 
