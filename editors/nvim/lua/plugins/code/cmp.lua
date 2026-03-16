@@ -51,19 +51,21 @@ return {
         -- ["<CR>"] = cmp.mapping.confirm({ select = false }),
       }),
       -- sources for autocompletion
+      -- group_index: lower number = higher priority group (shown first).
+      -- priority: within the same group, higher number = shown higher in list.
+      -- Copilot is in group 3 (after LSP group 1) and given low priority
+      -- so it never crowds out regular LSP/snippet completions.
       sources = cmp.config.sources({
-        { name = "lazydev", group_index = 0 },
-        { name = "copilot", group_index = 2 },
-        { name = "nvim_lsp" },
-        { name = "luasnip" }, -- snippets
-        {
-          name = "buffer",
-          -- https://github.com/hrsh7th/cmp-buffer#get_bufnrs-type-fun-number
+        { name = "lazydev",  group_index = 1 },
+        { name = "nvim_lsp", group_index = 1 },
+        { name = "luasnip",  group_index = 1 },
+        { name = "buffer",   group_index = 2,
           option = {
             get_bufnrs = function() return vim.api.nvim_list_bufs() end,
           },
         },
-        { name = "path" }, -- file system paths
+        { name = "path",     group_index = 2 },
+        { name = "copilot",  group_index = 3, priority = 1 },
       }),
 
       -- configure lspkind for vs-code like pictograms in completion menu
