@@ -12,12 +12,20 @@ return {
     "MeanderingProgrammer/render-markdown.nvim",
     ft = { "markdown", "codecompanion" },
     keys = {
-      { "<leader>rm", "<cmd>RenderMarkdown toggle<cr>", desc = "Toggle Render Markdown" },
+      { "<leader>m", "<cmd>RenderMarkdown toggle<cr>", desc = "Toggle Render Markdown" },
     },
     opts = {
-      enabled = false, -- off by default; toggle with <leader>rm
+      enabled = true, -- on by default; toggle with <leader>m
       heading = { enabled = true },
       code = { enabled = true },
+      anti_conceal = {
+        disabled_modes = { "n" }, -- keep full rendered UI under cursor in normal mode
+      },
+      win_options = {
+        concealcursor = {
+          rendered = "n", -- keep concealed markdown tokens hidden on cursor line in normal mode
+        },
+      },
     },
   },
 
