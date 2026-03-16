@@ -6,7 +6,8 @@ return {
 
   opts = function(_, opts)
     local tab_name_fg        = "#98C379"
-    local tab_name_fg_active = "#99bc80"
+    local tab_name_fg_active = "#282c34"
+    local tab_bg_active      = "#99bc80"
     local fallback_normal_bg = "#282c34"
     local fallback_fill_bg = "#242b38"
 
@@ -52,14 +53,14 @@ return {
     opts.highlights = vim.tbl_deep_extend("force", opts.highlights or {}, {
       fill = { bg = tabline_fill_bg },
       tab = { fg = tab_name_fg },
-      tab_selected = { fg = tab_name_fg_active, bold = true },
+      tab_selected = { fg = tab_name_fg_active, bg = tab_bg_active, bold = true },
       tab_separator = { fg = tab_name_fg },
-      tab_separator_selected = { fg = tab_name_fg_active },
+      tab_separator_selected = { fg = tab_bg_active, bg = tab_bg_active },
       tab_close = { fg = tab_name_fg },
       background = { fg = tab_name_fg },
       buffer = { fg = tab_name_fg },
       buffer_visible = { fg = tab_name_fg },
-      buffer_selected = { fg = tab_name_fg_active, bold = true },
+      buffer_selected = { fg = tab_name_fg_active, bg = tab_bg_active, bold = true },
       numbers = { fg = tab_name_fg },
       numbers_visible = { fg = tab_name_fg },
       numbers_selected = { fg = tab_name_fg },
