@@ -56,19 +56,8 @@ M.lsp = {
           globals = { "vim", "wezterm" }, -- support both
         },
         workspace = {
-          library = (function()
-            local lib = vim.api.nvim_get_runtime_file("", true)
-            -- Add wezterm-related dirs if they exist
-            local uv = vim.uv or vim.loop
-            local extra = {
-              vim.fn.expand("~/.local/share/wezterm-types"),
-              vim.fn.expand("~/.config/wezterm"),
-            }
-            for _, path in ipairs(extra) do
-              if uv.fs_stat(path) then table.insert(lib, path) end
-            end
-            return lib
-          end)(),
+          -- lazydev.nvim handles library injection — no need to preload
+          -- all runtime files here (that's what caused the x/846 slow load).
           checkThirdParty = false,
         },
         telemetry = { enable = false },
