@@ -89,7 +89,7 @@ return {
 
         -- Disable built-in LSP document color (using nvim-colorizer instead)
         if vim.lsp.document_color then
-          vim.lsp.document_color.disable(ev.buf)
+          vim.lsp.document_color.enable(false, ev.buf)
         end
       end,
     })
