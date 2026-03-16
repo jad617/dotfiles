@@ -160,7 +160,10 @@ return {
     },
     config = function()
       local chat = require("CopilotChat")
-      chat.setup({ model = "claude-sonnet-4-6" })
+      -- No model override — CopilotChat uses GitHub Copilot's API, not Anthropic's.
+      -- Model names differ (e.g. "gpt-4o", "claude-3.5-sonnet") and are managed
+      -- by Copilot. Let it use its default.
+      chat.setup({})
 
       vim.keymap.set({ "n", "v" }, "<leader>ce", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
 
