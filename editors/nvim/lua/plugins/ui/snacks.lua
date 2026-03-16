@@ -203,6 +203,12 @@ return {
           -- Start with dotfiles and gitignored hidden (toggle with H / I)
           hidden = false,
           ignored = false,
+          -- Apply dark background via highlight namespace as soon as the picker is shown
+          on_show = function(picker)
+            vim.schedule(function()
+              if _G.apply_explorer_bg then _G.apply_explorer_bg(picker) end
+            end)
+          end,
           win = {
             input = {
               keys = {
