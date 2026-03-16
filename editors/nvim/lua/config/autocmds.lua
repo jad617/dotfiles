@@ -496,7 +496,14 @@ vim.api.nvim_create_autocmd("WinClosed", {
 })
 
 vim.api.nvim_create_augroup("snacks_explorer_highlight", { clear = true })
--- Dark background for explorer sidebar windows (applied via per-window winhighlight)
+
+-- Namespace-based dark bg for explorer sidebar windows.
+-- vim.api.nvim_win_set_hl_ns takes higher priority than winhighlight,
+-- so snacks can't reset it when it updates its own winhighlight.
+local explorer_ns = vim.api.nvim_create_namespace("snacks_explorer_dark")
+vim.api.nvim_set_hl(explorer_ns, "NormalFloat", { bg = "#1a1f2b" })
+vim.api.nvim_set_hl(explorer_ns, "Normal",      { bg = "#1a1f2b" })
+
 local function apply_explorer_bg()
   local Snacks = rawget(_G, "Snacks")
   if not (Snacks and Snacks.picker) then return end
@@ -504,26 +511,14 @@ local function apply_explorer_bg()
   if not ok or not pickers then return end
   for _, picker in ipairs(pickers) do
     if not picker.layout then goto continue_picker end
-    -- Apply to named windows (input, list, preview)
-    for _, win_obj in pairs(picker.layout.wins or {}) do
-      local w = win_obj.win
+    local function apply_ns(win_obj)
+      local w = type(win_obj) == "table" and win_obj.win or nil
       if w and vim.api.nvim_win_is_valid(w) then
-        local whl = vim.wo[w].winhighlight or ""
-        if not whl:find("NormalFloat:SnacksExplorerNormal") then
-          vim.wo[w].winhighlight = (whl ~= "" and whl .. "," or "") .. "NormalFloat:SnacksExplorerNormal,Normal:SnacksExplorerNormal"
-        end
+        vim.api.nvim_win_set_hl_ns(w, explorer_ns)
       end
     end
-    -- Also apply to box container windows (the structural frame snacks creates)
-    for _, win_obj in pairs(picker.layout.box_wins or {}) do
-      local w = win_obj.win
-      if w and vim.api.nvim_win_is_valid(w) then
-        local whl = vim.wo[w].winhighlight or ""
-        if not whl:find("NormalFloat:SnacksExplorerNormal") then
-          vim.wo[w].winhighlight = (whl ~= "" and whl .. "," or "") .. "NormalFloat:SnacksExplorerNormal,Normal:SnacksExplorerNormal"
-        end
-      end
-    end
+    for _, win_obj in pairs(picker.layout.wins or {}) do apply_ns(win_obj) end
+    for _, win_obj in pairs(picker.layout.box_wins or {}) do apply_ns(win_obj) end
     ::continue_picker::
   end
 end
