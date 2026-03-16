@@ -64,8 +64,8 @@ return {
       -- Orange statusline when cursor is inside the snacks explorer.
       -- lualine's highlight groups are global, so we bypass it entirely
       -- for snacks windows and set vim.wo.statusline directly.
-      vim.cmd("highlight ExplorerStatusLine guifg=#282c34 guibg=#ff9e64 gui=bold")
-      vim.cmd("highlight ExplorerStatusLineNC guifg=#1e2127 guibg=#b36e3e gui=bold")
+      vim.cmd("highlight ExplorerStatusLine guifg=#282c34 guibg=#c9622a gui=bold")
+      vim.cmd("highlight ExplorerStatusLineNC guifg=#1e2127 guibg=#8f4520 gui=bold")
 
       local explorer_stl = table.concat({
         "%#ExplorerStatusLine#",
