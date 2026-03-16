@@ -203,7 +203,7 @@ return {
         "<leader>cp",
         function() require("sidekick.cli").toggle({ name = "copilot", focus = true }) end,
         desc = "Sidekick: Copilot CLI",
-        mode = { "n", "t" },
+        mode = "n",
       },
     },
   },
