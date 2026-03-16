@@ -27,9 +27,8 @@ return {
       -- lua
       lua = { "stylua" },
 
-      -- markdown — markdownlint removed from here (it's a linter, not a formatter,
-      -- and its Node.js startup causes conform's 500ms timeout to fire on every save)
-      markdown = { "trim_newlines", "trim_whitespace" },
+      -- markdown
+      markdown = { "markdownlint", "trim_newlines", "trim_whitespace" },
 
       -- python
       python = { "ruff_format", "trim_newlines", "trim_whitespace" },
@@ -38,10 +37,13 @@ return {
       hcl = { "terraform_fmt", "trim_newlines", "trim_whitespace" },
       terraform = { "terraform_fmt", "trim_newlines", "trim_whitespace" },
     },
-    format_on_save = {
-      lsp_fallback = true,
-      timeout_ms = 500,
-    },
+    format_on_save = function(bufnr)
+      -- markdownlint (Node.js) needs more time to cold-start
+      if vim.bo[bufnr].filetype == "markdown" then
+        return { lsp_fallback = true, timeout_ms = 3000 }
+      end
+      return { lsp_fallback = true, timeout_ms = 500 }
+    end,
     formatters = {
       gopls_add_imports = {
         command = "gopls",
