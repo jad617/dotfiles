@@ -497,11 +497,24 @@ vim.api.nvim_create_autocmd("WinClosed", {
 
 vim.api.nvim_create_augroup("snacks_explorer_highlight", { clear = true })
 
--- Namespace-based dark bg for explorer sidebar windows.
--- Exposed globally so snacks.lua on_show can reference it.
-_G._explorer_hl_ns = vim.api.nvim_create_namespace("snacks_explorer_dark")
-vim.api.nvim_set_hl(_G._explorer_hl_ns, "NormalFloat", { bg = "#1a1f2b" })
-vim.api.nvim_set_hl(_G._explorer_hl_ns, "Normal",      { bg = "#1a1f2b" })
+-- Dark bg for explorer sidebar via per-window winhighlight.
+-- Uses explicit highlight groups (no transparent bg) so border/separator
+-- colours are preserved and don't fall through to wrong globals.
+local EXPLORER_WHL = table.concat({
+  "NormalFloat:ExplorerNormal",
+  "Normal:ExplorerNormal",
+  "FloatBorder:ExplorerBorder",
+  "FloatTitle:ExplorerBorder",
+  "WinSeparator:ExplorerSeparator",
+}, ",")
+
+local function set_explorer_whl(w)
+  if not vim.api.nvim_win_is_valid(w) then return end
+  local cur = vim.wo[w].winhighlight or ""
+  -- Merge: our keys win because we append last; same-key last-wins in winhighlight
+  local merged = cur == "" and EXPLORER_WHL or (cur .. "," .. EXPLORER_WHL)
+  vim.wo[w].winhighlight = merged
+end
 
 _G.apply_explorer_bg = function(picker)
   if not picker then
@@ -509,20 +522,20 @@ _G.apply_explorer_bg = function(picker)
     if not (Snacks and Snacks.picker) then return end
     local ok, pickers = pcall(Snacks.picker.get, { source = "explorer" })
     if not ok or not pickers then return end
-    for _, p in ipairs(pickers) do
-      _G.apply_explorer_bg(p)
-    end
+    for _, p in ipairs(pickers) do _G.apply_explorer_bg(p) end
     return
   end
   if not picker.layout then return end
-  local function apply_ns(win_obj)
-    local w = type(win_obj) == "table" and win_obj.win or nil
-    if w and vim.api.nvim_win_is_valid(w) then
-      vim.api.nvim_win_set_hl_ns(w, _G._explorer_hl_ns)
+  for _, win_obj in pairs(picker.layout.wins or {}) do
+    if type(win_obj) == "table" and win_obj.win then
+      set_explorer_whl(win_obj.win)
     end
   end
-  for _, win_obj in pairs(picker.layout.wins or {}) do apply_ns(win_obj) end
-  for _, win_obj in pairs(picker.layout.box_wins or {}) do apply_ns(win_obj) end
+  for _, win_obj in pairs(picker.layout.box_wins or {}) do
+    if type(win_obj) == "table" and win_obj.win then
+      set_explorer_whl(win_obj.win)
+    end
+  end
 end
 
 vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
