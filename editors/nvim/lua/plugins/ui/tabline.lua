@@ -7,7 +7,7 @@ return {
   opts = function(_, opts)
     local tab_name_fg        = "#98C379"
     local tab_name_fg_active = "#282c34"
-    local tab_bg_active      = "#99bc80"
+    local tab_bg_active      = "#c27fd7"
     local fallback_normal_bg = "#282c34"
     local fallback_fill_bg = "#242b38"
 
