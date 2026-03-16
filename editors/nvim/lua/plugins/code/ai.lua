@@ -199,8 +199,8 @@ return {
     keys = {
       {
         "<leader>cp",
-        function() require("sidekick.cli").toggle({ name = "claude", focus = true }) end,
-        desc = "Sidekick: Claude CLI",
+        function() require("sidekick.cli").toggle({ name = "copilot", focus = true }) end,
+        desc = "Sidekick: Copilot CLI",
         mode = { "n", "t" },
       },
     },
