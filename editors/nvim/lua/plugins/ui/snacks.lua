@@ -206,6 +206,10 @@ return {
           win = {
             input = {
               keys = {
+                ["<C-d>"] = function()
+                  local picker = Snacks.picker.get({ source = "explorer" })[1]
+                  if picker and type(picker.close) == "function" then picker:close() end
+                end,
                 ["<Esc>"] = function()
                   local picker = Snacks.picker.get({ source = "explorer" })[1]
                   if not (picker and picker.input) then return end
@@ -217,6 +221,10 @@ return {
             },
             list = {
               keys = {
+                ["<C-d>"] = function()
+                  local picker = Snacks.picker.get({ source = "explorer" })[1]
+                  if picker and type(picker.close) == "function" then picker:close() end
+                end,
                 ["<C-v>"] = "edit_vsplit",
                 ["<C-x>"] = "edit_split",
                 ["<C-t>"] = "edit_tab",
