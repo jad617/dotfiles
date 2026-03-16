@@ -633,6 +633,11 @@ vim.api.nvim_create_autocmd("TermOpen", {
     -- Large scroll buffer
     vim.opt_local.scrollback = 100000
 
+    -- ESC exits terminal insert mode → normal mode.
+    -- Double-press is not needed; single ESC is enough since AI CLIs
+    -- (claude, gh copilot) operate at the shell/prompt level.
+    vim.keymap.set("t", "<Esc>", "<C-\\><C-n>", { buffer = buf, noremap = true, silent = true })
+
     -- Scroll up/down while staying in terminal insert mode
     -- <C-\><C-o> executes one normal-mode command then returns to terminal insert mode
     vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
