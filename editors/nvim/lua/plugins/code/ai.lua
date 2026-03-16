@@ -180,34 +180,28 @@ return {
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
-  -- 8. COPILOT CLI — persistent terminal split for `gh copilot` commands
-  --    <leader>cp  Toggle Copilot CLI terminal (right split, inside Neovim)
-  --    Usage inside the split: gh copilot suggest "..."
-  --                             gh copilot explain "..."
+  -- 8. SIDEKICK.NVIM — AI CLI terminal + Copilot Next Edit Suggestions
+  --    <leader>cp  Toggle sidekick with Claude CLI (right split, inside Neovim)
+  --    Also provides NES (Next Edit Suggestions) via Copilot LSP.
   -- ─────────────────────────────────────────────────────────────────────────
   {
-    -- No new plugin needed — Snacks.terminal handles this.
-    -- This empty spec is a placeholder to document the keymap below.
-    -- The actual keymap is registered via snacks.nvim keys.
-    "folke/snacks.nvim",
+    "folke/sidekick.nvim",
+    event = "VeryLazy",
+    opts = {
+      cli = {
+        watch = true, -- auto-reload files modified by AI CLI
+        tools = {
+          -- Override default claude cmd to pin the model
+          claude = { cmd = { "claude", "--model", "claude-sonnet-4-6" } },
+        },
+      },
+    },
     keys = {
       {
         "<leader>cp",
-        function()
-          Snacks.terminal(nil, {
-            id = "copilot-cli",
-            win = {
-              position = "right",
-              width = 0.40,
-              border = "rounded",
-              title = " Copilot CLI ",
-              title_pos = "center",
-            },
-            start_insert = true,
-            auto_close = false,
-          })
-        end,
-        desc = "Toggle Copilot CLI terminal",
+        function() require("sidekick.cli").toggle({ name = "claude", focus = true }) end,
+        desc = "Sidekick: Claude CLI",
+        mode = { "n", "t" },
       },
     },
   },
