@@ -513,6 +513,35 @@ vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
   end,
 })
 
+-- Orange statusline when cursor is inside the snacks explorer
+vim.api.nvim_create_augroup("explorer_statusline", { clear = true })
+vim.api.nvim_create_autocmd("WinEnter", {
+  group = "explorer_statusline",
+  desc = "Orange statusline when cursor enters snacks explorer, restore on leave",
+  callback = function()
+    vim.schedule(function()
+      local cur = vim.api.nvim_get_current_win()
+      for _, w in ipairs(vim.api.nvim_list_wins()) do
+        if not vim.api.nvim_win_is_valid(w) then goto continue end
+        local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
+        if not ft:match("^snacks_") then goto continue end
+        local whl = vim.wo[w].winhighlight or ""
+        if w == cur then
+          if not whl:find("StatusLine:ExplorerStatusLine") then
+            vim.wo[w].winhighlight = (whl ~= "" and whl .. "," or "") .. "StatusLine:ExplorerStatusLine"
+          end
+        else
+          whl = whl:gsub(",StatusLine:ExplorerStatusLine", "")
+                   :gsub("StatusLine:ExplorerStatusLine,", "")
+                   :gsub("StatusLine:ExplorerStatusLine", "")
+          vim.wo[w].winhighlight = whl
+        end
+        ::continue::
+      end
+    end)
+  end,
+})
+
 -- Manual equalize: <C-w>=
 vim.keymap.set("n", "<C-w>=", function()
   local normal, min_col = get_normal_wins()
