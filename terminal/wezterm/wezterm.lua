@@ -47,6 +47,7 @@ config.hide_tab_bar_if_only_one_tab = false
 config.tab_bar_at_bottom = true
 config.use_fancy_tab_bar = false
 config.tab_and_split_indices_are_zero_based = true
+config.status_update_interval = 100
 
 --------------------------------------------------------------------------------
 -- Status bar — workspace name + time (right) + leader indicator (left)
@@ -59,8 +60,9 @@ wezterm.on("update-right-status", function(window, _)
 	local name = wezterm.mux.get_active_workspace()
 	local time = wezterm.strftime("%H:%M:%S")
 	local bcast = wezterm.GLOBAL.broadcast and "📡 " or ""
+	local leader = window:leader_is_active() and ("LEADER " .. LEADER_ICON .. " ") or ""
 	window:set_right_status(wezterm.format({
-		{ Text = bcast .. " 󱂬  " .. name .. " | " .. time .. " " },
+		{ Text = leader .. bcast .. " 󱂬  " .. name .. " | " .. time .. " " },
 	}))
 
 	-- Left: leader active indicator
@@ -105,7 +107,7 @@ config.inactive_pane_hsb = {
 --------------------------------------------------------------------------------
 -- Leader key (Ctrl+a, tmux-style)
 --------------------------------------------------------------------------------
-config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
+config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1500 }
 
 --------------------------------------------------------------------------------
 -- Tab naming: show only current app, but allow renaming
