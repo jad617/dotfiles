@@ -86,6 +86,11 @@ return {
 
         opts.desc = "Restart LSP"
         keymap.set("n", "<leader>rs", ":LspRestart<CR>", opts) -- mapping to restart lsp if necessary
+
+        -- Disable built-in LSP document color (using nvim-colorizer instead)
+        if vim.lsp.document_color then
+          vim.lsp.document_color.disable(ev.buf)
+        end
       end,
     })
 
