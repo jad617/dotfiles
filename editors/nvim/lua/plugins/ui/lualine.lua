@@ -76,18 +76,23 @@ return {
 
       vim.api.nvim_create_augroup("explorer_statusline", { clear = true })
 
+      -- Explorer windows are real splits (relative = ""); other pickers are floating.
+      local function is_explorer_win(w)
+        if not vim.api.nvim_win_is_valid(w) then return false end
+        local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
+        if not ft:match("^snacks_") then return false end
+        return vim.api.nvim_win_get_config(w).relative == ""
+      end
+
       vim.api.nvim_create_autocmd("WinEnter", {
         group = "explorer_statusline",
         callback = function()
           local cur = vim.api.nvim_get_current_win()
           for _, w in ipairs(vim.api.nvim_list_wins()) do
-            if not vim.api.nvim_win_is_valid(w) then goto continue end
-            local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
-            if not ft:match("^snacks_") then goto continue end
+            if not is_explorer_win(w) then goto continue end
             if w == cur then
               vim.wo[w].statusline = explorer_stl
             else
-              -- restore lualine control by clearing our override
               if vim.wo[w].statusline == explorer_stl then
                 vim.wo[w].statusline = ""
               end
@@ -101,13 +106,8 @@ return {
         group = "explorer_statusline",
         callback = function()
           local cur = vim.api.nvim_get_current_win()
-          if not vim.api.nvim_win_is_valid(cur) then return end
-          local ft = vim.bo[vim.api.nvim_win_get_buf(cur)].filetype
-          if ft:match("^snacks_") then
-            -- leaving a snacks window — clear our override so lualine takes over
-            if vim.wo[cur].statusline == explorer_stl then
-              vim.wo[cur].statusline = ""
-            end
+          if is_explorer_win(cur) and vim.wo[cur].statusline == explorer_stl then
+            vim.wo[cur].statusline = ""
           end
         end,
       })
