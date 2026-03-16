@@ -18,7 +18,6 @@ local options = { noremap = true }
 opt.iskeyword:append({ "-" })
 
 -- Prevent nvim from auto-equalizing window widths (keeps explorer fixed)
-vim.o.timeoutlen = 300 -- ms to wait for mapped key sequence (default 1000 feels laggy)
 vim.o.equalalways = false
 vim.o.winminwidth = 10
 
