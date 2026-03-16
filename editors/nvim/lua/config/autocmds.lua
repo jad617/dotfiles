@@ -498,29 +498,31 @@ vim.api.nvim_create_autocmd("WinClosed", {
 vim.api.nvim_create_augroup("snacks_explorer_highlight", { clear = true })
 
 -- Namespace-based dark bg for explorer sidebar windows.
--- vim.api.nvim_win_set_hl_ns takes higher priority than winhighlight,
--- so snacks can't reset it when it updates its own winhighlight.
-local explorer_ns = vim.api.nvim_create_namespace("snacks_explorer_dark")
-vim.api.nvim_set_hl(explorer_ns, "NormalFloat", { bg = "#1a1f2b" })
-vim.api.nvim_set_hl(explorer_ns, "Normal",      { bg = "#1a1f2b" })
+-- Exposed globally so snacks.lua on_show can reference it.
+_G._explorer_hl_ns = vim.api.nvim_create_namespace("snacks_explorer_dark")
+vim.api.nvim_set_hl(_G._explorer_hl_ns, "NormalFloat", { bg = "#1a1f2b" })
+vim.api.nvim_set_hl(_G._explorer_hl_ns, "Normal",      { bg = "#1a1f2b" })
 
-local function apply_explorer_bg()
-  local Snacks = rawget(_G, "Snacks")
-  if not (Snacks and Snacks.picker) then return end
-  local ok, pickers = pcall(Snacks.picker.get, { source = "explorer" })
-  if not ok or not pickers then return end
-  for _, picker in ipairs(pickers) do
-    if not picker.layout then goto continue_picker end
-    local function apply_ns(win_obj)
-      local w = type(win_obj) == "table" and win_obj.win or nil
-      if w and vim.api.nvim_win_is_valid(w) then
-        vim.api.nvim_win_set_hl_ns(w, explorer_ns)
-      end
+_G.apply_explorer_bg = function(picker)
+  if not picker then
+    local Snacks = rawget(_G, "Snacks")
+    if not (Snacks and Snacks.picker) then return end
+    local ok, pickers = pcall(Snacks.picker.get, { source = "explorer" })
+    if not ok or not pickers then return end
+    for _, p in ipairs(pickers) do
+      _G.apply_explorer_bg(p)
     end
-    for _, win_obj in pairs(picker.layout.wins or {}) do apply_ns(win_obj) end
-    for _, win_obj in pairs(picker.layout.box_wins or {}) do apply_ns(win_obj) end
-    ::continue_picker::
+    return
   end
+  if not picker.layout then return end
+  local function apply_ns(win_obj)
+    local w = type(win_obj) == "table" and win_obj.win or nil
+    if w and vim.api.nvim_win_is_valid(w) then
+      vim.api.nvim_win_set_hl_ns(w, _G._explorer_hl_ns)
+    end
+  end
+  for _, win_obj in pairs(picker.layout.wins or {}) do apply_ns(win_obj) end
+  for _, win_obj in pairs(picker.layout.box_wins or {}) do apply_ns(win_obj) end
 end
 
 vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
@@ -530,14 +532,12 @@ vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
     vim.schedule(function()
       local synced = sync_explorer_to_current_buffer()
       fix_explorer_current_file_highlight()
-      apply_explorer_bg()
-      if not synced then
-        vim.defer_fn(function()
-          sync_explorer_to_current_buffer()
-          fix_explorer_current_file_highlight()
-          apply_explorer_bg()
-        end, 300)
-      end
+      if _G.apply_explorer_bg then _G.apply_explorer_bg() end
+      vim.defer_fn(function()
+        if not synced then sync_explorer_to_current_buffer() end
+        fix_explorer_current_file_highlight()
+        if _G.apply_explorer_bg then _G.apply_explorer_bg() end
+      end, 200)
     end)
   end,
 })
