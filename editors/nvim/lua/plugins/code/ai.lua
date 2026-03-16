@@ -188,10 +188,12 @@ return {
     "folke/sidekick.nvim",
     event = "VeryLazy",
     opts = {
+      -- Disable Next Edit Suggestions — causes lag by firing Copilot LSP
+      -- requests on every TextChanged event. CLI terminal is all we need.
+      nes = { enabled = false },
       cli = {
-        watch = true, -- auto-reload files modified by AI CLI
+        watch = true,
         tools = {
-          -- Override default claude cmd to pin the model
           claude = { cmd = { "claude", "--model", "claude-sonnet-4-6" } },
         },
       },
