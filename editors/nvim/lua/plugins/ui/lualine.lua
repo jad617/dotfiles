@@ -7,20 +7,11 @@ return {
       local lualine = require("lualine")
       local lazy_status = require("lazy.status") -- to configure lazy pending updates count
 
-      local function in_explorer()
-        return vim.bo.filetype:match("^snacks_") ~= nil
-      end
-
-      local explorer_color = { bg = "#ff9e64", fg = "#282c34", gui = "bold" }
-
       local project_root = {
         function() return vim.fn.fnamemodify(vim.fn.getcwd(), ":t") end,
         icon = "",
         separator = "",
-        color = function()
-          if in_explorer() then return explorer_color end
-          return { fg = "#ff8050" }
-        end,
+        color = { fg = "#ff8050" },
       }
 
       local python_venv = {
@@ -46,34 +37,6 @@ return {
           theme = "onedark",
         },
         sections = {
-          lualine_a = {
-            {
-              "mode",
-              color = function()
-                if in_explorer() then return explorer_color end
-              end,
-            },
-          },
-          lualine_b = {
-            {
-              "branch",
-              color = function()
-                if in_explorer() then return explorer_color end
-              end,
-            },
-            {
-              "diff",
-              color = function()
-                if in_explorer() then return explorer_color end
-              end,
-            },
-            {
-              "diagnostics",
-              color = function()
-                if in_explorer() then return explorer_color end
-              end,
-            },
-          },
           lualine_c = {
             project_root,
             {
@@ -81,10 +44,7 @@ return {
               file_status = true,
               newfile_status = true,
               path = 1,
-              color = function()
-                if in_explorer() then return explorer_color end
-                return { fg = "#99bc80" }
-              end,
+              color = { fg = "#99bc80" },
             },
           },
           lualine_x = {
@@ -99,6 +59,57 @@ return {
             { "filetype" },
           },
         },
+      })
+
+      -- Orange statusline when cursor is inside the snacks explorer.
+      -- lualine's highlight groups are global, so we bypass it entirely
+      -- for snacks windows and set vim.wo.statusline directly.
+      vim.cmd("highlight ExplorerStatusLine guifg=#282c34 guibg=#ff9e64 gui=bold")
+      vim.cmd("highlight ExplorerStatusLineNC guifg=#1e2127 guibg=#b36e3e gui=bold")
+
+      local explorer_stl = table.concat({
+        "%#ExplorerStatusLine#",
+        "  󰙅 Explorer ",
+        "%=",                   -- right-align the rest
+        " %l/%L ",
+      })
+
+      vim.api.nvim_create_augroup("explorer_statusline", { clear = true })
+
+      vim.api.nvim_create_autocmd("WinEnter", {
+        group = "explorer_statusline",
+        callback = function()
+          local cur = vim.api.nvim_get_current_win()
+          for _, w in ipairs(vim.api.nvim_list_wins()) do
+            if not vim.api.nvim_win_is_valid(w) then goto continue end
+            local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
+            if not ft:match("^snacks_") then goto continue end
+            if w == cur then
+              vim.wo[w].statusline = explorer_stl
+            else
+              -- restore lualine control by clearing our override
+              if vim.wo[w].statusline == explorer_stl then
+                vim.wo[w].statusline = ""
+              end
+            end
+            ::continue::
+          end
+        end,
+      })
+
+      vim.api.nvim_create_autocmd("WinLeave", {
+        group = "explorer_statusline",
+        callback = function()
+          local cur = vim.api.nvim_get_current_win()
+          if not vim.api.nvim_win_is_valid(cur) then return end
+          local ft = vim.bo[vim.api.nvim_win_get_buf(cur)].filetype
+          if ft:match("^snacks_") then
+            -- leaving a snacks window — clear our override so lualine takes over
+            if vim.wo[cur].statusline == explorer_stl then
+              vim.wo[cur].statusline = ""
+            end
+          end
+        end,
       })
     end,
   },
