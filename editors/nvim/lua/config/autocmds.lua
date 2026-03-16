@@ -503,17 +503,28 @@ local function apply_explorer_bg()
   local ok, pickers = pcall(Snacks.picker.get, { source = "explorer" })
   if not ok or not pickers then return end
   for _, picker in ipairs(pickers) do
-    if picker.layout and picker.layout.wins then
-      for _, win_obj in pairs(picker.layout.wins) do
-        local w = win_obj.win
-        if w and vim.api.nvim_win_is_valid(w) then
-          local whl = vim.wo[w].winhighlight or ""
-          if not whl:find("NormalFloat:SnacksExplorerNormal") then
-            vim.wo[w].winhighlight = (whl ~= "" and whl .. "," or "") .. "NormalFloat:SnacksExplorerNormal,Normal:SnacksExplorerNormal"
-          end
+    if not picker.layout then goto continue_picker end
+    -- Apply to named windows (input, list, preview)
+    for _, win_obj in pairs(picker.layout.wins or {}) do
+      local w = win_obj.win
+      if w and vim.api.nvim_win_is_valid(w) then
+        local whl = vim.wo[w].winhighlight or ""
+        if not whl:find("NormalFloat:SnacksExplorerNormal") then
+          vim.wo[w].winhighlight = (whl ~= "" and whl .. "," or "") .. "NormalFloat:SnacksExplorerNormal,Normal:SnacksExplorerNormal"
         end
       end
     end
+    -- Also apply to box container windows (the structural frame snacks creates)
+    for _, win_obj in pairs(picker.layout.box_wins or {}) do
+      local w = win_obj.win
+      if w and vim.api.nvim_win_is_valid(w) then
+        local whl = vim.wo[w].winhighlight or ""
+        if not whl:find("NormalFloat:SnacksExplorerNormal") then
+          vim.wo[w].winhighlight = (whl ~= "" and whl .. "," or "") .. "NormalFloat:SnacksExplorerNormal,Normal:SnacksExplorerNormal"
+        end
+      end
+    end
+    ::continue_picker::
   end
 end
 
