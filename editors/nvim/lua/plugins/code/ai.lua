@@ -15,15 +15,15 @@ return {
       { "<leader>m", "<cmd>RenderMarkdown toggle<cr>", desc = "Toggle Render Markdown" },
     },
     opts = {
-      enabled = true, -- on by default; toggle with <leader>m
+      enabled = true,
       heading = { enabled = true },
       code = { enabled = true },
       anti_conceal = {
-        disabled_modes = { "n" }, -- keep full rendered UI under cursor in normal mode
+        disabled_modes = { "n" },
       },
       win_options = {
         concealcursor = {
-          rendered = "n", -- keep concealed markdown tokens hidden on cursor line in normal mode
+          rendered = "n",
         },
       },
     },
@@ -40,6 +40,7 @@ return {
 
   -- ─────────────────────────────────────────────────────────────────────────
   -- 3. CODECOMPANION — primary AI chat + inline assistant
+  --    <leader>cc  Toggle chat sidebar (full buffer context auto-included)
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "olimorris/codecompanion.nvim",
@@ -51,97 +52,65 @@ return {
     },
     event = "VeryLazy",
     keys = {
-      -- Open / toggle chat sidebar
-      { "<leader>cc", "<cmd>CodeCompanionChat Toggle<cr>", desc = "Toggle AI chat" },
-      -- Inline assistant (works in visual too)
+      { "<leader>cc", "<cmd>CodeCompanionChat Toggle<cr>", desc = "Toggle AI chat (CodeCompanion)" },
       { "<leader>ci", "<cmd>CodeCompanion<cr>", desc = "Inline AI", mode = { "n", "v" } },
-      -- Action palette (explain, fix, tests, docs …)
-      { "<leader>ca", "<cmd>CodeCompanionActions<cr>", desc = "AI actions", mode = { "n", "v" } },
-      -- Add selected code as context in existing chat
-      { "<leader>cx", "<cmd>CodeCompanionChat Add<cr>", desc = "Add to chat", mode = "v" },
-      -- Quick inline shortcuts
-      { "<leader>cf", "<cmd>CodeCompanion /fix<cr>", desc = "Fix code", mode = { "n", "v" } },
-      { "<leader>ct", "<cmd>CodeCompanion /tests<cr>", desc = "Write tests", mode = { "n", "v" } },
-      { "<leader>cd", "<cmd>CodeCompanion /doc<cr>", desc = "Write docs", mode = { "n", "v" } },
     },
     opts = {
-      -- ── Adapters ────────────────────────────────────────────────────────
-      -- API key is read from $ANTHROPIC_API_KEY automatically.
-      -- Use a cheaper model for background/cmd tasks to save cost.
       strategies = {
-        chat = { adapter = "anthropic" }, -- Sonnet for conversation
-        inline = { adapter = "anthropic" }, -- Sonnet for inline edits
-        cmd = { adapter = "anthropic" }, -- for :CodeCompanionCmd
+        chat = { adapter = "anthropic" },
+        inline = { adapter = "anthropic" },
+        cmd = { adapter = "anthropic" },
       },
       adapters = {
         anthropic = function()
           return require("codecompanion.adapters").extend("anthropic", {
             schema = {
-              model = {
-                -- Claude Sonnet 4.6 — best balance of speed and quality
-                default = "claude-sonnet-4-6",
-              },
+              model = { default = "claude-sonnet-4-6" },
               max_tokens = { default = 8192 },
             },
           })
         end,
       },
-
-      -- ── Display ─────────────────────────────────────────────────────────
       display = {
         chat = {
-          show_token_count = true, -- keep an eye on context usage
+          show_token_count = true,
           show_settings = false,
           render_markdown = true,
           window = {
-            layout = "vertical", -- sidebar feel
-            width = 0.35, -- 35 % of screen
+            layout = "vertical",
+            width = 0.35,
           },
         },
-        action_palette = {
-          provider = "default",
-        },
-        diff = {
-          provider = "mini_diff", -- requires mini.diff; swap to "default" if not installed
-        },
+        action_palette = { provider = "default" },
+        diff = { provider = "mini_diff" },
       },
-
-      -- ── CLAUDE.md / rules ─────────────────────────────────────────────────
-      -- CodeCompanion will automatically pick up CLAUDE.md at your repo root.
-      -- Create one with stack-specific context (see tip below).
     },
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
-  -- 4. CLAUDECODE.NVIM — full Claude Code CLI integration via WebSocket MCP
-  --    Gives Claude direct read/write access to every open buffer,
-  --    LSP diagnostics, and your file explorer (@-mention files).
+  -- 4. CLAUDECODE.NVIM — Claude Code CLI via WebSocket MCP (full buffer access)
+  --    <leader>ca  Toggle Claude CLI terminal (right split, inside Neovim)
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "coder/claudecode.nvim",
     event = "VeryLazy",
     config = true,
     keys = {
-      { "<leader>ac", "<cmd>ClaudeCode<cr>", desc = "Toggle Claude Code" },
-      { "<leader>af", "<cmd>ClaudeCodeFocus<cr>", desc = "Focus Claude Code" },
-      { "<leader>as", "<cmd>ClaudeCodeSend<cr>", desc = "Send selection", mode = "v" },
-      { "<leader>aa", "<cmd>ClaudeCodeDiffAccept<cr>", desc = "Accept diff" },
-      { "<leader>ad", "<cmd>ClaudeCodeDiffDeny<cr>", desc = "Deny diff" },
+      { "<leader>ca", "<cmd>ClaudeCode<cr>", desc = "Toggle Claude CLI" },
     },
     opts = {
       terminal = {
-        provider = "native", -- use Neovim's built-in terminal
-        split_side = "right", -- open on the right side
+        provider = "native",
+        split_side = "right",
         split_width_percentage = 0.40,
       },
       auto_insert = true,
-      auto_close_on_exit = false, -- keep window open after Claude finishes
+      auto_close_on_exit = false,
     },
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
-  -- 5. COPILOT.LUA — pure Lua inline suggestions (replaces copilot.vim)
-  --    Suggestions routed through cmp via copilot-cmp (no ghost text)
+  -- 5. COPILOT.LUA — inline suggestions via cmp
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "zbirenbaum/copilot.lua",
@@ -149,8 +118,8 @@ return {
     event = "InsertEnter",
     enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
     opts = {
-      suggestion = { enabled = false }, -- handled by copilot-cmp
-      panel = { enabled = false }, -- handled by copilot-cmp
+      suggestion = { enabled = false },
+      panel = { enabled = false },
       filetypes = { markdown = true, help = false },
     },
   },
@@ -166,7 +135,8 @@ return {
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
-  -- 7. COPILOT CHAT
+  -- 7. COPILOTCHAT — Copilot AI chat with full buffer awareness
+  --    <leader>ce  Toggle CopilotChat sidebar
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "CopilotC-Nvim/CopilotChat.nvim",
@@ -177,22 +147,22 @@ return {
     enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
     cmd = { "CopilotChat", "CopilotChatToggle", "CopilotChatReset" },
     keys = {
-      { "<leader>cp", "<cmd>CopilotChatToggle<cr>", mode = { "n", "v" }, desc = "Toggle CopilotChat" },
-      { "<leader>cr", desc = "Copilot Review" },
-      { "<leader>ce", desc = "Copilot Explain" },
-      { "<leader>cf", desc = "Copilot Fix" },
+      { "<leader>ce", "<cmd>CopilotChatToggle<cr>", mode = { "n", "v" }, desc = "Toggle CopilotChat" },
     },
     config = function()
       local chat = require("CopilotChat")
-
+      -- No model override — CopilotChat uses GitHub Copilot's API, not Anthropic's.
+      -- Model names differ (e.g. "gpt-4o", "claude-3.5-sonnet") and are managed
+      -- by Copilot. Let it use its default.
       chat.setup({
-        model = "claude-sonnet-4-6",
+        model = "claude-sonnet-4.6",
+        -- Include current buffer as context in every message.
+        -- Equivalent to typing #buffer at the start of each prompt.
+        resources = "buffer",
       })
 
-      vim.keymap.set({ "n", "v" }, "<leader>cp", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
+      vim.keymap.set({ "n", "v" }, "<leader>ce", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
 
-      -- 🌟 Keymaps for buffer-level commands
-      -- Review buffer
       vim.keymap.set(
         "n",
         "<leader>cr",
@@ -200,33 +170,41 @@ return {
         { desc = "Copilot Review Buffer" }
       )
 
-      -- Explain buffer
-      vim.keymap.set("n", "<leader>ce", function() chat.ask("Explain this buffer in detail.", { selection = false }) end, { desc = "Copilot Explain Buffer" })
-
-      -- Fix issues in buffer
-      vim.keymap.set(
-        "n",
-        "<leader>cf",
-        function() chat.ask("Find bugs or errors in this buffer and suggest fixes.", { selection = false }) end,
-        { desc = "Copilot Fix Buffer" }
-      )
-
-      -- 🌟 Visual mode: run on selection only
       vim.keymap.set(
         "v",
         "<leader>cr",
         function() chat.ask("Review this code and suggest improvements.", { selection = true }) end,
         { desc = "Copilot Review Selection" }
       )
-
-      vim.keymap.set("v", "<leader>ce", function() chat.ask("Explain this code.", { selection = true }) end, { desc = "Copilot Explain Selection" })
-
-      vim.keymap.set(
-        "v",
-        "<leader>cf",
-        function() chat.ask("Find bugs in this code and suggest fixes.", { selection = true }) end,
-        { desc = "Copilot Fix Selection" }
-      )
     end,
+  },
+
+  -- ─────────────────────────────────────────────────────────────────────────
+  -- 8. SIDEKICK.NVIM — AI CLI terminal + Copilot Next Edit Suggestions
+  --    <leader>cp  Toggle sidekick with Claude CLI (right split, inside Neovim)
+  --    Also provides NES (Next Edit Suggestions) via Copilot LSP.
+  -- ─────────────────────────────────────────────────────────────────────────
+  {
+    "folke/sidekick.nvim",
+    event = "VeryLazy",
+    opts = {
+      -- Disable Next Edit Suggestions — causes lag by firing Copilot LSP
+      -- requests on every TextChanged event. CLI terminal is all we need.
+      nes = { enabled = false },
+      cli = {
+        watch = true,
+        tools = {
+          claude = { cmd = { "claude", "--model", "claude-sonnet-4-6" } },
+        },
+      },
+    },
+    keys = {
+      {
+        "<leader>cp",
+        function() require("sidekick.cli").toggle({ name = "copilot", focus = true }) end,
+        desc = "Sidekick: Copilot CLI",
+        mode = "n",
+      },
+    },
   },
 }

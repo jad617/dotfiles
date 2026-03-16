@@ -14,6 +14,16 @@ return {
       notify = {
         enabled = true,
       },
+      routes = {
+        -- Suppress benign ClaudeCode WebSocket disconnect on terminal close
+        {
+          filter = {
+            event = "notify",
+            find = "ECONNRESET",
+          },
+          opts = { skip = true },
+        },
+      },
     })
   end,
 }
