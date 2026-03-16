@@ -633,18 +633,28 @@ vim.api.nvim_create_autocmd("TermOpen", {
     -- Large scroll buffer
     vim.opt_local.scrollback = 100000
 
+    -- ESC exits terminal insert mode → normal mode.
+    -- Double-press is not needed; single ESC is enough since AI CLIs
+    -- (claude, gh copilot) operate at the shell/prompt level.
+    vim.keymap.set("t", "<Esc>", "<C-\\><C-n>", { buffer = buf, noremap = true, silent = true })
+
     -- Scroll up/down while staying in terminal insert mode
     -- <C-\><C-o> executes one normal-mode command then returns to terminal insert mode
     vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
     vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
 
-    -- Shift+Arrow in terminal mode navigates WezTerm panes directly.
-    -- Bypasses smart-splits so we never accidentally focus a Neovim buffer
-    -- from the floating terminal.
-    local wez_dirs = { Left = "<S-Left>", Right = "<S-Right>", Up = "<S-Up>", Down = "<S-Down>" }
-    for dir, key in pairs(wez_dirs) do
+    -- Shift+Arrow in terminal mode: use smart-splits which handles terminal
+    -- mode natively — moves to a Neovim split if one exists in that direction,
+    -- otherwise falls back to WezTerm pane navigation. No ESC needed.
+    local ss_dirs = {
+      ["<S-Left>"]  = "move_cursor_left",
+      ["<S-Right>"] = "move_cursor_right",
+      ["<S-Up>"]    = "move_cursor_up",
+      ["<S-Down>"]  = "move_cursor_down",
+    }
+    for key, fn in pairs(ss_dirs) do
       vim.keymap.set("t", key, function()
-        vim.fn.system("wezterm cli activate-pane-direction " .. dir)
+        require("smart-splits")[fn]()
       end, { buffer = buf, noremap = true, silent = true })
     end
   end,
@@ -653,14 +663,24 @@ vim.api.nvim_create_autocmd("TermOpen", {
 -- Auto-enter insert mode whenever a terminal window is focused.
 -- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
 -- defer_fn(50ms) lets Snacks finish showing the float before we touch anything.
--- chansend("\x03") sends Ctrl+C which cancels any partial input and forces
--- zsh/bash to redraw a clean prompt at the correct column (fixes cursor drift).
+-- chansend("\x03") sends Ctrl+C to cancel partial input and redraw the prompt
+-- (fixes cursor drift) — but ONLY for shell terminals, not AI CLI tools which
+-- would be killed by Ctrl+C.
+local SHELL_PATTERN = "zsh$\nbash$\nsh$\nfish$"
+local function is_shell_terminal(buf_name)
+  for _, shell in ipairs({ "zsh", "bash", "sh", "fish" }) do
+    if buf_name:match(shell .. "$") then return true end
+  end
+  return false
+end
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
   group = "terminal_settings",
   callback = function()
     if vim.bo.buftype ~= "terminal" then return end
     vim.cmd("startinsert")
     local job_id = vim.b.terminal_job_id
+    local buf_name = vim.api.nvim_buf_get_name(0)
+    if not is_shell_terminal(buf_name) then return end
     vim.defer_fn(function()
       if vim.bo.buftype ~= "terminal" then return end
       if job_id and job_id > 0 then vim.fn.chansend(job_id, "\x03") end

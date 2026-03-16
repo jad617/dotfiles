@@ -37,10 +37,13 @@ return {
       hcl = { "terraform_fmt", "trim_newlines", "trim_whitespace" },
       terraform = { "terraform_fmt", "trim_newlines", "trim_whitespace" },
     },
-    format_on_save = {
-      lsp_fallback = true,
-      timeout_ms = 500,
-    },
+    format_on_save = function(bufnr)
+      -- markdownlint (Node.js) needs more time to cold-start
+      if vim.bo[bufnr].filetype == "markdown" then
+        return { lsp_fallback = true, timeout_ms = 3000 }
+      end
+      return { lsp_fallback = true, timeout_ms = 500 }
+    end,
     formatters = {
       gopls_add_imports = {
         command = "gopls",
