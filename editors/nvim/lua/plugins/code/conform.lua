@@ -27,8 +27,9 @@ return {
       -- lua
       lua = { "stylua" },
 
-      -- markdown
-      markdown = { "markdownlint", "trim_newlines", "trim_whitespace" },
+      -- markdown — markdownlint removed from here (it's a linter, not a formatter,
+      -- and its Node.js startup causes conform's 500ms timeout to fire on every save)
+      markdown = { "trim_newlines", "trim_whitespace" },
 
       -- python
       python = { "ruff_format", "trim_newlines", "trim_whitespace" },

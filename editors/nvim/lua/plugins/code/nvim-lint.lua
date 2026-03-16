@@ -13,7 +13,7 @@ return {
       bash = { "shellcheck" },
       yaml = { "yamllint" },
       text = { "proselint" },
-      markdown = { "proselint" },
+      markdown = { "markdownlint", "proselint" },
       -- python: diagnostics handled by ruff LSP
     }
 
