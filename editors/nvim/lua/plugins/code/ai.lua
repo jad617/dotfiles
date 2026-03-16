@@ -54,12 +54,6 @@ return {
     keys = {
       { "<leader>cc", "<cmd>CodeCompanionChat Toggle<cr>", desc = "Toggle AI chat (CodeCompanion)" },
       { "<leader>ci", "<cmd>CodeCompanion<cr>", desc = "Inline AI", mode = { "n", "v" } },
-      -- Renamed from <leader>ca to avoid conflict with Claude CLI
-      { "<leader>cA", "<cmd>CodeCompanionActions<cr>", desc = "AI actions", mode = { "n", "v" } },
-      { "<leader>cx", "<cmd>CodeCompanionChat Add<cr>", desc = "Add to chat", mode = "v" },
-      { "<leader>cf", "<cmd>CodeCompanion /fix<cr>", desc = "Fix code", mode = { "n", "v" } },
-      { "<leader>ct", "<cmd>CodeCompanion /tests<cr>", desc = "Write tests", mode = { "n", "v" } },
-      { "<leader>cd", "<cmd>CodeCompanion /doc<cr>", desc = "Write docs", mode = { "n", "v" } },
     },
     opts = {
       strategies = {
@@ -103,9 +97,6 @@ return {
     config = true,
     keys = {
       { "<leader>ca", "<cmd>ClaudeCode<cr>", desc = "Toggle Claude CLI" },
-      { "<leader>as", "<cmd>ClaudeCodeSend<cr>", desc = "Send selection to Claude", mode = "v" },
-      { "<leader>aa", "<cmd>ClaudeCodeDiffAccept<cr>", desc = "Accept Claude diff" },
-      { "<leader>ad", "<cmd>ClaudeCodeDiffDeny<cr>", desc = "Deny Claude diff" },
     },
     opts = {
       terminal = {
@@ -163,17 +154,28 @@ return {
       -- No model override — CopilotChat uses GitHub Copilot's API, not Anthropic's.
       -- Model names differ (e.g. "gpt-4o", "claude-3.5-sonnet") and are managed
       -- by Copilot. Let it use its default.
-      chat.setup({ model = "claude-sonnet-4.6" })
+      chat.setup({
+        model = "claude-sonnet-4.6",
+        -- Include current buffer as context in every message.
+        -- Equivalent to typing #buffer at the start of each prompt.
+        resources = "buffer",
+      })
 
       vim.keymap.set({ "n", "v" }, "<leader>ce", "<cmd>CopilotChatToggle<cr>", { desc = "Toggle CopilotChat" })
 
-      vim.keymap.set("n", "<leader>cr", function()
-        chat.ask("Review this buffer and suggest improvements.", { selection = false })
-      end, { desc = "Copilot Review Buffer" })
+      vim.keymap.set(
+        "n",
+        "<leader>cr",
+        function() chat.ask("Review this buffer and suggest improvements.", { selection = false }) end,
+        { desc = "Copilot Review Buffer" }
+      )
 
-      vim.keymap.set("v", "<leader>cr", function()
-        chat.ask("Review this code and suggest improvements.", { selection = true })
-      end, { desc = "Copilot Review Selection" })
+      vim.keymap.set(
+        "v",
+        "<leader>cr",
+        function() chat.ask("Review this code and suggest improvements.", { selection = true }) end,
+        { desc = "Copilot Review Selection" }
+      )
     end,
   },
 
