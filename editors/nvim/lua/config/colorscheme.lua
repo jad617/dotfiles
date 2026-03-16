@@ -26,12 +26,15 @@ vim.cmd("highlight SnacksPickerPreviewBorder guifg=#ff9e64 guibg=NONE")
 -- Cursor color of the searched word
 vim.cmd("highlight SnacksPickerPreviewCursorLine guibg=#61afef guifg=#282c34 gui=bold")
 
--- Search box background color
-vim.cmd("highlight SnacksPicker     guibg=#1a1f2b")
-vim.cmd("highlight SnacksPickerBox  guibg=#1a1f2b")
-vim.cmd("highlight SnacksPickerInput guibg=#1a1f2b")
-vim.cmd("highlight SnacksPickerList guibg=#1a1f2b gui=bold")
-vim.cmd("highlight SnacksPickerPreview guibg=#1a1f2b gui=bold")
+-- Search box background color (regular pickers)
+vim.cmd("highlight SnacksPicker     guibg=#242b38")
+vim.cmd("highlight SnacksPickerBox  guibg=#242b38")
+vim.cmd("highlight SnacksPickerInput guibg=#242b38")
+vim.cmd("highlight SnacksPickerList guibg=#242b38 gui=bold")
+vim.cmd("highlight SnacksPickerPreview guibg=#242b38 gui=bold")
+
+-- Explorer sidebar gets a darker background via per-window winhighlight
+vim.cmd("highlight SnacksExplorerNormal guibg=#1a1f2b")
 
 -- Snacks picker title color
 vim.cmd("highlight SnacksPickerPreviewTitle guifg=#c27fd7 gui=bold")

@@ -496,6 +496,27 @@ vim.api.nvim_create_autocmd("WinClosed", {
 })
 
 vim.api.nvim_create_augroup("snacks_explorer_highlight", { clear = true })
+-- Dark background for explorer sidebar windows (applied via per-window winhighlight)
+local function apply_explorer_bg()
+  local Snacks = rawget(_G, "Snacks")
+  if not (Snacks and Snacks.picker) then return end
+  local ok, pickers = pcall(Snacks.picker.get, { source = "explorer" })
+  if not ok or not pickers then return end
+  for _, picker in ipairs(pickers) do
+    if picker.layout and picker.layout.wins then
+      for _, win_obj in pairs(picker.layout.wins) do
+        local w = win_obj.win
+        if w and vim.api.nvim_win_is_valid(w) then
+          local whl = vim.wo[w].winhighlight or ""
+          if not whl:find("NormalFloat:SnacksExplorerNormal") then
+            vim.wo[w].winhighlight = (whl ~= "" and whl .. "," or "") .. "NormalFloat:SnacksExplorerNormal,Normal:SnacksExplorerNormal"
+          end
+        end
+      end
+    end
+  end
+end
+
 vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
   group = "snacks_explorer_highlight",
   desc = "Keep explorer current-file highlight color consistent",
@@ -503,10 +524,12 @@ vim.api.nvim_create_autocmd({ "WinEnter", "BufEnter", "VimResized" }, {
     vim.schedule(function()
       local synced = sync_explorer_to_current_buffer()
       fix_explorer_current_file_highlight()
+      apply_explorer_bg()
       if not synced then
         vim.defer_fn(function()
           sync_explorer_to_current_buffer()
           fix_explorer_current_file_highlight()
+          apply_explorer_bg()
         end, 300)
       end
     end)
