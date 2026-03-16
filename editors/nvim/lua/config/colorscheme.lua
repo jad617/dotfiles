@@ -27,6 +27,9 @@ vim.cmd("highlight SnacksPickerPreviewBorder guifg=#ff9e64 guibg=NONE")
 vim.cmd("highlight SnacksPickerPreviewCursorLine guibg=#61afef guifg=#282c34 gui=bold")
 
 -- Search box background color
+vim.cmd("highlight SnacksPicker     guibg=#1a1f2b")
+vim.cmd("highlight SnacksPickerBox  guibg=#1a1f2b")
+vim.cmd("highlight SnacksPickerInput guibg=#1a1f2b")
 vim.cmd("highlight SnacksPickerList guibg=#1a1f2b gui=bold")
 vim.cmd("highlight SnacksPickerPreview guibg=#1a1f2b gui=bold")
 
