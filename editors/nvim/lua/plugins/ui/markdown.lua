@@ -6,7 +6,6 @@ return {
     init = function()
       vim.g.mkdp_auto_start = 0 -- manual only
       vim.g.mkdp_filetypes = { "markdown" }
-      vim.g.mkdp_browserfunc = "" -- open fresh tab each time (avoids 404 on refresh/back)
 
       local function run_mkdp(autofunc)
         local ok_lazy, lazy = pcall(require, "lazy")
