@@ -33,8 +33,7 @@ vim.cmd("highlight SnacksPickerInput guibg=#242b38")
 vim.cmd("highlight SnacksPickerList guibg=#242b38 gui=bold")
 vim.cmd("highlight SnacksPickerPreview guibg=#242b38 gui=bold")
 
--- Explorer sidebar gets a darker background via per-window winhighlight
-vim.cmd("highlight SnacksExplorerNormal guibg=#1a1f2b")
+-- Explorer sidebar gets a darker background via per-window highlight namespace
 
 -- Snacks picker title color
 vim.cmd("highlight SnacksPickerPreviewTitle guifg=#c27fd7 gui=bold")
