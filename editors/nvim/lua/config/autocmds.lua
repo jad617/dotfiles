@@ -643,13 +643,18 @@ vim.api.nvim_create_autocmd("TermOpen", {
     vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
     vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
 
-    -- Shift+Arrow in terminal mode navigates WezTerm panes directly.
-    -- Bypasses smart-splits so we never accidentally focus a Neovim buffer
-    -- from the floating terminal.
-    local wez_dirs = { Left = "<S-Left>", Right = "<S-Right>", Up = "<S-Up>", Down = "<S-Down>" }
-    for dir, key in pairs(wez_dirs) do
+    -- Shift+Arrow in terminal mode: use smart-splits which handles terminal
+    -- mode natively — moves to a Neovim split if one exists in that direction,
+    -- otherwise falls back to WezTerm pane navigation. No ESC needed.
+    local ss_dirs = {
+      ["<S-Left>"]  = "move_cursor_left",
+      ["<S-Right>"] = "move_cursor_right",
+      ["<S-Up>"]    = "move_cursor_up",
+      ["<S-Down>"]  = "move_cursor_down",
+    }
+    for key, fn in pairs(ss_dirs) do
       vim.keymap.set("t", key, function()
-        vim.fn.system("wezterm cli activate-pane-direction " .. dir)
+        require("smart-splits")[fn]()
       end, { buffer = buf, noremap = true, silent = true })
     end
   end,
