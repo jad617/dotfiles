@@ -8,23 +8,23 @@
 
 # macOS Homebrew
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    [ -d /opt/homebrew/bin ]               && export PATH="/opt/homebrew/bin:$PATH"
+    [ -d /opt/homebrew/bin ] && export PATH="/opt/homebrew/bin:$PATH"
     [ -d /opt/homebrew/opt/mysql-client@8.0/bin ] && export PATH="/opt/homebrew/opt/mysql-client@8.0/bin:$PATH"
 fi
 
 # Go
-[ -d /usr/local/go ]       && export PATH="/usr/local/go/bin:$PATH"
-[ -d "$HOME/go" ]          && export PATH="$HOME/go/bin:$PATH"
+[ -d /usr/local/go ] && export PATH="/usr/local/go/bin:$PATH"
+[ -d "$HOME/go" ] && export PATH="$HOME/go/bin:$PATH"
 
 # Rust/Cargo
-[ -d "$HOME/.cargo/bin" ]  && export PATH="$HOME/.cargo/bin:$PATH"
+[ -d "$HOME/.cargo/bin" ] && export PATH="$HOME/.cargo/bin:$PATH"
 
 # Node
 [ -d "$HOME/node_modules" ] && export PATH="$HOME/node_modules:$PATH"
 
 # Local & user bin
-[ -d "$HOME/.local/bin" ]  && export PATH="$HOME/.local/bin:$PATH"
-[ -d "$HOME/bin" ]         && export PATH="$HOME/bin:$PATH"
+[ -d "$HOME/.local/bin" ] && export PATH="$HOME/.local/bin:$PATH"
+[ -d "$HOME/bin" ] && export PATH="$HOME/bin:$PATH"
 
 # Ruby/Gem (macOS only)
 if [ -d /usr/local/opt/ruby/bin ]; then
@@ -54,9 +54,9 @@ export PYENV_ROOT="$HOME/.pyenv"
 ##################################
 # Secrets (loaded from files)
 ##################################
-[ -f ~/.claude_api_key ]  && export ANTHROPIC_API_KEY=$(cat ~/.claude_api_key)
-[ -f ~/.github_token ]    && export GITHUB_TOKEN=$(cat ~/.github_token)
-[ -f ~/.gemfury_token ]   && export FURY_AUTH=$(cat ~/.gemfury_token)
+[ -f ~/.claude_api_key ] && export ANTHROPIC_API_KEY=$(cat ~/.claude_api_key)
+[ -f ~/.github_token ] && export GITHUB_TOKEN=$(cat ~/.github_token)
+[ -f ~/.gemfury_token ] && export FURY_AUTH=$(cat ~/.gemfury_token)
 
 ##################################
 # Keybindings
@@ -69,7 +69,7 @@ bindkey "^Q" beginning-of-line
 
 # Python venvs
 pyenv_create() { python3 -m venv ~/intact/virtual_envs/$1; }
-pyenv_delete()  { rm -rf ~/intact/virtual_envs/$1; }
+pyenv_delete() { rm -rf ~/intact/virtual_envs/$1; }
 pyenv_source() {
     if [ -z "$1" ]; then
         eza ~/intact/virtual_envs/
@@ -82,8 +82,8 @@ pyenv_source() {
 # On-demand dev tools (NVM + SDKMAN — lazy loaded to keep shell startup fast)
 dev_UP() {
     export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ]             && source "$NVM_DIR/nvm.sh"
-    [ -s "$NVM_DIR/bash_completion" ]    && source "$NVM_DIR/bash_completion"
+    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+    [ -s "$NVM_DIR/bash_completion" ] && source "$NVM_DIR/bash_completion"
 
     export SDKMAN_DIR="$HOME/.sdkman"
     [ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
@@ -115,19 +115,6 @@ az() {
 tolower() { echo "$1" | awk '{print tolower($0)}'; }
 toupper() { echo "$1" | awk '{print toupper($0)}'; }
 gitjpush() { git add -A && git commit -m "$1" && git push; }
-
-# Television
-tvcd() {
-    local file
-    file=$(cd ~ && tv files)
-    cd "$(dirname "$file")"
-}
-tvvim() {
-    local file
-    file=$(cd ~ && tv files)
-    cd "$(dirname "$file")"
-    nvim "$(basename "$file")"
-}
 
 ##################################
 # Git aliases
