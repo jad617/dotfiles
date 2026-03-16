@@ -7,11 +7,20 @@ return {
       local lualine = require("lualine")
       local lazy_status = require("lazy.status") -- to configure lazy pending updates count
 
+      local function in_explorer()
+        return vim.bo.filetype:match("^snacks_") ~= nil
+      end
+
+      local explorer_color = { bg = "#ff9e64", fg = "#282c34", gui = "bold" }
+
       local project_root = {
         function() return vim.fn.fnamemodify(vim.fn.getcwd(), ":t") end,
         icon = "",
         separator = "",
-        color = { fg = "#ff8050" },
+        color = function()
+          if in_explorer() then return explorer_color end
+          return { fg = "#ff8050" }
+        end,
       }
 
       local python_venv = {
@@ -37,6 +46,34 @@ return {
           theme = "onedark",
         },
         sections = {
+          lualine_a = {
+            {
+              "mode",
+              color = function()
+                if in_explorer() then return explorer_color end
+              end,
+            },
+          },
+          lualine_b = {
+            {
+              "branch",
+              color = function()
+                if in_explorer() then return explorer_color end
+              end,
+            },
+            {
+              "diff",
+              color = function()
+                if in_explorer() then return explorer_color end
+              end,
+            },
+            {
+              "diagnostics",
+              color = function()
+                if in_explorer() then return explorer_color end
+              end,
+            },
+          },
           lualine_c = {
             project_root,
             {
@@ -44,7 +81,10 @@ return {
               file_status = true,
               newfile_status = true,
               path = 1,
-              color = { fg = "#99bc80" },
+              color = function()
+                if in_explorer() then return explorer_color end
+                return { fg = "#99bc80" }
+              end,
             },
           },
           lualine_x = {

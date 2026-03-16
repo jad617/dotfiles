@@ -38,9 +38,6 @@ vim.cmd("highlight SnacksExplorerSeparator guifg=#c27fd7 guibg=NONE gui=bold")
 vim.cmd("highlight CursorLine guibg=#98C379 guifg=#282c34 gui=bold")
 vim.cmd("highlight SnacksPickerListCursorLine guibg=#98C379 guifg=#282c34 gui=bold")
 
--- Explorer active statusline (orange, same as snacks borders)
-vim.cmd("highlight ExplorerStatusLine guifg=#282c34 guibg=#ff9e64 gui=bold")
-
 -- Snacks terminal color
 vim.cmd("highlight FloatBorder guifg=#9ECE6A gui=bold")
 
