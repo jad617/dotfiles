@@ -76,12 +76,24 @@ return {
 
       vim.api.nvim_create_augroup("explorer_statusline", { clear = true })
 
-      -- Explorer windows are real splits (relative = ""); other pickers are floating.
+      -- Explorer windows are floating (snacks uses floats even for split layouts).
+      -- Check the window belongs to an active explorer picker instance.
       local function is_explorer_win(w)
         if not vim.api.nvim_win_is_valid(w) then return false end
         local ft = vim.bo[vim.api.nvim_win_get_buf(w)].filetype
         if not ft:match("^snacks_") then return false end
-        return vim.api.nvim_win_get_config(w).relative == ""
+        local Snacks = rawget(_G, "Snacks")
+        if not (Snacks and Snacks.picker) then return false end
+        local ok, pickers = pcall(Snacks.picker.get, { source = "explorer" })
+        if not ok or not pickers then return false end
+        for _, picker in ipairs(pickers) do
+          if picker.layout and picker.layout.wins then
+            for _, win_obj in pairs(picker.layout.wins) do
+              if win_obj.win == w then return true end
+            end
+          end
+        end
+        return false
       end
 
       vim.api.nvim_create_autocmd("WinEnter", {
