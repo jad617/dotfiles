@@ -115,6 +115,10 @@ ls /etc/nixos/
 # ---------------------------------------------------------------------------
 # nixos-rebuild switch
 # ---------------------------------------------------------------------------
+header "Setting up NixOS channel"
+sudo nix-channel --add https://nixos.org/channels/nixos-unstable nixos
+sudo nix-channel --update
+
 header "Running nixos-rebuild switch (this will take a while on first run)"
 sudo nixos-rebuild switch 2>&1 | tee /tmp/nixos-rebuild.log || {
     echo
