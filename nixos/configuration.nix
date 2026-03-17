@@ -217,7 +217,6 @@ in {
     swww                 # wallpaper daemon (VM-friendly, dynamic monitor support)
     blueman
     pavucontrol
-    gobject-introspection  # required for Python GTK (gi module)
     polkit_gnome
 
     # ── Terminal ──────────────────────────────────────────────────────────────
@@ -381,8 +380,6 @@ in {
 
     # Force dark GTK theme for all GTK apps
     GTK_THEME = "Adwaita:dark";
-    # GTK introspection typelibs (needed for Python GTK scripts)
-    GI_TYPELIB_PATH = "/run/current-system/sw/lib/girepository-1.0";
   };
 
   # ---------------------------------------------------------------------------
