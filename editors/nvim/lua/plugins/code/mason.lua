@@ -7,6 +7,8 @@ return {
   },
 
   config = function()
+    local is_nixos = vim.fn.filereadable("/etc/NIXOS") == 1
+
     ------------------------------------------------------------
     -- [[ mason config ]]
     ------------------------------------------------------------
@@ -21,8 +23,10 @@ return {
 
     LSP_LIST = {}
 
-    for key, _ in pairs(lsp) do
-      table.insert(LSP_LIST, key)
+    if not is_nixos then
+      for key, _ in pairs(lsp) do
+        table.insert(LSP_LIST, key)
+      end
     end
 
     mason_lspconfig.setup({
@@ -30,15 +34,17 @@ return {
     })
 
     ------------------------------------------------------------
-    -- [[ mason-lsp config ]]
+    -- [[ mason-tool-installer config ]]
     ------------------------------------------------------------
     local mason_tool_installer = require("mason-tool-installer")
     local linters = require("config.vars").linter
 
     LINTER_FORMATER_LIST = {}
 
-    for _, linter in ipairs(linters) do
-      table.insert(LINTER_FORMATER_LIST, linter)
+    if not is_nixos then
+      for _, linter in ipairs(linters) do
+        table.insert(LINTER_FORMATER_LIST, linter)
+      end
     end
 
     mason_tool_installer.setup({
