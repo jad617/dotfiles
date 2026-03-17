@@ -37,7 +37,7 @@
     "clock": {
         "format": "{:%H:%M  ·  %a %d %b}",
         "tooltip-format": "<big>{:%B %Y}</big>\n<tt><small>{calendar}</small></tt>",
-        "on-click": "yad --calendar --no-buttons --undecorated --close-on-unfocus",
+        "on-click": "python3 ~/.config/hypr/calendar-popup.py",
     },
 
     // ── Right ────────────────────────────────────────────────────────────────
