@@ -285,6 +285,7 @@ in {
     # ── Fetch / system info ───────────────────────────────────────────────────
     fastfetch            # popular neofetch replacement (fast, C-based)
     pfetch               # minimal shell fetch
+    microfetch           # ultra-minimal fetch
 
     # ── System / misc ─────────────────────────────────────────────────────────
     fontconfig
