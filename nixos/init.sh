@@ -59,26 +59,27 @@ if ! grep -q 'ID=nixos' /etc/os-release 2>/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-# Gather user input
+# Configuration — auto-detect where possible, cache timezone
 # ---------------------------------------------------------------------------
 header "Gathering configuration"
 
-read -rp "  Username   [$(whoami)]: " INPUT_USER
-USERNAME="${INPUT_USER:-$(whoami)}"
+USERNAME="$(whoami)"
+HOSTNAME="$(hostname)"
 
-read -rp "  Hostname   [$(hostname)]: " INPUT_HOST
-HOSTNAME="${INPUT_HOST:-$(hostname)}"
+# Cache timezone so re-runs don't prompt again
+TZ_CACHE="$DOTFILES/.nixos_timezone"
+if [[ -f "$TZ_CACHE" ]]; then
+    TIMEZONE="$(cat "$TZ_CACHE")"
+    echo "  Timezone : $TIMEZONE (cached — delete .nixos_timezone to change)"
+else
+    read -rp "  Timezone [America/Toronto]: " INPUT_TZ
+    TIMEZONE="${INPUT_TZ:-America/Toronto}"
+    echo "$TIMEZONE" > "$TZ_CACHE"
+fi
 
-read -rp "  Timezone   [America/Toronto]: " INPUT_TZ
-TIMEZONE="${INPUT_TZ:-America/Toronto}"
-
-echo
 echo "  Username : $USERNAME"
 echo "  Hostname : $HOSTNAME"
 echo "  Timezone : $TIMEZONE"
-echo
-read -rp "  Continue? [Y/n]: " CONFIRM
-[[ "${CONFIRM:-Y}" =~ ^[Nn]$ ]] && { echo "Aborted."; exit 0; }
 
 # ---------------------------------------------------------------------------
 # Flakes are enabled via configuration.nix (nix.settings.experimental-features)
