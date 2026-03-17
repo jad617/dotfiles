@@ -35,7 +35,7 @@
 
     // ── Center ───────────────────────────────────────────────────────────────
     "clock": {
-        "format": "  {:%H:%M}    {:%a %d %b}",
+        "format": "{:%H:%M  ·  %a %d %b}",
         "tooltip-format": "<big>{:%B %Y}</big>\n<tt><small>{calendar}</small></tt>",
         "on-click": "gsimplecal"
     },
