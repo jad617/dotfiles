@@ -114,9 +114,7 @@ ls /etc/nixos/
 # nixos-rebuild switch
 # ---------------------------------------------------------------------------
 header "Running nixos-rebuild switch (this will take a while on first run)"
-sudo nixos-rebuild switch \
-    --extra-experimental-features 'nix-command flakes' \
-    --flake /etc/nixos#nixos 2>&1 | tee /tmp/nixos-rebuild.log || {
+sudo nixos-rebuild switch 2>&1 | tee /tmp/nixos-rebuild.log || {
     echo
     echo "ERROR: nixos-rebuild failed. Check /tmp/nixos-rebuild.log"
     exit 1
