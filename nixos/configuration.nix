@@ -14,10 +14,14 @@
   # ---------------------------------------------------------------------------
   # Boot
   # ---------------------------------------------------------------------------
-  boot.loader = {
-    systemd-boot.enable = true;
-    efi.canTouchEfiVariables = true;
-    efi.efiSysMountPoint = "/boot/efi";  # change to "/boot" if that's your ESP mount point
+  # BIOS/MBR (VM or legacy hardware) — use GRUB
+  # For bare metal UEFI installs, replace this with:
+  #   boot.loader.systemd-boot.enable = true;
+  #   boot.loader.efi.canTouchEfiVariables = true;
+  boot.loader.grub = {
+    enable  = true;
+    device  = "/dev/vda";   # change to /dev/sda for bare metal SATA/NVMe
+    useOSProber = false;
   };
   # Required for NVIDIA modesetting on Wayland
   boot.kernelParams = [ "nvidia_drm.modeset=1" "nvidia.NVreg_PreserveVideoMemoryAllocations=1" ];
