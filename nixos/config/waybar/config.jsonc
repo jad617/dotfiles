@@ -35,17 +35,8 @@
 
     // ── Center ───────────────────────────────────────────────────────────────
     "clock": {
-        "format": "  {:%H:%M}   {:%a %d %b}",
-        "tooltip-format": "<span color='#c6a0f6'><b>{:%B %Y}</b></span>\n<tt>{calendar}</tt>",
-        "calendar": {
-            "mode": "month",
-            "on-scroll": 1,
-            "format": {
-                "months":   "<span color='#c6a0f6'><b>{}</b></span>",
-                "weekdays": "<span color='#eed49f'><b>{}</b></span>",
-                "today":    "<span color='#ed8796'><b><u>{}</u></b></span>"
-            }
-        },
+        "format": "  {:%H:%M}    {:%a %d %b}",
+        "tooltip-format": "<big>{:%B %Y}</big>\n<tt><small>{calendar}</small></tt>",
         "on-click": "gsimplecal"
     },
 
