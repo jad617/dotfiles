@@ -172,6 +172,34 @@ window#waybar {
     border-radius:    8px;
 }
 
+/* ── Settings button ────────────────────────────────────────────────────── */
+#custom-settings {
+    padding:     0 10px;
+    color:       @teal;
+    font-size:   14px;
+    transition:  all 0.2s ease;
+}
+
+#custom-settings:hover {
+    color:         @base;
+    background:    @teal;
+    border-radius: 8px;
+}
+
+/* ── Power menu button ───────────────────────────────────────────────────── */
+#custom-powermenu {
+    padding:     0 10px;
+    color:       @red;
+    font-size:   14px;
+    transition:  all 0.2s ease;
+}
+
+#custom-powermenu:hover {
+    color:         @base;
+    background:    @red;
+    border-radius: 8px;
+}
+
 /* ── Tooltip ────────────────────────────────────────────────────────────── */
 tooltip {
     background:    @mantle;
