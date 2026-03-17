@@ -1,7 +1,7 @@
 show_heading = 1
 show_week_numbers = 0
 show_calendar = 1
-close_on_unfocus = 1
+close_on_unfocus = 0
 external_viewer = gnome-calendar
 
 # Catppuccin Macchiato
