@@ -217,6 +217,7 @@ in {
     swww                 # wallpaper daemon (VM-friendly, dynamic monitor support)
     blueman
     pavucontrol
+    yad                  # GTK calendar popup for Waybar clock
     polkit_gnome
 
     # ── Terminal ──────────────────────────────────────────────────────────────
