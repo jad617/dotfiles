@@ -18,7 +18,10 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 elif [[ -f /etc/os-release ]]; then
     # shellcheck source=/dev/null
     . /etc/os-release
-    if [[ "${ID:-}" == "pop" ]]; then
+    if [[ "${ID:-}" == "nixos" ]]; then
+        echo "==> NixOS detected — delegating to nixos/init.sh"
+        exec "$(dirname "${BASH_SOURCE[0]}")/nixos/init.sh"
+    elif [[ "${ID:-}" == "pop" ]]; then
         OS="popos"
     else
         OS="linux"
