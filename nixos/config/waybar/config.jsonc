@@ -14,7 +14,7 @@
 
     "modules-left":   ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right":  ["wireplumber", "network", "cpu", "memory", "tray"],
+    "modules-right":  ["wireplumber", "network", "cpu", "memory", "tray", "custom/settings", "custom/powermenu"],
 
     // ── Left ────────────────────────────────────────────────────────────────
     "hyprland/workspaces": {
@@ -76,5 +76,17 @@
     "tray": {
         "icon-size": 16,
         "spacing":   8
+    },
+
+    "custom/settings": {
+        "format":   "⚙",
+        "on-click": "~/.config/hypr/settingsmenu.sh",
+        "tooltip":  false
+    },
+
+    "custom/powermenu": {
+        "format":   "⏻",
+        "on-click": "~/.config/hypr/powermenu.sh",
+        "tooltip":  false
     }
 }
