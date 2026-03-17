@@ -37,7 +37,7 @@
     "clock": {
         "format": "{:%H:%M  ·  %a %d %b}",
         "tooltip": false,
-        "on-click": "GI_TYPELIB_PATH=/run/current-system/sw/lib/girepository-1.0 python3 ~/.config/hypr/calendar-popup.py"
+        "on-click": "python3 ~/.config/hypr/calendar-popup.py"
     },
 
     // ── Right ────────────────────────────────────────────────────────────────
