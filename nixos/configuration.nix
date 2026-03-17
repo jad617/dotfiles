@@ -17,6 +17,7 @@
   boot.loader = {
     systemd-boot.enable = true;
     efi.canTouchEfiVariables = true;
+    efi.efiSysMountPoint = "/boot/efi";  # change to "/boot" if that's your ESP mount point
   };
   # Required for NVIDIA modesetting on Wayland
   boot.kernelParams = [ "nvidia_drm.modeset=1" "nvidia.NVreg_PreserveVideoMemoryAllocations=1" ];
