@@ -98,15 +98,16 @@ if [[ ! -f /etc/nixos/hardware-configuration.nix ]]; then
     exit 1
 fi
 
-echo "  Copying flake.nix"
-sudo cp "$NIXOS_DIR/flake.nix" /etc/nixos/flake.nix
-
 echo "  Copying configuration.nix (substituting placeholders)"
 sudo cp "$NIXOS_DIR/configuration.nix" /etc/nixos/configuration.nix
 
 sudo sed -i "s/YOUR_USERNAME/$USERNAME/g" /etc/nixos/configuration.nix
 sudo sed -i "s/YOUR_HOSTNAME/$HOSTNAME/g" /etc/nixos/configuration.nix
 sudo sed -i "s|YOUR_TIMEZONE|$TIMEZONE|g"  /etc/nixos/configuration.nix
+
+# Remove flake.nix if previously copied — it causes nixos-rebuild to use
+# pure evaluation mode which breaks builtins.fetchTarball
+sudo rm -f /etc/nixos/flake.nix
 
 echo "  Done — /etc/nixos/:"
 ls /etc/nixos/
