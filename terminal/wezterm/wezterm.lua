@@ -26,6 +26,12 @@ config.window_padding = {
 --------------------------------------------------------------------------------
 -- Appearance
 --------------------------------------------------------------------------------
+local function is_nixos()
+	local f = io.open("/etc/NIXOS", "r")
+	if f then f:close() return true end
+	return false
+end
+
 if wezterm.target_triple:find("darwin") then
 	-- macOS
 	config.font_size = 13
@@ -33,6 +39,11 @@ elseif wezterm.target_triple:find("linux") then
 	-- Linux
 	config.font_size = 11
 	config.enable_wayland = true
+	if is_nixos() then
+		-- NixOS — transparent background (Hyprland compositor handles blur)
+		config.window_background_opacity = 0.85
+		config.text_background_opacity   = 1.0
+	end
 else
 	-- Default fallback
 	config.font_size = 12
