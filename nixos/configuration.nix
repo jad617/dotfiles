@@ -379,8 +379,10 @@ in {
     TERMINAL = "wezterm";
     BROWSER  = "firefox";
 
-    # Force dark GTK theme for all GTK apps (gsimplecal, etc.)
+    # Force dark GTK theme for all GTK apps
     GTK_THEME = "Adwaita:dark";
+    # GTK introspection typelibs (needed for Python GTK scripts)
+    GI_TYPELIB_PATH = "/run/current-system/sw/lib/girepository-1.0";
   };
 
   # ---------------------------------------------------------------------------
