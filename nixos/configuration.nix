@@ -31,6 +31,8 @@ in {
   boot.loader.grub.enable              = !isEfi;
   boot.loader.grub.device              = grubDisk;
   boot.loader.grub.useOSProber         = false;
+  # Use latest kernel (matches NixOS ISO default)
+  boot.kernelPackages = pkgs.linuxPackages_latest;
   # Required for NVIDIA modesetting on Wayland
   boot.kernelParams = [ "nvidia_drm.modeset=1" "nvidia.NVreg_PreserveVideoMemoryAllocations=1" ];
 
