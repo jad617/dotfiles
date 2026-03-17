@@ -99,7 +99,7 @@ in {
   services.greetd = {
     enable = true;
     settings.default_session = {
-      command = "${pkgs.greetd.tuigreet}/bin/tuigreet --time --remember --cmd Hyprland";
+      command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd Hyprland";
       user    = "greeter";
     };
   };
@@ -109,7 +109,7 @@ in {
   # ---------------------------------------------------------------------------
   # Audio — PipeWire
   # ---------------------------------------------------------------------------
-  hardware.pulseaudio.enable = false;
+  services.pulseaudio.enable = false;
   security.rtkit.enable = true;
   services.pipewire = {
     enable            = true;
@@ -275,7 +275,7 @@ in {
 
     # ── Nix tooling ───────────────────────────────────────────────────────────
     nix-output-monitor
-    nixfmt-rfc-style
+    nixfmt
 
     # ── Build tools (needed by neovim plugins like LuaSnip) ──────────────────
     gnumake
