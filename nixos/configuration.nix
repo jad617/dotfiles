@@ -380,6 +380,9 @@ in {
     EDITOR   = "nvim";
     TERMINAL = "wezterm";
     BROWSER  = "firefox";
+
+    # Force dark GTK theme for all GTK apps (gsimplecal, etc.)
+    GTK_THEME = "Adwaita:dark";
   };
 
   # ---------------------------------------------------------------------------

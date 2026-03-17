@@ -35,8 +35,7 @@
 
     // ── Center ───────────────────────────────────────────────────────────────
     "clock": {
-        "format":     "  {:%H:%M}",
-        "format-alt": "  {:%a %b %d %Y}",
+        "format": "  {:%H:%M}   {:%a %d %b}",
         "tooltip-format": "<span color='#c6a0f6'><b>{:%B %Y}</b></span>\n<tt>{calendar}</tt>",
         "calendar": {
             "mode": "month",
@@ -47,8 +46,7 @@
                 "today":    "<span color='#ed8796'><b><u>{}</u></b></span>"
             }
         },
-        "on-click":       "gsimplecal",
-        "on-click-right": "mode"
+        "on-click": "gsimplecal"
     },
 
     // ── Right ────────────────────────────────────────────────────────────────
