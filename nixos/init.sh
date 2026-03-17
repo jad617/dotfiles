@@ -155,9 +155,6 @@ symlink "$NIXOS_DIR/config/mako"             "$HOME/.config/mako"
 # Wofi launcher
 symlink "$NIXOS_DIR/config/wofi"             "$HOME/.config/wofi"
 
-# gsimplecal calendar popup
-symlink "$NIXOS_DIR/config/gsimplecal"       "$HOME/.config/gsimplecal"
-
 # Wallpapers
 mkdir -p "$HOME/Pictures"
 symlink "$DOTFILES/wallpapers" "$HOME/Pictures/Wallpapers"
