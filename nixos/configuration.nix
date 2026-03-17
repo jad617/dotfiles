@@ -296,6 +296,7 @@ in {
   fonts = {
     enableDefaultPackages = true;
     packages = with pkgs; [
+      meslo-lgs-nf          # MesloLGS NF — used by WezTerm + oh-my-posh
       nerd-fonts.meslo-lg
       nerd-fonts.jetbrains-mono
       nerd-fonts.fira-code
