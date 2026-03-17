@@ -191,6 +191,8 @@
     wl-clipboard
     cliphist
     networkmanagerapplet
+    kanshi               # auto display profiles on monitor connect/disconnect
+    nwg-displays         # GUI to generate kanshi profiles visually
     blueman
     pavucontrol
     polkit_gnome
