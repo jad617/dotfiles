@@ -272,6 +272,11 @@ in {
     nix-output-monitor
     nixfmt-rfc-style
 
+    # ── Build tools (needed by neovim plugins like LuaSnip) ──────────────────
+    gnumake
+    gcc
+    pkg-config
+
     # ── System / misc ─────────────────────────────────────────────────────────
     fontconfig
     libnotify            # notify-send
