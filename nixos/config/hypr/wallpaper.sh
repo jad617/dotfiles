@@ -6,8 +6,12 @@
 
 WALLPAPER="${1:-$HOME/Pictures/Wallpapers/quasar.webp}"
 
-# Wait for swww daemon to be ready
-swww-daemon &
+# Start daemon (newer swww uses 'swww daemon', older used 'swww-daemon')
+if command -v swww-daemon &>/dev/null; then
+  swww-daemon &
+else
+  swww daemon &
+fi
 sleep 1
 
 # Apply to every connected monitor
