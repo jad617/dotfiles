@@ -160,6 +160,50 @@ sudo nixos-rebuild switch
 
 ---
 
+## Multi-Monitor Setup (Laptop)
+
+Display profiles are managed by **kanshi** — it watches for monitor connections and automatically applies the right layout. Profiles survive reboots and re-plugging.
+
+### First-time setup
+
+1. Connect all your monitors
+2. Find your monitor descriptions:
+```bash
+kanshi -d 2>&1 | grep "found output"
+```
+3. Open the GUI to arrange them visually:
+```bash
+nwg-displays
+```
+This writes a ready-to-use kanshi config for you. Alternatively edit manually:
+
+```
+~/.config/kanshi/config   (symlinked from nixos/config/kanshi/config)
+```
+
+4. Apply immediately:
+```bash
+systemctl --user restart kanshi
+```
+
+From now on — plug in monitors → kanshi auto-applies the matching profile.
+
+### Reload after editing the config
+
+```bash
+systemctl --user restart kanshi
+# or
+kanshictl reload
+```
+
+### Check active profile
+
+```bash
+kanshictl switch <profile-name>
+```
+
+---
+
 ## Add a Package
 
 Edit `nixos/configuration.nix`, find `environment.systemPackages`, add your package:
