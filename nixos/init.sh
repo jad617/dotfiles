@@ -81,16 +81,9 @@ read -rp "  Continue? [Y/n]: " CONFIRM
 [[ "${CONFIRM:-Y}" =~ ^[Nn]$ ]] && { echo "Aborted."; exit 0; }
 
 # ---------------------------------------------------------------------------
-# Enable Nix flakes (if not already enabled)
+# Flakes are enabled via configuration.nix (nix.settings.experimental-features)
+# — no need to touch /etc/nix/nix.conf (read-only on NixOS)
 # ---------------------------------------------------------------------------
-header "Enabling Nix flakes"
-NCONF=/etc/nix/nix.conf
-if ! grep -q "experimental-features" "$NCONF" 2>/dev/null; then
-    echo "  Adding experimental-features to $NCONF"
-    echo "experimental-features = nix-command flakes" | sudo tee -a "$NCONF"
-else
-    echo "  Flakes already enabled"
-fi
 
 # ---------------------------------------------------------------------------
 # Copy NixOS config to /etc/nixos/
@@ -121,7 +114,9 @@ ls /etc/nixos/
 # nixos-rebuild switch
 # ---------------------------------------------------------------------------
 header "Running nixos-rebuild switch (this will take a while on first run)"
-sudo nixos-rebuild switch --flake /etc/nixos#nixos 2>&1 | tee /tmp/nixos-rebuild.log || {
+sudo nixos-rebuild switch \
+    --extra-experimental-features 'nix-command flakes' \
+    --flake /etc/nixos#nixos 2>&1 | tee /tmp/nixos-rebuild.log || {
     echo
     echo "ERROR: nixos-rebuild failed. Check /tmp/nixos-rebuild.log"
     exit 1
