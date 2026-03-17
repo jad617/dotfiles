@@ -237,6 +237,7 @@ in {
 
     # ── Dev ───────────────────────────────────────────────────────────────────
     neovim               # nightly via neovim-nightly-overlay
+    vimPlugins.nvim-treesitter.withAllGrammars  # treesitter parsers via nixpkgs (avoids TSUpdate issues)
     nodejs
     nodePackages.npm
     python3
