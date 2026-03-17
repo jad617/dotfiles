@@ -237,8 +237,32 @@ in {
 
     # ── Dev ───────────────────────────────────────────────────────────────────
     neovim               # nightly via neovim-nightly-overlay
-    stylua               # Lua formatter (used by conform.nvim)
     vimPlugins.nvim-treesitter.withAllGrammars  # treesitter parsers via nixpkgs (avoids TSUpdate issues)
+
+    # ── LSP servers (replaces Mason on NixOS) ─────────────────────────────────
+    ansible-language-server
+    dockerfile-language-server-nodejs
+    helm-ls
+    yaml-language-server
+    basedpyright
+    terraform-ls
+    lua-language-server
+    gopls
+
+    # ── Linters & formatters (replaces Mason on NixOS) ────────────────────────
+    stylua               # Lua
+    shfmt                # shell
+    shellcheck           # shell linter
+    gofumpt              # Go formatter
+    gotools              # goimports
+    goimports-reviser    # Go import organizer
+    golangci-lint        # Go linter
+    ruff                 # Python formatter + linter
+    markdownlint-cli     # Markdown linter
+    yamllint             # YAML linter
+    ansible-lint         # Ansible linter
+    hadolint             # Dockerfile linter
+    proselint            # prose linter
     nodejs
     nodePackages.npm
     python3
