@@ -37,8 +37,18 @@
     "clock": {
         "format":     "  {:%H:%M}",
         "format-alt": "  {:%a %b %d %Y}",
-        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
-        "on-click": "mode"
+        "tooltip-format": "<span color='#c6a0f6'><b>{:%B %Y}</b></span>\n<tt>{calendar}</tt>",
+        "calendar": {
+            "mode": "month",
+            "on-scroll": 1,
+            "format": {
+                "months":   "<span color='#c6a0f6'><b>{}</b></span>",
+                "weekdays": "<span color='#eed49f'><b>{}</b></span>",
+                "today":    "<span color='#ed8796'><b><u>{}</u></b></span>"
+            }
+        },
+        "on-click":       "gsimplecal",
+        "on-click-right": "mode"
     },
 
     // ── Right ────────────────────────────────────────────────────────────────
