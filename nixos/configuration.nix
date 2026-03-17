@@ -147,9 +147,20 @@
   users.users.YOUR_USERNAME = {
     isNormalUser = true;
     description  = "YOUR_USERNAME";
-    extraGroups  = [ "networkmanager" "wheel" "audio" "video" "input" ];
+    extraGroups  = [ "networkmanager" "wheel" "audio" "video" "input" "gamemode" ];
     shell        = pkgs.zsh;
   };
+
+  # ---------------------------------------------------------------------------
+  # Steam
+  # ---------------------------------------------------------------------------
+  programs.steam = {
+    enable                         = true;
+    remotePlay.openFirewall        = true;
+    dedicatedServer.openFirewall   = false;
+    gamescopeSession.enable        = true;
+  };
+  programs.gamemode.enable = true;
 
   # ---------------------------------------------------------------------------
   # Nix — enable flakes permanently after first rebuild
@@ -179,7 +190,6 @@
     wofi
     wl-clipboard
     cliphist
-    grimblast
     networkmanagerapplet
     blueman
     pavucontrol
@@ -187,8 +197,6 @@
 
     # ── Terminal ──────────────────────────────────────────────────────────────
     wezterm
-    zellij
-    tmux
     zsh
     zsh-syntax-highlighting
 
@@ -230,15 +238,21 @@
     kubernetes-helm
     k9s
     ansible
-    gh                   # GitHub CLI
+    mysql80              # MySQL client (mysql, mysqldump, etc.)
+    gh                   # GitHub CLI  — run: gh extension install github/gh-copilot
     claude-code          # Claude Code CLI
 
     # ── GUI apps ──────────────────────────────────────────────────────────────
     firefox
+    google-chrome
     nautilus             # file manager
     imv                  # image viewer
     mpv                  # video
     zathura              # PDF
+
+    # ── Screenshot ────────────────────────────────────────────────────────────
+    grimblast            # quick area/screen grabs (CLI, Hyprland-native)
+    flameshot            # annotated screenshots (GUI, SUPER+SHIFT+S)
 
     # ── Nix tooling ───────────────────────────────────────────────────────────
     nix-output-monitor

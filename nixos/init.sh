@@ -138,7 +138,6 @@ symlink "$DOTFILES/editors/nvim"             "$HOME/.config/nvim"
 
 # Terminal
 symlink "$DOTFILES/terminal/wezterm/wezterm.lua" "$HOME/.wezterm.lua"
-symlink "$DOTFILES/terminal/zellij"          "$HOME/.config/zellij"
 symlink "$DOTFILES/terminal/kitty"           "$HOME/.config/kitty"
 
 # Hyprland ecosystem
@@ -161,10 +160,17 @@ symlink "$DOTFILES/wallpapers" "$HOME/Pictures/Wallpapers"
 mkdir -p "$HOME/Pictures/Screenshots"
 
 # ---------------------------------------------------------------------------
-# Tmux Plugin Manager
+# gh copilot extension
 # ---------------------------------------------------------------------------
-header "Tmux Plugin Manager"
-clone_if_missing "https://github.com/tmux-plugins/tpm" "$HOME/.tmux/plugins/tpm"
+header "GitHub Copilot CLI"
+if cmd_exists gh; then
+    if ! gh extension list 2>/dev/null | grep -q 'gh-copilot'; then
+        gh extension install github/gh-copilot || true
+        echo "  gh copilot installed"
+    else
+        echo "  gh copilot already installed"
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Default shell → zsh
