@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # =============================================================================
 # calendar-popup.py — Catppuccin Macchiato calendar popup for Waybar
-# Closes when clicking outside (focus-out). Positioned below the bar.
+# Uses pointer grab so clicking anywhere outside closes the window.
 # =============================================================================
 import gi
 gi.require_version("Gtk", "3.0")
@@ -47,7 +47,6 @@ class CalendarPopup(Gtk.Window):
         super().__init__()
         self.set_decorated(False)
         self.set_resizable(False)
-        self.set_type_hint(Gdk.WindowTypeHint.POPUP_MENU)
         self.set_skip_taskbar_hint(True)
         self.set_skip_pager_hint(True)
         self.set_keep_above(True)
@@ -60,22 +59,43 @@ class CalendarPopup(Gtk.Window):
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
 
-        self.add(Gtk.Calendar())
-        self.connect("focus-out-event", lambda *_: Gtk.main_quit())
+        self.calendar = Gtk.Calendar()
+        self.add(self.calendar)
         self.connect("key-press-event", self._on_key)
         self.connect("destroy", Gtk.main_quit)
 
         self.show_all()
 
-        # Position: centered horizontally, just below the bar (40px + 8 margin + 10 gap)
+        # Position: centered below the bar
         w, _ = self.get_size()
         sw = Gdk.Screen.get_default().get_width()
         self.move((sw - w) // 2, 62)
-        self.present()
-        self.grab_focus()
+
+        # Grab all pointer events — button press outside = close
+        status = Gdk.pointer_grab(
+            self.get_window(),
+            False,
+            Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK,
+            None, None,
+            Gdk.CURRENT_TIME,
+        )
+        if status != Gdk.GrabStatus.SUCCESS:
+            # Fallback: close on focus-out
+            self.connect("focus-out-event", lambda *_: Gtk.main_quit())
+
+        self.connect("button-press-event", self._on_click)
+
+    def _on_click(self, widget, event):
+        # Close if click is outside the window
+        wx, wy = self.get_position()
+        ww, wh = self.get_size()
+        if not (wx <= event.x_root <= wx + ww and wy <= event.y_root <= wy + wh):
+            Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
+            Gtk.main_quit()
 
     def _on_key(self, _, event):
         if event.keyval == Gdk.KEY_Escape:
+            Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
             Gtk.main_quit()
 
 CalendarPopup()
