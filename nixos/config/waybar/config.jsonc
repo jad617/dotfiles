@@ -36,7 +36,7 @@
     // ── Center ───────────────────────────────────────────────────────────────
     "clock": {
         "format": "{:%H:%M  ·  %a %d %b}",
-        "tooltip-format": "<big>{:%B %Y}</big>\n<tt><small>{calendar}</small></tt>",
+        "tooltip": false,
         "on-click": "python3 ~/.config/hypr/calendar-popup.py",
     },
 
