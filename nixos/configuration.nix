@@ -94,17 +94,14 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — greetd + tuigreet (minimal, no unnecessary GUI)
+  # Display Manager — SDDM + Catppuccin Macchiato theme
   # ---------------------------------------------------------------------------
-  services.greetd = {
-    enable = true;
-    settings.default_session = {
-      command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd Hyprland";
-      user    = "greeter";
-    };
+  services.displayManager.sddm = {
+    enable        = true;
+    wayland.enable = true;
+    theme         = "catppuccin-macchiato";
+    package       = pkgs.kdePackages.sddm;
   };
-  # Suppress greetd TTY switch message
-  environment.etc."greetd/environments".text = "Hyprland\nbash\n";
 
   # ---------------------------------------------------------------------------
   # Audio — PipeWire
@@ -281,6 +278,11 @@ in {
     gnumake
     gcc
     pkg-config
+
+    # ── SDDM theme ────────────────────────────────────────────────────────────
+    catppuccin-sddm      # Catppuccin Macchiato login screen theme
+    kdePackages.qtsvg    # required by SDDM themes
+    kdePackages.qtmultimedia
 
     # ── Fetch / system info ───────────────────────────────────────────────────
     fastfetch            # popular neofetch replacement (fast, C-based)
