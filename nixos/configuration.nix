@@ -6,23 +6,31 @@
 #   YOUR_HOSTNAME  → your actual hostname
 #   YOUR_TIMEZONE  → e.g. America/Toronto
 # =============================================================================
-{ config, pkgs, ... }:
+{ config, pkgs, lib, ... }:
 
-{
+let
+  # ── Auto-detect boot mode ──────────────────────────────────────────────────
+  isEfi = builtins.pathExists "/sys/firmware/efi";
+
+  # ── Auto-detect boot disk (for GRUB on BIOS systems) ──────────────────────
+  # Tries common disk names in order; first match wins.
+  grubDisk =
+    let candidates = builtins.filter (d: builtins.pathExists d)
+          [ "/dev/vda" "/dev/sda" "/dev/nvme0n1" "/dev/vdb" "/dev/sdb" "/dev/hda" ];
+    in if candidates != [] then builtins.head candidates else "nodev";
+
+in {
   imports = [ ./hardware-configuration.nix ];
 
   # ---------------------------------------------------------------------------
   # Boot
   # ---------------------------------------------------------------------------
-  # BIOS/MBR (VM or legacy hardware) — use GRUB
-  # For bare metal UEFI installs, replace this with:
-  #   boot.loader.systemd-boot.enable = true;
-  #   boot.loader.efi.canTouchEfiVariables = true;
-  boot.loader.grub = {
-    enable  = true;
-    device  = "/dev/vda";   # change to /dev/sda for bare metal SATA/NVMe
-    useOSProber = false;
-  };
+  # Auto-detected: systemd-boot on UEFI, GRUB on BIOS/MBR
+  boot.loader.systemd-boot.enable      = isEfi;
+  boot.loader.efi.canTouchEfiVariables = isEfi;
+  boot.loader.grub.enable              = !isEfi;
+  boot.loader.grub.device              = grubDisk;
+  boot.loader.grub.useOSProber         = false;
   # Required for NVIDIA modesetting on Wayland
   boot.kernelParams = [ "nvidia_drm.modeset=1" "nvidia.NVreg_PreserveVideoMemoryAllocations=1" ];
 
