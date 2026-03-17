@@ -9,11 +9,6 @@
 { config, pkgs, lib, ... }:
 
 let
-  # ── Neovim nightly overlay ────────────────────────────────────────────────
-  neovimNightly = import (builtins.fetchTarball
-    "https://github.com/nix-community/neovim-nightly-overlay/archive/master.tar.gz"
-  ) {};
-
   # ── Auto-detect boot mode ──────────────────────────────────────────────────
   isEfi = builtins.pathExists "/sys/firmware/efi";
 
@@ -199,7 +194,6 @@ in {
   # Packages
   # ---------------------------------------------------------------------------
   nixpkgs.config.allowUnfree = true;   # NVIDIA, etc.
-  nixpkgs.overlays = [ neovimNightly ];
 
   environment.systemPackages = with pkgs; [
     # ── Hyprland ecosystem ────────────────────────────────────────────────────
@@ -213,7 +207,6 @@ in {
     wofi
     wl-clipboard
     cliphist
-    networkmanagerapplet
     kanshi               # auto display profiles on monitor connect/disconnect
     nwg-displays         # GUI to generate kanshi profiles visually
     swww                 # wallpaper daemon (VM-friendly, dynamic monitor support)
