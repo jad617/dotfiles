@@ -163,6 +163,14 @@ symlink "$DOTFILES/wallpapers" "$HOME/Pictures/Wallpapers"
 mkdir -p "$HOME/Pictures/Screenshots"
 
 # ---------------------------------------------------------------------------
+# Disable Copilot in Neovim by default (touch ~/.disable_copilot to keep off,
+# remove it to re-enable)
+# ---------------------------------------------------------------------------
+header "Disabling Copilot in Neovim"
+touch "$HOME/.disable_copilot"
+echo "  ~/.disable_copilot created — remove it to re-enable Copilot"
+
+# ---------------------------------------------------------------------------
 # gh copilot extension
 # ---------------------------------------------------------------------------
 header "GitHub Copilot CLI"
