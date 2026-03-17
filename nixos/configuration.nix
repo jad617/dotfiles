@@ -9,12 +9,11 @@
 { config, pkgs, lib, ... }:
 
 let
-  # Neovim nightly overlay — fetched at build time
+  # ── Neovim nightly overlay ────────────────────────────────────────────────
   neovimNightly = import (builtins.fetchTarball
     "https://github.com/nix-community/neovim-nightly-overlay/archive/master.tar.gz"
   ) {};
 
-let
   # ── Auto-detect boot mode ──────────────────────────────────────────────────
   isEfi = builtins.pathExists "/sys/firmware/efi";
 
