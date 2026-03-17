@@ -244,7 +244,7 @@ in {
 
     # ── LSP servers (replaces Mason on NixOS) ─────────────────────────────────
     ansible-language-server
-    dockerfile-language-server-nodejs
+    dockerfile-language-server
     helm-ls
     yaml-language-server
     basedpyright
