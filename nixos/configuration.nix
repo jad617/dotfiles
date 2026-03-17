@@ -282,6 +282,10 @@ in {
     gcc
     pkg-config
 
+    # ── Fetch / system info ───────────────────────────────────────────────────
+    fastfetch            # popular neofetch replacement (fast, C-based)
+    pfetch               # minimal shell fetch
+
     # ── System / misc ─────────────────────────────────────────────────────────
     fontconfig
     libnotify            # notify-send
