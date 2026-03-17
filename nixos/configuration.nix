@@ -9,6 +9,12 @@
 { config, pkgs, lib, ... }:
 
 let
+  # Neovim nightly overlay — fetched at build time
+  neovimNightly = import (builtins.fetchTarball
+    "https://github.com/nix-community/neovim-nightly-overlay/archive/master.tar.gz"
+  ) {};
+
+let
   # ── Auto-detect boot mode ──────────────────────────────────────────────────
   isEfi = builtins.pathExists "/sys/firmware/efi";
 
@@ -194,6 +200,7 @@ in {
   # Packages
   # ---------------------------------------------------------------------------
   nixpkgs.config.allowUnfree = true;   # NVIDIA, etc.
+  nixpkgs.overlays = [ neovimNightly ];
 
   environment.systemPackages = with pkgs; [
     # ── Hyprland ecosystem ────────────────────────────────────────────────────
@@ -239,13 +246,13 @@ in {
     watch
 
     # ── Dev ───────────────────────────────────────────────────────────────────
-    neovim
+    neovim               # nightly via neovim-nightly-overlay
     nodejs
     nodePackages.npm
     python3
     python3Packages.pip
     python3Packages.pynvim
-    go
+    pkgs.go              # latest stable Go from nixpkgs-unstable
     rustup
     uv                   # fast Python package manager
 
