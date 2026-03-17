@@ -1,0 +1,40 @@
+# =============================================================================
+# Kanshi — automatic display profile manager
+#
+# Kanshi matches profiles by monitor description (make + model + serial),
+# not by port. So it works regardless of which port you plug into.
+#
+# Setup:
+#   1. Connect your monitors
+#   2. Run: hyprctl monitors
+#      This gives you the port names (eDP-1, DP-1, HDMI-A-1, etc.)
+#   3. Run: kanshi -d 2>&1 | grep "found output"
+#      This gives you the full descriptions needed below
+#   4. Fill in the profiles and restart kanshi:
+#        systemctl --user restart kanshi
+#
+# Syntax:
+#   output "MAKE MODEL SERIAL" <options>
+#   output <port>              <options>   ← by port (less portable)
+#
+# Options: enable, disable, position X,Y, scale F, mode WxH@Hz, transform N
+# =============================================================================
+
+# ── Laptop only (no external monitors) ───────────────────────────────────────
+profile laptop-only {
+    output "eDP-1" enable position 0,0 scale 1
+}
+
+# ── Docked — two external monitors, laptop screen off ────────────────────────
+# Replace the quoted strings with your actual monitor descriptions from kanshi -d
+profile docked {
+    output "eDP-1" disable
+    output "MONITOR_1_MAKE MONITOR_1_MODEL MONITOR_1_SERIAL" enable position 0,0    mode 1920x1080@60Hz scale 1
+    output "MONITOR_2_MAKE MONITOR_2_MODEL MONITOR_2_SERIAL" enable position 1920,0 mode 1920x1080@60Hz scale 1
+}
+
+# ── Laptop + one external (laptop on right as secondary) ─────────────────────
+profile single-external {
+    output "MONITOR_1_MAKE MONITOR_1_MODEL MONITOR_1_SERIAL" enable position 0,0    scale 1
+    output "eDP-1"                                           enable position 1920,0 scale 1
+}
