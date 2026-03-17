@@ -37,6 +37,7 @@
     "clock": {
         "format": "{:%H:%M  ·  %a %d %b}",
         "tooltip-format": "<big>{:%B %Y}</big>\n<tt><small>{calendar}</small></tt>",
+        "on-click": "yad --calendar --no-buttons --undecorated --close-on-unfocus",
     },
 
     // ── Right ────────────────────────────────────────────────────────────────
