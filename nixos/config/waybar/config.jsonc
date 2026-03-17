@@ -14,7 +14,7 @@
 
     "modules-left":   ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right":  ["wireplumber", "network", "cpu", "memory", "tray", "custom/settings", "custom/powermenu"],
+    "modules-right":  ["wireplumber", "cpu", "memory", "tray", "custom/settings", "custom/powermenu"],
 
     // ── Left ────────────────────────────────────────────────────────────────
     "hyprland/workspaces": {
