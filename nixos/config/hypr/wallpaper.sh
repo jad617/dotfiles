@@ -6,11 +6,8 @@
 
 WALLPAPER="${1:-$HOME/Pictures/Wallpapers/quasar.webp}"
 
-# Start daemon if not already running
-if ! pgrep -x swww-daemon &>/dev/null; then
-  swww-daemon &
-  sleep 2
-fi
+# Start daemon, ignore error if already running
+swww-daemon &>/dev/null &
+sleep 2
 
-# Apply wallpaper to all monitors (no --outputs = all)
 swww img "$WALLPAPER" --transition-type fade --transition-duration 1
