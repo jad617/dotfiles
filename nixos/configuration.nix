@@ -210,6 +210,7 @@ in {
     networkmanagerapplet
     kanshi               # auto display profiles on monitor connect/disconnect
     nwg-displays         # GUI to generate kanshi profiles visually
+    swww                 # wallpaper daemon (VM-friendly, dynamic monitor support)
     blueman
     pavucontrol
     polkit_gnome
