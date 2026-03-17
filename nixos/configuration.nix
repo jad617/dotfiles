@@ -94,13 +94,14 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — SDDM + Catppuccin Macchiato theme
+  # Display Manager — SDDM + sddm-astronaut (cyberpunk variant)
   # ---------------------------------------------------------------------------
   services.displayManager.sddm = {
-    enable        = true;
+    enable         = true;
     wayland.enable = true;
-    theme         = "catppuccin-macchiato";
-    package       = pkgs.kdePackages.sddm;
+    theme          = "sddm-astronaut-theme";
+    package        = pkgs.kdePackages.sddm;
+    extraPackages  = [ pkgs.sddm-astronaut ];
   };
 
   # ---------------------------------------------------------------------------
@@ -280,8 +281,8 @@ in {
     pkg-config
 
     # ── SDDM theme ────────────────────────────────────────────────────────────
-    catppuccin-sddm      # Catppuccin Macchiato login screen theme
-    kdePackages.qtsvg    # required by SDDM themes
+    sddm-astronaut       # modern animated SDDM theme (cyberpunk variant)
+    kdePackages.qtsvg
     kdePackages.qtmultimedia
 
     # ── Fetch / system info ───────────────────────────────────────────────────
