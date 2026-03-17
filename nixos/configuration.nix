@@ -217,7 +217,7 @@ in {
     swww                 # wallpaper daemon (VM-friendly, dynamic monitor support)
     blueman
     pavucontrol
-    yad                  # GTK calendar popup for Waybar clock
+    gobject-introspection  # required for Python GTK (gi module)
     polkit_gnome
 
     # ── Terminal ──────────────────────────────────────────────────────────────
@@ -273,9 +273,7 @@ in {
     proselint            # prose linter
     nodejs
     nodePackages.npm
-    python3
-    python3Packages.pip
-    python3Packages.pynvim
+    (python3.withPackages (ps: with ps; [ pip pynvim pygobject3 ]))
     pkgs.go              # latest stable Go from nixpkgs-unstable
     rustup
     uv                   # fast Python package manager
