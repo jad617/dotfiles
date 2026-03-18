@@ -296,7 +296,8 @@ in {
     nautilus             # file manager
     gnome-calendar       # calendar (launch from wofi or click clock)
     (catppuccin-gtk.override { accents = [ "mauve" ]; variant = "macchiato"; })
-    papirus-icon-theme   # much better folder/file icons
+    papirus-icon-theme          # much better folder/file icons
+    gsettings-desktop-schemas   # required for gsettings icon-theme / color-scheme
     imv                  # image viewer
     mpv                  # video
     zathura              # PDF
