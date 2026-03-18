@@ -96,20 +96,64 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — emptty (minimal TUI, Catppuccin Macchiato)
+  # Display Manager — greetd + ReGreet (minimal GTK4, Catppuccin Macchiato)
   # ---------------------------------------------------------------------------
-  services.emptty = {
+  services.greetd = {
     enable = true;
-    settings = {
-      TTY_NUMBER         = 1;
-      SWITCH_TTY         = true;
-      PRINT_ISSUE        = false;
-      PRINT_MOTD         = false;
-      DEFAULT_SESSION    = "hyprland";
-      VERTICAL_SELECTION = true;
-      FG_COLOR           = "LIGHT_MAGENTA";   # closest to mauve #c6a0f6
-      BG_COLOR           = "BLACK";           # closest to base  #24273a
+    settings.default_session = {
+      command = "${pkgs.cage}/bin/cage -s -- ${pkgs.regreet}/bin/regreet";
+      user    = "greeter";
     };
+  };
+
+  programs.regreet = {
+    enable   = true;
+    settings = {
+      background = {
+        path = "/home/YOUR_USERNAME/Pictures/Wallpapers/kurzgesagt-galaxies.webp";  # replaced by init.sh
+        fit  = "Cover";
+      };
+      GTK = {
+        application_prefer_dark_theme = true;
+        icon_theme_name               = "Papirus-Dark";
+      };
+    };
+    extraCss = ''
+      window {
+        background-color: #24273a;
+      }
+      box#body {
+        background-color: #1e2030;
+        border-radius: 12px;
+        border: 1px solid #363a4f;
+        padding: 32px;
+      }
+      entry {
+        background-color: #363a4f;
+        color: #cad3f5;
+        border-color: #494d64;
+        border-radius: 8px;
+      }
+      entry:focus {
+        border-color: #c6a0f6;
+      }
+      button {
+        background-color: #c6a0f6;
+        color: #24273a;
+        border-radius: 8px;
+        font-weight: bold;
+      }
+      button:hover {
+        background-color: #b7bdf8;
+      }
+      combobox button {
+        background-color: #363a4f;
+        color: #cad3f5;
+      }
+      label {
+        color: #cad3f5;
+      }
+    '';
   };
 
   # ---------------------------------------------------------------------------
