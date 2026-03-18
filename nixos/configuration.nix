@@ -96,14 +96,23 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — SDDM + sddm-astronaut (cyberpunk variant)
+  # Display Manager — Ly (TUI, Catppuccin Macchiato)
   # ---------------------------------------------------------------------------
-  services.displayManager.sddm = {
-    enable         = true;
-    wayland.enable = true;
-    theme          = "sddm-astronaut-theme";
-    package        = pkgs.kdePackages.sddm;
-    extraPackages  = [ pkgs.sddm-astronaut ];
+  services.ly = {
+    enable = true;
+    settings = {
+      animation      = "none";
+      clear_password = true;
+      asterisk       = "●";
+      # Catppuccin Macchiato — bg/fg as 24-bit hex
+      bg             = "0x24273a";   # base
+      fg             = "0xcad3f5";   # text
+      input_fg       = "0xc6a0f6";   # mauve  — active field text
+      input_bg       = "0x363a4f";   # surface0 — active field bg
+      border_fg      = "0xc6a0f6";   # mauve  — box border
+      label_fg       = "0x8aadf4";   # blue   — "login:" / "password:" labels
+      error_fg       = "0xed8796";   # red    — error messages
+    };
   };
 
   # ---------------------------------------------------------------------------
@@ -314,11 +323,6 @@ in {
     gnumake
     gcc
     pkg-config
-
-    # ── SDDM theme ────────────────────────────────────────────────────────────
-    sddm-astronaut       # modern animated SDDM theme (cyberpunk variant)
-    kdePackages.qtsvg
-    kdePackages.qtmultimedia
 
     # ── Fetch / system info ───────────────────────────────────────────────────
     fastfetch            # popular neofetch replacement (fast, C-based)
