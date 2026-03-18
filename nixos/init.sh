@@ -147,17 +147,11 @@ symlink "$NIXOS_DIR/config/swaylock"         "$HOME/.config/swaylock"
 # Display profiles
 symlink "$NIXOS_DIR/config/kanshi"           "$HOME/.config/kanshi"
 
-# Waybar
-symlink "$NIXOS_DIR/config/waybar"           "$HOME/.config/waybar"
-
-# Mako notifications
-symlink "$NIXOS_DIR/config/mako"             "$HOME/.config/mako"
+# HyprPanel (bar + notifications + power menu)
+symlink "$NIXOS_DIR/config/hyprpanel"        "$HOME/.config/hyprpanel"
 
 # Wofi launcher
 symlink "$NIXOS_DIR/config/wofi"             "$HOME/.config/wofi"
-
-# Wlogout power menu
-symlink "$NIXOS_DIR/config/wlogout"          "$HOME/.config/wlogout"
 
 # GTK theme + icons
 symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
