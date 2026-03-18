@@ -142,6 +142,7 @@ symlink "$DOTFILES/terminal/kitty"           "$HOME/.config/kitty"
 
 # Hyprland ecosystem
 symlink "$NIXOS_DIR/config/hypr"             "$HOME/.config/hypr"
+symlink "$NIXOS_DIR/config/swaylock"         "$HOME/.config/swaylock"
 
 # Display profiles
 symlink "$NIXOS_DIR/config/kanshi"           "$HOME/.config/kanshi"
