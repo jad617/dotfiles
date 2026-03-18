@@ -7,7 +7,7 @@ show-failed-attempts
 ignore-empty-password
 
 # Background wallpaper (falls back to solid color if file missing)
-image=~/Pictures/Wallpapers/quasar.webp
+image=~/Pictures/Wallpapers/kurzgesagt-galaxies.webp
 scaling=fill
 color=24273a
 
