@@ -96,59 +96,70 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — greetd + ReGreet (minimal GTK4, Catppuccin Macchiato)
+  # Display Manager — greetd + ReGreet (manual, no broken programs.regreet)
   # ---------------------------------------------------------------------------
-  services.greetd.enable = true;
-
-  programs.regreet = {
-    enable   = true;
-    settings = {
-      background = {
-        path = "/home/YOUR_USERNAME/Pictures/Wallpapers/kurzgesagt-galaxies.webp";  # replaced by init.sh
-        fit  = "Cover";
-      };
-      GTK = {
-        application_prefer_dark_theme = true;
-        icon_theme_name               = "Papirus-Dark";
-      };
+  services.greetd = {
+    enable = true;
+    settings.default_session = {
+      command = "${pkgs.cage}/bin/cage -s -- ${pkgs.regreet}/bin/regreet";
+      user    = "greeter";
     };
-    extraCss = ''
-      window {
-        background-color: #24273a;
-      }
-      box#body {
-        background-color: #1e2030;
-        border-radius: 12px;
-        border: 1px solid #363a4f;
-        padding: 32px;
-      }
-      entry {
-        background-color: #363a4f;
-        color: #cad3f5;
-        border-color: #494d64;
-        border-radius: 8px;
-      }
-      entry:focus {
-        border-color: #c6a0f6;
-      }
-      button {
-        background-color: #c6a0f6;
-        color: #24273a;
-        border-radius: 8px;
-        font-weight: bold;
-      }
-      button:hover {
-        background-color: #b7bdf8;
-      }
-      combobox button {
-        background-color: #363a4f;
-        color: #cad3f5;
-      }
-      label {
-        color: #cad3f5;
-      }
-    '';
   };
+
+  environment.etc."greetd/regreet.toml".text = ''
+    [background]
+    path = "/home/YOUR_USERNAME/Pictures/Wallpapers/kurzgesagt-galaxies.webp"
+    fit  = "Cover"
+
+    [GTK]
+    application_prefer_dark_theme = true
+    icon_theme_name               = "Papirus-Dark"
+    cursor_theme_name             = "Bibata-Modern-Classic"
+
+    [commands]
+    reboot   = ["systemctl", "reboot"]
+    poweroff = ["systemctl", "poweroff"]
+
+    [appearance]
+    greeting_msg = "Welcome back"
+  '';
+
+  environment.etc."greetd/regreet.css".text = ''
+    window {
+      background-color: #24273a;
+    }
+    box#body {
+      background-color: #1e2030;
+      border-radius: 12px;
+      border: 1px solid #363a4f;
+      padding: 32px;
+    }
+    entry {
+      background-color: #363a4f;
+      color: #cad3f5;
+      border-color: #494d64;
+      border-radius: 8px;
+    }
+    entry:focus {
+      border-color: #c6a0f6;
+    }
+    button {
+      background-color: #c6a0f6;
+      color: #24273a;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+    button:hover {
+      background-color: #b7bdf8;
+    }
+    combobox button {
+      background-color: #363a4f;
+      color: #cad3f5;
+    }
+    label {
+      color: #cad3f5;
+    }
+  '';
 
   # ---------------------------------------------------------------------------
   # Audio — PipeWire
@@ -339,6 +350,8 @@ in {
     google-chrome
     nautilus             # file manager
     gnome-calendar       # calendar (launch from wofi or click clock)
+    cage                 # minimal Wayland kiosk compositor (for regreet)
+    regreet              # GTK4 greetd greeter
     (catppuccin-gtk.override { accents = [ "mauve" ]; variant = "macchiato"; })
     papirus-icon-theme          # much better folder/file icons
     gsettings-desktop-schemas   # required for gsettings icon-theme / color-scheme
