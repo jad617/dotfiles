@@ -98,22 +98,7 @@ in {
   # ---------------------------------------------------------------------------
   # Display Manager — LiDM (lightweight TUI, Catppuccin Macchiato)
   # ---------------------------------------------------------------------------
-  services.lidm = {
-    enable = true;
-    config = {
-      colors = {
-        fg     = "\\e[38;5;189m";   # text    #cad3f5 ≈ 189
-        bg     = "\\e[48;5;236m";   # base    #24273a ≈ 236
-        accent = "\\e[38;5;183m";   # mauve   #c6a0f6 ≈ 183
-        error  = "\\e[38;5;210m";   # red     #ed8796 ≈ 210
-        dim    = "\\e[38;5;102m";   # overlay #6e738d ≈ 102
-      };
-      ui = {
-        title  = "Welcome";
-        border = true;
-      };
-    };
-  };
+  services.lidm.enable = true;
 
   # ---------------------------------------------------------------------------
   # Audio — PipeWire
