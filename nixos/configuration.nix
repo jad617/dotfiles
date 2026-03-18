@@ -225,6 +225,8 @@ in {
     wofi
     wl-clipboard
     cliphist
+    wlogout              # power menu (grid layout, replaces wofi powermenu)
+    wlsunset             # blue light filter / night mode
     kanshi               # auto display profiles on monitor connect/disconnect
     nwg-displays         # GUI to generate kanshi profiles visually
     swww                 # wallpaper daemon (VM-friendly, dynamic monitor support)
