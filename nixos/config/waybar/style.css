@@ -204,10 +204,12 @@ window#waybar {
 tooltip {
     background:    @mantle;
     border:        1px solid @surface1;
-    border-radius: 8px;
+    border-radius: 12px;
     color:         @text;
+    padding:       8px 12px;
 }
 
 tooltip label {
-    padding: 4px 8px;
+    padding:   4px 8px;
+    font-size: 13px;
 }
