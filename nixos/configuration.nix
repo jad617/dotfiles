@@ -203,7 +203,7 @@ in {
   environment.systemPackages = with pkgs; [
     # ── Hyprland ecosystem ────────────────────────────────────────────────────
     hyprpaper
-    hyprlock
+    swaylock
     hypridle
     hyprcursor
     hyprutils
