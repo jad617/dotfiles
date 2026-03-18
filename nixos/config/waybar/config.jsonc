@@ -14,7 +14,17 @@
 
     "modules-left":   ["hyprland/workspaces", "hyprland/window"],
     "modules-center": ["clock"],
-    "modules-right":  ["wireplumber", "cpu", "memory", "tray", "custom/settings", "custom/powermenu"],
+    "modules-right":  [
+        "custom/nix",
+        "wireplumber",
+        "custom/brightness",
+        "custom/night",
+        "cpu",
+        "memory",
+        "tray",
+        "custom/settings",
+        "custom/powermenu"
+    ],
 
     // ── Left ────────────────────────────────────────────────────────────────
     "hyprland/workspaces": {
@@ -41,6 +51,14 @@
     },
 
     // ── Right ────────────────────────────────────────────────────────────────
+    "custom/nix": {
+        "exec":          "~/.config/hypr/nix-status.sh",
+        "return-type":   "json",
+        "interval":      60,
+        "on-click":      "~/.config/hypr/nix-status.sh",
+        "tooltip":       true
+    },
+
     "wireplumber": {
         "format": "{icon} {volume}%",
         "format-muted": "󰖁  muted",
@@ -50,14 +68,21 @@
         "tooltip": false
     },
 
-    "network": {
-        "format-wifi":        "󰤨 {signalStrength}%",
-        "format-ethernet":    "󰈀 {bandwidthUpBytes}  {bandwidthDownBytes}",
-        "format-disconnected": "󰌙",
-        "tooltip-format-wifi":     "{essid} ({signalStrength}%)\n{ipaddr}",
-        "tooltip-format-ethernet": "{ifname}: {ipaddr}",
-        "on-click": "nm-connection-editor",
-        "interval": 5
+    "custom/brightness": {
+        "exec":           "brightnessctl -m 2>/dev/null | cut -d, -f4 | tr -d '%' | awk '{printf \"󰃞 %s%%\", $1}' || echo '󰃞 N/A'",
+        "on-scroll-up":   "brightnessctl s 5%+ && pkill -RTMIN+3 waybar",
+        "on-scroll-down": "brightnessctl s 5%- && pkill -RTMIN+3 waybar",
+        "interval":       "once",
+        "signal":         3,
+        "tooltip":        false
+    },
+
+    "custom/night": {
+        "exec":      "pgrep -x wlsunset > /dev/null && echo '󰌈 Night' || echo '󰛨 Day'",
+        "on-click":  "~/.config/hypr/night-toggle.sh",
+        "interval":  "once",
+        "signal":    2,
+        "tooltip":   false
     },
 
     "cpu": {
@@ -67,7 +92,7 @@
     },
 
     "memory": {
-        "format":   "󰍛 {used:0.1f}G",
+        "format":         "󰍛 {used:0.1f}G",
         "tooltip-format": "{used:0.1f}G / {total:0.1f}G\nSwap: {swapUsed:0.1f}G",
         "interval": 10
     },
@@ -85,7 +110,7 @@
 
     "custom/powermenu": {
         "format":   "⏻",
-        "on-click": "~/.config/hypr/powermenu.sh",
+        "on-click": "pkill wlogout || wlogout -b 5 -c 0 -r 0 -m 0 --layout ~/.config/wlogout/layout --css ~/.config/wlogout/style.css",
         "tooltip":  false
     }
 }
