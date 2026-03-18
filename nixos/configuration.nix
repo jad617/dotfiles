@@ -96,11 +96,20 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — greetd + sysc-greet (TUI, Hyprland)
+  # Display Manager — emptty (minimal TUI, Catppuccin Macchiato)
   # ---------------------------------------------------------------------------
-  services.sysc-greet = {
-    enable      = true;
-    compositor  = "Hyprland";
+  services.emptty = {
+    enable = true;
+    settings = {
+      TTY_NUMBER         = 1;
+      SWITCH_TTY         = true;
+      PRINT_ISSUE        = false;
+      PRINT_MOTD         = false;
+      DEFAULT_SESSION    = "hyprland";
+      VERTICAL_SELECTION = true;
+      FG_COLOR           = "LIGHT_MAGENTA";   # closest to mauve #c6a0f6
+      BG_COLOR           = "BLACK";           # closest to base  #24273a
+    };
   };
 
   # ---------------------------------------------------------------------------
