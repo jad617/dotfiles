@@ -155,6 +155,10 @@ symlink "$NIXOS_DIR/config/mako"             "$HOME/.config/mako"
 # Wofi launcher
 symlink "$NIXOS_DIR/config/wofi"             "$HOME/.config/wofi"
 
+# GTK theme + icons
+symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
+symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"
+
 # Wallpapers
 mkdir -p "$HOME/Pictures"
 symlink "$DOTFILES/wallpapers" "$HOME/Pictures/Wallpapers"
