@@ -158,6 +158,14 @@ symlink "$NIXOS_DIR/config/wofi"             "$HOME/.config/wofi"
 # GTK theme + icons
 symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
 symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"
+symlink "$NIXOS_DIR/config/gtk/gtk-4.0.css"  "$HOME/.config/gtk-4.0/gtk.css"
+
+# Apply icon theme + dark mode via gsettings (required for GTK4/libadwaita apps)
+header "Applying GTK icon theme and color scheme"
+export XDG_DATA_DIRS="/run/current-system/sw/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+gsettings set org.gnome.desktop.interface icon-theme  'Papirus-Dark'  2>/dev/null && echo "  icon-theme  → Papirus-Dark"   || echo "  gsettings unavailable (run after rebuild)"
+gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'  2>/dev/null && echo "  color-scheme → prefer-dark"    || true
+gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic' 2>/dev/null || true
 
 # Wallpapers
 mkdir -p "$HOME/Pictures"
