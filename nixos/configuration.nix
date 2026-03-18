@@ -96,14 +96,11 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — greetd + tuigreet (TUI, Catppuccin Macchiato)
+  # Display Manager — greetd + sysc-greet (TUI, Hyprland)
   # ---------------------------------------------------------------------------
-  services.greetd = {
-    enable = true;
-    settings.default_session = {
-      command = ''${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd Hyprland --theme "border=#c6a0f6;text=#cad3f5;prompt=#8aadf4;time=#c6a0f6;action=#8aadf4;button=#f5a97f;container=#24273a;input=#363a4f"'';
-      user = "greeter";
-    };
+  services.sysc-greet = {
+    enable      = true;
+    compositor  = "Hyprland";
   };
 
   # ---------------------------------------------------------------------------
