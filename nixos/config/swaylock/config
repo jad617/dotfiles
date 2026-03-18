@@ -1,0 +1,41 @@
+# =============================================================================
+# swaylock — Catppuccin Macchiato
+# =============================================================================
+
+daemonize
+show-failed-attempts
+ignore-empty-password
+
+# Background — solid base color (no GPU-heavy blur)
+color=24273a
+
+# Ring
+ring-color=c6a0f6
+ring-ver-color=8aadf4
+ring-wrong-color=ed8796
+ring-clear-color=a6da95
+
+# Inside of ring
+inside-color=363a4f
+inside-ver-color=363a4f
+inside-wrong-color=363a4f
+inside-clear-color=363a4f
+
+# Key highlight on ring
+key-hl-color=c6a0f6
+bs-hl-color=ed8796
+
+# Text
+text-color=cad3f5
+text-ver-color=8aadf4
+text-wrong-color=ed8796
+text-clear-color=a6da95
+
+# Line between ring and inside
+line-color=24273a
+line-ver-color=24273a
+line-wrong-color=24273a
+line-clear-color=24273a
+
+# Separator
+separator-color=00000000
