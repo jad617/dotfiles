@@ -96,22 +96,19 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — Ly (TUI, Catppuccin Macchiato)
+  # Display Manager — greetd + tuigreet (TUI, Catppuccin Macchiato)
   # ---------------------------------------------------------------------------
-  services.ly = {
+  services.greetd = {
     enable = true;
-    settings = {
-      animation      = "none";
-      clear_password = true;
-      asterisk       = "●";
-      # Catppuccin Macchiato — bg/fg as 24-bit hex
-      bg             = "0x24273a";   # base
-      fg             = "0xcad3f5";   # text
-      input_fg       = "0xc6a0f6";   # mauve  — active field text
-      input_bg       = "0x363a4f";   # surface0 — active field bg
-      border_fg      = "0xc6a0f6";   # mauve  — box border
-      label_fg       = "0x8aadf4";   # blue   — "login:" / "password:" labels
-      error_fg       = "0xed8796";   # red    — error messages
+    settings.default_session = {
+      command = ''
+        ${pkgs.greetd.tuigreet}/bin/tuigreet \
+          --time \
+          --remember \
+          --cmd Hyprland \
+          --theme "border=#c6a0f6;text=#cad3f5;prompt=#8aadf4;time=#c6a0f6;action=#8aadf4;button=#f5a97f;container=#24273a;input=#363a4f"
+      '';
+      user = "greeter";
     };
   };
 
