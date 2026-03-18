@@ -4,13 +4,15 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     neovim-nightly-overlay.url = "github:nix-community/neovim-nightly-overlay";
+    lidm.url = "github:javalsai/lidm";
   };
 
-  outputs = { self, nixpkgs, neovim-nightly-overlay, ... }: {
+  outputs = { self, nixpkgs, neovim-nightly-overlay, lidm, ... }: {
     nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         { nixpkgs.overlays = [ neovim-nightly-overlay.overlays.default ]; }
+        lidm.nixosModules.default
         ./configuration.nix
       ];
     };
