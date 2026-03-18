@@ -100,24 +100,20 @@ in {
   # ---------------------------------------------------------------------------
   services.lidm = {
     enable = true;
-    tty    = 1;
+    config = {
+      colors = {
+        fg     = "\\e[38;5;189m";   # text    #cad3f5 ≈ 189
+        bg     = "\\e[48;5;236m";   # base    #24273a ≈ 236
+        accent = "\\e[38;5;183m";   # mauve   #c6a0f6 ≈ 183
+        error  = "\\e[38;5;210m";   # red     #ed8796 ≈ 210
+        dim    = "\\e[38;5;102m";   # overlay #6e738d ≈ 102
+      };
+      ui = {
+        title  = "Welcome";
+        border = true;
+      };
+    };
   };
-
-  environment.etc."lidm.ini".text = ''
-    [colors]
-    # Catppuccin Macchiato — 256-color ANSI approximations
-    # fg: text #cad3f5 ≈ 189  bg: base #24273a ≈ 236
-    # accent: mauve #c6a0f6 ≈ 183  error: red #ed8796 ≈ 210
-    fg     = \e[38;5;189m
-    bg     = \e[48;5;236m
-    accent = \e[38;5;183m
-    error  = \e[38;5;210m
-    dim    = \e[38;5;102m
-
-    [ui]
-    title  = Welcome
-    border = true
-  '';
 
   # ---------------------------------------------------------------------------
   # Audio — PipeWire
