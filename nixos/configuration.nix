@@ -98,13 +98,7 @@ in {
   # ---------------------------------------------------------------------------
   # Display Manager — greetd + ReGreet (minimal GTK4, Catppuccin Macchiato)
   # ---------------------------------------------------------------------------
-  services.greetd = {
-    enable = true;
-    settings.default_session = {
-      command = "${pkgs.cage}/bin/cage -s -- ${pkgs.regreet}/bin/regreet";
-      user    = "greeter";
-    };
-  };
+  services.greetd.enable = true;
 
   programs.regreet = {
     enable   = true;
