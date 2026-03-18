@@ -294,6 +294,9 @@ in {
     firefox
     google-chrome
     nautilus             # file manager
+    gnome-calendar       # calendar (launch from wofi or click clock)
+    (catppuccin-gtk.override { accents = [ "mauve" ]; variant = "macchiato"; })
+    papirus-icon-theme   # much better folder/file icons
     imv                  # image viewer
     mpv                  # video
     zathura              # PDF
@@ -378,8 +381,10 @@ in {
     TERMINAL = "wezterm";
     BROWSER  = "firefox";
 
-    # Force dark GTK theme for all GTK apps
-    GTK_THEME = "Adwaita:dark";
+    # Force dark GTK theme for GTK3 apps
+    GTK_THEME = "Catppuccin-Macchiato-Standard-Mauve-Dark";
+    # Force dark mode for GTK4/libadwaita apps (Nautilus, GNOME Calendar)
+    ADW_DEBUG_COLOR_SCHEME = "prefer-dark";
   };
 
   # ---------------------------------------------------------------------------

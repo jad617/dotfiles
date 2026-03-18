@@ -37,7 +37,7 @@
     "clock": {
         "format": "{:%H:%M  ·  %a %d %b}",
         "tooltip": false,
-        "on-click": "python3 ~/.config/hypr/calendar-popup.py"
+        "on-click": "gnome-calendar"
     },
 
     // ── Right ────────────────────────────────────────────────────────────────
