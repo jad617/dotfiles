@@ -287,7 +287,6 @@ in {
     claude-code          # Claude Code CLI
 
     # ── GUI apps ──────────────────────────────────────────────────────────────
-    firefox
     google-chrome
     nautilus             # file manager
     gnome-calendar       # calendar (launch from wofi or click clock)
@@ -371,7 +370,7 @@ in {
     # Defaults
     EDITOR   = "nvim";
     TERMINAL = "wezterm";
-    BROWSER  = "firefox";
+    BROWSER  = "google-chrome-stable";
 
     # Force dark GTK theme for GTK3 apps
     GTK_THEME = "Catppuccin-Macchiato-Standard-Mauve-Dark";
