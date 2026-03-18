@@ -6,7 +6,9 @@ daemonize
 show-failed-attempts
 ignore-empty-password
 
-# Background — solid base color (no GPU-heavy blur)
+# Background wallpaper (falls back to solid color if file missing)
+image=~/Pictures/Wallpapers/quasar.webp
+scaling=fill
 color=24273a
 
 # Ring
