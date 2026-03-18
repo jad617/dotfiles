@@ -96,9 +96,22 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — LiDM (lightweight TUI, Catppuccin Macchiato)
+  # Display Manager — Ly (TUI DM, nixpkgs) — Catppuccin Macchiato
   # ---------------------------------------------------------------------------
-  services.lidm.enable = true;
+  services.displayManager = {
+    defaultSession = "hyprland";
+    ly = {
+      enable = true;
+      settings = {
+        # Catppuccin Macchiato: 0xSSRRGGBB (SS = styling bits)
+        bg       = "0x0024273a"; # Base
+        fg       = "0x00cad3f5"; # Text
+        border_fg = "0x00c6a0f6"; # Mauve
+        error_fg = "0x01ed8796"; # Red + bold
+        error_bg = "0x0024273a"; # Base
+      };
+    };
+  };
 
   # ---------------------------------------------------------------------------
   # Audio — PipeWire
@@ -201,12 +214,11 @@ in {
     hypridle
     hyprcursor
     hyprutils
-    waybar
-    mako
+    hyprpanel            # bar + notifications + power menu (replaces waybar/mako/wlogout)
+    cava                 # audio visualizer for hyprpanel cava widget
     wofi
     wl-clipboard
     cliphist
-    wlogout              # power menu (grid layout, replaces wofi powermenu)
     wlsunset             # blue light filter / night mode
     kanshi               # auto display profiles on monitor connect/disconnect
     nwg-displays         # GUI to generate kanshi profiles visually
@@ -269,7 +281,7 @@ in {
     nodejs
     nodePackages.npm
     (python3.withPackages (ps: with ps; [ pip pynvim pygobject3 ]))
-    pkgs.go              # latest stable Go from nixpkgs-unstable
+    go                   # latest stable Go from nixpkgs-unstable
     rustup
     uv                   # fast Python package manager
 
@@ -292,6 +304,7 @@ in {
     gnome-calendar       # calendar (launch from wofi or click clock)
     (catppuccin-gtk.override { accents = [ "mauve" ]; variant = "macchiato"; })
     papirus-icon-theme          # much better folder/file icons
+    adwaita-icon-theme          # provides Adwaita cursor theme
     gsettings-desktop-schemas   # required for gsettings icon-theme / color-scheme
     imv                  # image viewer
     mpv                  # video
