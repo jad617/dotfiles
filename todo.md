@@ -1,0 +1,5 @@
+- snack.explorer should always display .github and .gitignore
+- Still have the issue where snack.explorer shows twice the folder tree
+  - to validate when I encounter this issue
+- Change the behaviour of the snack.explorer. The current file should revert to the initial highlight color and only become green when I am on the snack.explorer buffer
+- New added files in snacks.sexplorer git extention should not display "?" should be "+" and green
