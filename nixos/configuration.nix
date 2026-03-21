@@ -1,10 +1,11 @@
 # =============================================================================
-# NixOS Hyprland workstation — GTX 1070
+# NixOS Hyprland workstation — shared base configuration
 #
 # Placeholders replaced by nixos/init.sh:
-#   YOUR_USERNAME  → your actual username
-#   YOUR_HOSTNAME  → your actual hostname
-#   YOUR_TIMEZONE  → e.g. America/Toronto
+#   YOUR_USERNAME → your actual username
+#   YOUR_TIMEZONE → e.g. America/Toronto
+#
+# Host-specific config (hostname, GPU drivers) lives in hosts/
 # =============================================================================
 { config, pkgs, lib, ... }:
 
@@ -33,14 +34,13 @@ in {
   boot.loader.grub.useOSProber         = false;
   # Use latest kernel (matches NixOS ISO default)
   boot.kernelPackages = pkgs.linuxPackages_latest;
-  # Required for NVIDIA modesetting on Wayland
-  boot.kernelParams = [ "nvidia_drm.modeset=1" "nvidia.NVreg_PreserveVideoMemoryAllocations=1" ];
+  # Host-specific kernelParams (e.g. NVIDIA) are set in hosts/
 
   # ---------------------------------------------------------------------------
   # Networking
   # ---------------------------------------------------------------------------
   networking = {
-    hostName = "YOUR_HOSTNAME";
+    # hostName is set per-host in hosts/vm.nix or hosts/hashirama.nix
     networkmanager.enable = true;
   };
 
@@ -57,25 +57,6 @@ in {
       LC_TELEPHONE = "en_US.UTF-8";
       LC_TIME      = "en_US.UTF-8";
     };
-  };
-
-  # ---------------------------------------------------------------------------
-  # Hardware — NVIDIA GTX 1070 (Pascal / proprietary driver)
-  # ---------------------------------------------------------------------------
-  services.xserver.videoDrivers = [ "nvidia" ];
-
-  hardware.nvidia = {
-    modesetting.enable = true;
-    powerManagement.enable = true;          # needed for suspend/resume on Wayland
-    powerManagement.finegrained = false;
-    open = false;                           # proprietary kernel module (more stable for GTX 10xx)
-    nvidiaSettings = true;
-    package = config.boot.kernelPackages.nvidiaPackages.stable;
-  };
-
-  hardware.graphics = {
-    enable = true;
-    enable32Bit = true;                     # Steam / 32-bit OpenGL
   };
 
   # ---------------------------------------------------------------------------
@@ -358,16 +339,11 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Environment — NVIDIA + Wayland
+  # Environment — Wayland + app defaults
+  # (NVIDIA-specific vars are added per-host in hosts/hashirama.nix)
   # ---------------------------------------------------------------------------
   environment.sessionVariables = {
-    # NVIDIA Wayland
-    LIBVA_DRIVER_NAME        = "nvidia";
     XDG_SESSION_TYPE         = "wayland";
-    GBM_BACKEND              = "nvidia-drm";
-    __GLX_VENDOR_LIBRARY_NAME = "nvidia";
-    WLR_NO_HARDWARE_CURSORS  = "1";
-    NVD_BACKEND              = "direct";       # hardware video decode
 
     # Electron / Chromium — force native Wayland
     NIXOS_OZONE_WL                = "1";
