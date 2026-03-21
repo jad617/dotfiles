@@ -1,0 +1,237 @@
+/* =============================================================================
+   Waybar style — Catppuccin Macchiato
+   Floating pill bar with rounded workspace indicators
+   ============================================================================= */
+
+/* ── Catppuccin Macchiato palette ─────────────────────────────────────────── */
+@define-color base       #24273a;
+@define-color mantle     #1e2030;
+@define-color crust      #181926;
+@define-color text       #cad3f5;
+@define-color subtext0   #a5adcb;
+@define-color subtext1   #b8c0e0;
+@define-color surface0   #363a4f;
+@define-color surface1   #494d64;
+@define-color surface2   #5b6078;
+@define-color overlay0   #6e738d;
+@define-color overlay1   #8087a2;
+@define-color overlay2   #939ab7;
+@define-color blue       #8aadf4;
+@define-color lavender   #b7bdf8;
+@define-color sapphire   #7dc4e4;
+@define-color sky        #91d7e3;
+@define-color teal       #8bd5ca;
+@define-color green      #a6da95;
+@define-color yellow     #eed49f;
+@define-color peach      #f5a97f;
+@define-color maroon     #ee99a0;
+@define-color red        #ed8796;
+@define-color mauve      #c6a0f6;
+@define-color pink       #f5bde6;
+@define-color flamingo   #f0c6c6;
+@define-color rosewater  #f4dbd6;
+
+/* ── Reset ─────────────────────────────────────────────────────────────────── */
+* {
+    font-family: "MesloLGS NF", "Font Awesome 6 Free", sans-serif;
+    font-size:   13px;
+    border:      none;
+    border-radius: 0;
+    min-height:  0;
+}
+
+/* ── Main bar — transparent so module groups float ─────────────────────────── */
+window#waybar {
+    background: transparent;
+    color:      @text;
+}
+
+/* ── Each module group gets a pill-shaped background ─────────────────────── */
+.modules-left,
+.modules-center,
+.modules-right {
+    background:    alpha(@base, 0.90);
+    border-radius: 12px;
+    padding:       4px 6px;
+    margin:        0 2px;
+}
+
+/* ── Workspaces ──────────────────────────────────────────────────────────── */
+#workspaces {
+    margin-right: 2px;
+}
+
+#workspaces button {
+    padding:       2px 14px;
+    border-radius: 8px;
+    color:         @subtext0;
+    background:    transparent;
+    transition:    all 0.2s ease;
+    min-width:     10px;
+}
+
+#workspaces button:hover {
+    background: @surface1;
+    color:      @text;
+    box-shadow: none;
+}
+
+#workspaces button.active {
+    background:  @mauve;
+    color:       @base;
+    font-weight: bold;
+    padding:     2px 18px;
+}
+
+#workspaces button.urgent {
+    background: @red;
+    color:      @base;
+}
+
+#workspaces button.empty {
+    color: @surface2;
+}
+
+/* ── Window title ────────────────────────────────────────────────────────── */
+#window {
+    padding:   0 8px;
+    color:     @subtext0;
+    font-size: 12px;
+}
+
+#window.empty {
+    padding: 0;
+}
+
+/* ── Clock ───────────────────────────────────────────────────────────────── */
+#clock {
+    padding:     0 10px;
+    color:       @text;
+    font-weight: bold;
+}
+
+/* ── Volume ──────────────────────────────────────────────────────────────── */
+#wireplumber {
+    padding: 0 10px;
+    color:   @green;
+}
+
+#wireplumber.muted {
+    color: @red;
+}
+
+/* ── Network ────────────────────────────────────────────────────────────── */
+#network {
+    padding: 0 10px;
+    color:   @blue;
+}
+
+#network.disconnected {
+    color: @red;
+}
+
+/* ── CPU ─────────────────────────────────────────────────────────────────── */
+#cpu {
+    padding: 0 10px;
+    color:   @peach;
+}
+
+#cpu.warning {
+    color: @yellow;
+}
+
+#cpu.critical {
+    color: @red;
+}
+
+/* ── Memory ─────────────────────────────────────────────────────────────── */
+#memory {
+    padding: 0 10px;
+    color:   @mauve;
+}
+
+#memory.warning {
+    color: @yellow;
+}
+
+#memory.critical {
+    color: @red;
+}
+
+/* ── Tray ────────────────────────────────────────────────────────────────── */
+#tray {
+    padding: 0 6px;
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    background-color: @red;
+    border-radius:    8px;
+}
+
+/* ── Nix status ─────────────────────────────────────────────────────────── */
+#custom-nix {
+    padding: 0 10px;
+    color:   #a6da95;   /* green */
+}
+
+/* ── Brightness ──────────────────────────────────────────────────────────── */
+#custom-brightness {
+    padding: 0 10px;
+    color:   #eed49f;   /* yellow */
+}
+
+/* ── Night mode ──────────────────────────────────────────────────────────── */
+#custom-night {
+    padding: 0 10px;
+    color:   #8aadf4;   /* blue */
+}
+
+#custom-night.night {
+    color: #f5a97f;     /* peach — when night mode active */
+}
+
+/* ── Settings button ────────────────────────────────────────────────────── */
+#custom-settings {
+    padding:     0 10px;
+    color:       @teal;
+    font-size:   14px;
+    transition:  all 0.2s ease;
+}
+
+#custom-settings:hover {
+    color:         @base;
+    background:    @teal;
+    border-radius: 8px;
+}
+
+/* ── Power menu button ───────────────────────────────────────────────────── */
+#custom-powermenu {
+    padding:     0 10px;
+    color:       @red;
+    font-size:   14px;
+    transition:  all 0.2s ease;
+}
+
+#custom-powermenu:hover {
+    color:         @base;
+    background:    @red;
+    border-radius: 8px;
+}
+
+/* ── Tooltip ────────────────────────────────────────────────────────────── */
+tooltip {
+    background:    @mantle;
+    border:        1px solid @surface1;
+    border-radius: 12px;
+    color:         @text;
+    padding:       8px 12px;
+}
+
+tooltip label {
+    padding:   4px 8px;
+    font-size: 13px;
+}
