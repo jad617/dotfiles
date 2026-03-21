@@ -152,7 +152,21 @@ compdef _cd_parent cd
 ##################################
 [[ -f "$HOME/.my_aliases.sh" ]] && source "$HOME/.my_aliases.sh"
 [[ -f "$HOME/.my_aliases_non_git.sh" ]] && source "$HOME/.my_aliases_non_git.sh"
-[[ -f "$HOME/.fzf.zsh" ]] && source "$HOME/.fzf.zsh"
+# fzf shell integration — manual install (~/.fzf.zsh) or system package
+if [[ -f "$HOME/.fzf.zsh" ]]; then
+  source "$HOME/.fzf.zsh"
+elif command -v fzf >/dev/null 2>&1; then
+  # modern fzf (>= 0.48) exposes --zsh; works on NixOS, Homebrew, etc.
+  if fzf --zsh &>/dev/null; then
+    eval "$(fzf --zsh)"
+  else
+    # NixOS fallback paths
+    [[ -f /run/current-system/sw/share/fzf/key-bindings.zsh ]] && \
+      source /run/current-system/sw/share/fzf/key-bindings.zsh
+    [[ -f /run/current-system/sw/share/fzf/completion.zsh ]] && \
+      source /run/current-system/sw/share/fzf/completion.zsh
+  fi
+fi
 
 ##################################
 # 7) Lazy kubectl completion
@@ -269,3 +283,6 @@ fi
 # Linux (apt)
 [[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
   source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+# NixOS
+[[ -f /run/current-system/sw/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+  source /run/current-system/sw/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
