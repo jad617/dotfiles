@@ -189,6 +189,11 @@ return {
       formatters = {
         file = { truncate = "left" },
       },
+      icons = {
+        git = {
+          untracked = "+", -- new/untracked files show "+" instead of "?"
+        },
+      },
       sources = {
         explorer = {
           -- Sidebar layout (left panel, no preview by default)
@@ -201,8 +206,10 @@ return {
           git_status = true,
           diagnostics = true,
           -- Start with dotfiles and gitignored hidden (toggle with H / I)
+          -- Always show .github and .gitignore regardless of hidden flag
           hidden = false,
           ignored = false,
+          include = { "**/.github", "**/.gitignore" },
           -- Apply dark background via highlight namespace as soon as the picker is shown
           on_show = function(picker)
             vim.schedule(function()
@@ -234,23 +241,20 @@ return {
                 ["<C-v>"] = "edit_vsplit",
                 ["<C-x>"] = "edit_split",
                 ["<C-t>"] = "edit_tab",
-                -- "u" and "." sync vim's actual cwd so the terminal follows
+                -- "u" and "." sync vim's actual cwd so the terminal follows.
+                -- Only chdir — snacks' DirChanged handler does set_cwd+find,
+                -- preventing a double render (chdir triggers DirChanged which
+                -- would fire a second set_cwd+find if we already called them).
                 ["u"] = function()
                   local picker = Snacks.picker.get({ source = "explorer" })[1]
                   if not picker then return end
                   local dir = vim.fs.dirname(picker:cwd())
-                  picker:set_cwd(dir)
-                  picker:find()
                   if dir then vim.fn.chdir(dir) end
                 end,
-                -- "." re-roots the picker AND changes vim's actual cwd so
-                -- the terminal (and other tools) follow the new directory
                 ["."] = function()
                   local picker = Snacks.picker.get({ source = "explorer" })[1]
                   if not picker then return end
                   local dir = picker:dir()
-                  picker:set_cwd(dir)
-                  picker:find()
                   if dir then vim.fn.chdir(dir) end
                 end,
                 -- Recursively open the currently selected directory tree
