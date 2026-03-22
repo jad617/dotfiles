@@ -125,10 +125,14 @@ local function fix_explorer_current_file_highlight()
 
   vim.wo[list_win].cursorline = true
 
+  -- Green when the explorer list window is focused; transparent otherwise
+  local is_focused = vim.api.nvim_get_current_win() == list_win
+  local hl_group = is_focused and "SnacksPickerListCursorLine" or "ExplorerCursorLineNC"
+
   local snacks = rawget(_G, "Snacks")
   if type(snacks) == "table" and type(snacks.util) == "table" and type(snacks.util.winhl) == "function" then
     local merged = snacks.util.winhl(vim.wo[list_win].winhighlight, {
-      CursorLine = "SnacksPickerListCursorLine",
+      CursorLine = hl_group,
     })
     if type(snacks.util.wo) == "function" then
       snacks.util.wo(list_win, { winhighlight = merged })
@@ -138,9 +142,9 @@ local function fix_explorer_current_file_highlight()
 
   local winhl = vim.wo[list_win].winhighlight or ""
   if winhl:match("CursorLine:") then
-    winhl = winhl:gsub("CursorLine:[^,]*", "CursorLine:SnacksPickerListCursorLine")
+    winhl = winhl:gsub("CursorLine:[^,]*", "CursorLine:" .. hl_group)
   else
-    winhl = (winhl == "" and "" or (winhl .. ",")) .. "CursorLine:SnacksPickerListCursorLine"
+    winhl = (winhl == "" and "" or (winhl .. ",")) .. "CursorLine:" .. hl_group
   end
   vim.wo[list_win].winhighlight = winhl
   return true

@@ -43,9 +43,13 @@ vim.cmd("highlight SnacksExplorerSeparator guifg=#c27fd7 guibg=NONE gui=bold")
 -- Snacks picker title color
 vim.cmd("highlight SnacksPickerPreviewTitle guifg=#c27fd7 gui=bold")
 vim.cmd("highlight SnacksPickerBoxTitle guifg=#c27fd7 gui=bold")
--- Explorer uses SnacksPickerListCursorLine when focused, CursorLine when unfocused
+-- Explorer: green cursor line when focused, invisible when unfocused
 vim.cmd("highlight CursorLine guibg=#98C379 guifg=#282c34 gui=bold")
 vim.cmd("highlight SnacksPickerListCursorLine guibg=#98C379 guifg=#282c34 gui=bold")
+vim.cmd("highlight ExplorerCursorLineNC guibg=NONE guifg=NONE gui=NONE")
+
+-- Untracked/new files show in green (matching GitSignsAdd)
+vim.cmd("highlight SnacksPickerGitStatusUntracked guifg=#9ECE6A guibg=NONE")
 
 -- Snacks terminal color
 vim.cmd("highlight FloatBorder guifg=#9ECE6A gui=bold")
