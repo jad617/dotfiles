@@ -148,7 +148,7 @@ symlink "$NIXOS_DIR/config/swaylock"         "$HOME/.config/swaylock"
 symlink "$NIXOS_DIR/config/kanshi"           "$HOME/.config/kanshi"
 
 # HyprPanel (bar + notifications + power menu)
-symlink "$NIXOS_DIR/config/hyprpanel"        "$HOME/.config/hyprpanel"
+symlink "$NIXOS_DIR/config/noctalia"         "$HOME/.config/quickshell/noctalia-shell"
 
 # Wofi launcher
 symlink "$NIXOS_DIR/config/wofi"             "$HOME/.config/wofi"

@@ -1,16 +1,23 @@
 {
   description = "NixOS Hyprland workstation";
 
+  nixConfig = {
+    extra-substituters      = [ "https://noctalia.cachix.org" ];
+    extra-trusted-public-keys = [
+      "noctalia.cachix.org-1:pCOR47nnMEo5thcxNDtzWpOxNFQsBRglJzxWPp3dkU4="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     neovim-nightly-overlay.url = "github:nix-community/neovim-nightly-overlay";
-    hyprpanel = {
-      url = "github:Jas-SinghFSU/HyprPanel";
+    noctalia = {
+      url = "github:noctalia-dev/noctalia-shell";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, neovim-nightly-overlay, hyprpanel, ... }:
+  outputs = { self, nixpkgs, neovim-nightly-overlay, noctalia, ... }@inputs:
   let
     system = "x86_64-linux";
 
@@ -18,10 +25,11 @@
       {
         nixpkgs.overlays = [
           neovim-nightly-overlay.overlays.default
-          (final: prev: { hyprpanel = hyprpanel.packages.${prev.system}.default; })
         ];
       }
-      ./configuration.nix
+      (./configuration.nix)
+      # Pass noctalia package via specialArgs
+      { environment.systemPackages = [ noctalia.packages.${system}.default ]; }
     ];
 
     mkHost = hostModule: nixpkgs.lib.nixosSystem {

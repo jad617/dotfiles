@@ -195,8 +195,8 @@ in {
     hypridle
     hyprcursor
     hyprutils
-    hyprpanel            # bar + notifications + power menu (replaces waybar/mako/wlogout)
-    cava                 # audio visualizer for hyprpanel cava widget
+    # noctalia-shell is injected via flake.nix (noctalia.packages.default)
+    cava                 # audio visualizer
     wofi
     wl-clipboard
     cliphist
@@ -375,6 +375,8 @@ in {
   services.gvfs.enable         = true;    # auto-mount
   services.tumbler.enable      = true;    # thumbnails
   services.openssh.enable      = true;
+  services.upower.enable       = true;    # required by noctalia (battery/power info)
+  services.power-profiles-daemon.enable = true;  # required by noctalia
 
   # ---------------------------------------------------------------------------
   system.stateVersion = "24.11";
