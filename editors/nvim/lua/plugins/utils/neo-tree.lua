@@ -1,8 +1,7 @@
 return {
   {
     "nvim-neo-tree/neo-tree.nvim",
-    enabled = false, -- replaced by Snacks explorer
-  branch = "v3.x",
+    branch = "v3.x",
   dependencies = {
     "nvim-lua/plenary.nvim",
     "nvim-tree/nvim-web-devicons", -- not strictly required, but recommended
@@ -12,7 +11,18 @@ return {
       version = "2.*",
       config = function()
         require("window-picker").setup({
+          show_prompt = false,
           selection_chars = "ABDCEFG",
+          highlights = {
+            statusline = {
+              focused = { fg = "#282c34", bg = "#98C379", bold = true },
+              unfocused = { fg = "#282c34", bg = "#98C379", bold = true },
+            },
+            winbar = {
+              focused = { fg = "#282c34", bg = "#98C379", bold = true },
+              unfocused = { fg = "#282c34", bg = "#98C379", bold = true },
+            },
+          },
           filter_rules = {
             include_current_win = false,
             autoselect_one = true,
