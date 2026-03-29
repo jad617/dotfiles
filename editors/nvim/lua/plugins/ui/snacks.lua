@@ -311,15 +311,11 @@ return {
       },
     },
     explorer = {
+      enabled = false,
       replace_netrw = false,
     },
   },
   keys = {
-    {
-      "<C-m>",
-      function() Snacks.explorer() end,
-      desc = "Toggle Snacks file explorer",
-    },
     {
       "<leader>z",
       function() Snacks.zen() end,
