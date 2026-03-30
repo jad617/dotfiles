@@ -53,8 +53,6 @@ return {
       -- sources for autocompletion
       -- group_index: lower number = higher priority group (shown first).
       -- priority: within the same group, higher number = shown higher in list.
-      -- Copilot is in group 3 (after LSP group 1) and given low priority
-      -- so it never crowds out regular LSP/snippet completions.
       sources = cmp.config.sources({
         { name = "lazydev",  group_index = 1 },
         { name = "nvim_lsp", group_index = 1 },
@@ -65,7 +63,6 @@ return {
           },
         },
         { name = "path",     group_index = 2 },
-        { name = "copilot",  group_index = 3, priority = 1 },
       }),
 
       -- configure lspkind for vs-code like pictograms in completion menu
@@ -81,6 +78,13 @@ return {
     cmp.setup.filetype("snacks_dashboard", {
       enabled = false,
     })
+
+    -- Dismiss Copilot ghost text whenever the CMP menu closes, so ghost text
+    -- only appears while CMP is active (i.e. while you are actively editing).
+    cmp.event:on("menu_closed", function()
+      local ok, suggestion = pcall(require, "copilot.suggestion")
+      if ok then suggestion.dismiss() end
+    end)
 
     ------------------------------------------------------------
     -- [[ LuaSnip Config ]]
