@@ -110,7 +110,7 @@ return {
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
-  -- 5. COPILOT.LUA — inline suggestions via cmp
+  -- 5. COPILOT.LUA — ghost text suggestions, <C-j> to accept
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "zbirenbaum/copilot.lua",
@@ -118,20 +118,18 @@ return {
     event = "InsertEnter",
     enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
     opts = {
-      suggestion = { enabled = false },
+      suggestion = {
+        enabled = true,
+        auto_trigger = true,
+        hide_during_completion = false,
+        keymap = {
+          accept = "<C-j>",
+          dismiss = "<C-]>",
+        },
+      },
       panel = { enabled = false },
       filetypes = { markdown = true, help = false },
     },
-  },
-
-  -- ─────────────────────────────────────────────────────────────────────────
-  -- 6. COPILOT-CMP — routes Copilot suggestions into nvim-cmp menu
-  -- ─────────────────────────────────────────────────────────────────────────
-  {
-    "zbirenbaum/copilot-cmp",
-    enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
-    dependencies = { "zbirenbaum/copilot.lua" },
-    config = true,
   },
 
   -- ─────────────────────────────────────────────────────────────────────────
