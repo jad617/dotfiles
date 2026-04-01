@@ -21,6 +21,12 @@ opt.iskeyword:append({ "-" })
 vim.o.equalalways = false
 vim.o.winminwidth = 10
 
+-- Pin AI sidebar widths so they don't resize when you move focus in/out
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "codecompanion", "copilot-chat" },
+  callback = function() vim.wo.winfixwidth = true end,
+})
+
 -- [[ clipboard options ]]
 -- o.clipboard = "unnamedplus"
 

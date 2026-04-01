@@ -140,6 +140,16 @@ local function open_workspace_picker()
         return
       end
       vim.fn.chdir(item.path)
+      -- Open neo-tree once the user picks and opens a file from this project
+      vim.api.nvim_create_autocmd("BufReadPost", {
+        group = vim.api.nvim_create_augroup("WorkspaceNeoTree", { clear = true }),
+        once = true,
+        callback = function()
+          vim.schedule(function()
+            require("neo-tree.command").execute({ action = "show", dir = item.path })
+          end)
+        end,
+      })
       Snacks.picker.files({ hidden = true, cwd = item.path })
     end,
     layout = {

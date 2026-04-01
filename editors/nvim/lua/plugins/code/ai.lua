@@ -199,7 +199,10 @@ return {
     keys = {
       {
         "<leader>cp",
-        function() require("sidekick.cli").toggle({ name = "copilot", focus = true }) end,
+        function()
+          require("sidekick.cli").toggle({ name = "copilot", focus = true })
+          vim.schedule(function() vim.wo.winfixwidth = true end)
+        end,
         desc = "Sidekick: Copilot CLI",
         mode = "n",
       },
