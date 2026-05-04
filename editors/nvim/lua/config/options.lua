@@ -43,6 +43,7 @@ end
 
 -- [[ global options ]]
 opt.autoread = true
+opt.updatetime = 500 -- ms idle before CursorHold fires (also controls autoread check frequency)
 opt.spell = true
 o.swapfile = true -- Toggle swapfile
 o.dir = "/tmp" -- Swapfile location
