@@ -1,5 +1,14 @@
 return {
   {
+    "nvim-tree/nvim-web-devicons",
+    config = function()
+      require("nvim-web-devicons").set_icon({
+        yaml = { icon = "", color = "#D70000", cterm_color = "160", name = "Yaml" },
+        yml  = { icon = "", color = "#D70000", cterm_color = "160", name = "Yml" },
+      })
+    end,
+  },
+  {
     "nvim-neo-tree/neo-tree.nvim",
     branch = "v3.x",
   dependencies = {
