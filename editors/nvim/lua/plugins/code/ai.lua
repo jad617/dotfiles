@@ -191,6 +191,11 @@ return {
       nes = { enabled = false },
       cli = {
         watch = true,
+        win = {
+          keys = {
+            prompt = false, -- disable <C-p> prompt picker; pass through to terminal
+          },
+        },
         tools = {
           claude = { cmd = { "claude", "--model", "claude-sonnet-4-6" } },
         },

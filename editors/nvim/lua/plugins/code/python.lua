@@ -76,17 +76,21 @@ local SPINNER = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇",
 
 -- Start a spinner notification that updates in-place.
 -- Returns a stop() function that resolves the notification.
-local function start_spinner(id, msg)
+-- Uses nvim-notify's `replace` API (handle returned by vim.notify) for in-place
+-- updates, since the active notifier is noice+nvim-notify (not Snacks notifier).
+local function start_spinner(msg)
   local idx = 1
   local timer = vim.uv.new_timer()
+  local handle = nil
+
   timer:start(
     0,
     120,
     vim.schedule_wrap(function()
-      vim.notify(SPINNER[idx] .. " " .. msg, vim.log.levels.INFO, {
-        id = id,
+      handle = vim.notify(SPINNER[idx] .. " " .. msg, vim.log.levels.INFO, {
         title = "Python",
         timeout = false,
+        replace = handle,
       })
       idx = (idx % #SPINNER) + 1
     end)
@@ -97,15 +101,13 @@ local function start_spinner(id, msg)
     timer:close()
     local level = ok and vim.log.levels.INFO or vim.log.levels.ERROR
     local icon = ok and "✓" or "✗"
-    vim.schedule(
-      function()
-        vim.notify(icon .. " " .. done_msg, level, {
-          id = id,
-          title = "Python",
-          timeout = ok and 3000 or 8000,
-        })
-      end
-    )
+    vim.schedule(function()
+      vim.notify(icon .. " " .. done_msg, level, {
+        title = "Python",
+        timeout = ok and 3000 or 8000,
+        replace = handle,
+      })
+    end)
   end
 end
 
@@ -138,8 +140,7 @@ local function install_reqs(root, venv, has_uv)
 
   for _, req in ipairs(reqs) do
     local name = vim.fn.fnamemodify(req, ":t")
-    local id = "python_install_" .. root .. "_" .. name
-    local stop = start_spinner(id, "Installing " .. name .. "…")
+    local stop = start_spinner("Installing " .. name .. "…")
 
     local cmd = has_uv and { "uv", "pip", "install", "--python", venv .. "/bin/python", "-r", req } or { venv .. "/bin/pip", "install", "-r", req }
 
@@ -189,8 +190,7 @@ vim.api.nvim_create_autocmd("FileType", {
     local has_uv = vim.fn.exepath("uv") ~= ""
 
     if vim.fn.isdirectory(venv) == 0 then
-      local id = "python_venv_" .. root
-      local stop = start_spinner(id, "Creating .venv…")
+      local stop = start_spinner("Creating .venv…")
       local cmd = has_uv and { "uv", "venv", venv } or { "python3", "-m", "venv", venv }
 
       vim.fn.jobstart(cmd, {
