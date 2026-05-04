@@ -17,8 +17,9 @@ return {
       kdl = { "trim_newlines", "trim_whitespace" },
       yaml = { "trim_newlines", "trim_whitespace" },
 
-      -- go
-      go = { "goimports", "goimports-reviser" },
+      -- go: gofmt on save (formats only, never removes imports)
+      -- use <leader>gi to run goimports on demand
+      go = { "gofmt" },
 
       -- json
       json = { "jq", "trim_newlines", "trim_whitespace" },

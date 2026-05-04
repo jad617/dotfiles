@@ -185,6 +185,11 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = "go",
   group = vim.api.nvim_create_augroup("GoGetDeps", { clear = true }),
   callback = function(ev)
+    -- Organize imports on demand (goimports removes unused, adds missing)
+    vim.keymap.set("n", "<leader>gi", function()
+      require("conform").format({ formatters = { "goimports", "goimports-reviser" }, bufnr = ev.buf })
+    end, { buffer = ev.buf, desc = "Go: organize imports (goimports)" })
+
     vim.keymap.set("n", "<leader>gG", function()
       local root = vim.fs.root(ev.buf, { "go.mod", "go.work", ".git" }) or vim.fn.getcwd()
       vim.cmd("noautocmd silent! write") -- bypass goimports so unused imports stay on disk
