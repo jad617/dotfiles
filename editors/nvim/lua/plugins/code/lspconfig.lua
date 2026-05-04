@@ -114,7 +114,9 @@ return {
         settings = lsp_config.settings,
         cmd = lsp_config.cmd or nil,
         root_dir = lsp_config.root_dir or nil,
+        filetypes = lsp_config.filetypes or nil,
       })
+      vim.lsp.enable(lsp_name)
     end
   end,
 }
