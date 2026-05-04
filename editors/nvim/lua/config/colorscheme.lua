@@ -13,10 +13,6 @@ vim.cmd.colorscheme("onedark")
 vim.cmd("highlight GitSignsChange guifg=#ff9e64 guibg=NONE")
 vim.cmd("highlight GitSignsAdd guifg=#9ECE6A guibg=NONE")
 
--- Change highlight color for plugin GitSigns
-vim.cmd("highlight GitSignsChange guifg=#ff9e64 guibg=NONE")
-vim.cmd("highlight GitSignsAdd guifg=#9ECE6A guibg=NONE")
-
 -- Snacks borders color
 vim.cmd("highlight SnacksPickerBoxBorder   guifg=#ff9e64 guibg=NONE")
 vim.cmd("highlight SnacksPickerListBorder  guifg=#ff9e64 guibg=NONE")
