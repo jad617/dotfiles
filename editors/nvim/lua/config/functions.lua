@@ -145,7 +145,7 @@ vim.api.nvim_create_user_command("LspInfo", function()
     lines[#lines + 1] = "  ● " .. client.name .. " (id=" .. client.id .. ")"
     lines[#lines + 1] = "    root : " .. (client.root_dir or "—")
     lines[#lines + 1] = "    cmd  : " .. table.concat(client.config.cmd or {}, " ")
-    lines[#lines + 1] = "    ver  : " .. (client.server_capabilities and client.server_capabilities.positionEncoding or "?")
+    lines[#lines + 1] = "    pid  : " .. tostring(client.rpc and client.rpc.pid or "—")
     lines[#lines + 1] = ""
   end
   local buf = vim.api.nvim_create_buf(false, true)
@@ -153,7 +153,7 @@ vim.api.nvim_create_user_command("LspInfo", function()
   vim.diagnostic.enable(false, { bufnr = buf })
   local width = math.min(70, vim.o.columns - 4)
   local height = math.min(#lines + 2, vim.o.lines - 6)
-  vim.api.nvim_open_win(buf, true, {
+  local win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
     width = width,
     height = height,
@@ -164,8 +164,18 @@ vim.api.nvim_create_user_command("LspInfo", function()
     title = " LSP Info ",
     title_pos = "center",
   })
-  vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = buf, silent = true })
-  vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", { buffer = buf, silent = true })
+  local close = function()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+  vim.keymap.set("n", "q", close, { buffer = buf, silent = true })
+  vim.keymap.set("n", "<Esc>", close, { buffer = buf, silent = true })
+  vim.api.nvim_create_autocmd("WinLeave", {
+    buffer = buf,
+    once = true,
+    callback = close,
+  })
 end, { desc = "Show LSP client info for current buffer" })
 
 -- [[ Go: fetch new dependencies and restart gopls ]]
@@ -177,6 +187,7 @@ vim.api.nvim_create_autocmd("FileType", {
   callback = function(ev)
     vim.keymap.set("n", "<leader>gG", function()
       local root = vim.fs.root(ev.buf, { "go.mod", "go.work", ".git" }) or vim.fn.getcwd()
+      vim.cmd("silent! write")
       vim.notify("go get ./... && go mod tidy — running…", vim.log.levels.INFO)
       vim.fn.jobstart({ "sh", "-c", "go get ./... && go mod tidy" }, {
         cwd = root,
