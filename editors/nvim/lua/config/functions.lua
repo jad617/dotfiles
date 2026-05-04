@@ -102,6 +102,72 @@ map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit mess
 map("n", "<A-'>", ":!make ", options)
 map("i", "<A-'>", "<C-c>:!make ", options)
 
+-- [[ LSP commands (native Neovim 0.12+ replacements for nvim-lspconfig commands) ]]
+vim.api.nvim_create_user_command("LspStop", function()
+  for _, client in ipairs(vim.lsp.get_clients({ bufnr = 0 })) do
+    client:stop()
+    vim.notify("LSP stopped: " .. client.name, vim.log.levels.INFO)
+  end
+end, { desc = "Stop all LSP clients attached to current buffer" })
+
+vim.api.nvim_create_user_command("LspStart", function()
+  vim.api.nvim_exec_autocmds("FileType", {
+    group = "nvim.lsp.enable",
+    buffer = 0,
+  })
+end, { desc = "Start LSP for current buffer" })
+
+vim.api.nvim_create_user_command("LspRestart", function()
+  local names = {}
+  for _, client in ipairs(vim.lsp.get_clients({ bufnr = 0 })) do
+    names[#names + 1] = client.name
+    client:stop()
+  end
+  vim.defer_fn(function()
+    for _, name in ipairs(names) do
+      vim.lsp.enable(name)
+    end
+    vim.api.nvim_exec_autocmds("FileType", {
+      group = "nvim.lsp.enable",
+      buffer = 0,
+    })
+  end, 500)
+end, { desc = "Restart all LSP clients attached to current buffer" })
+
+vim.api.nvim_create_user_command("LspInfo", function()
+  local clients = vim.lsp.get_clients({ bufnr = 0 })
+  if #clients == 0 then
+    vim.notify("No LSP clients attached to this buffer", vim.log.levels.WARN)
+    return
+  end
+  local lines = { "LSP clients for: " .. vim.fn.expand("%:~:."), "" }
+  for _, client in ipairs(clients) do
+    lines[#lines + 1] = "  ● " .. client.name .. " (id=" .. client.id .. ")"
+    lines[#lines + 1] = "    root : " .. (client.root_dir or "—")
+    lines[#lines + 1] = "    cmd  : " .. table.concat(client.config.cmd or {}, " ")
+    lines[#lines + 1] = "    ver  : " .. (client.server_capabilities and client.server_capabilities.positionEncoding or "?")
+    lines[#lines + 1] = ""
+  end
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].filetype = "markdown"
+  local width = math.min(70, vim.o.columns - 4)
+  local height = math.min(#lines + 2, vim.o.lines - 6)
+  vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = math.floor((vim.o.lines - height) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+    style = "minimal",
+    border = "rounded",
+    title = " LSP Info ",
+    title_pos = "center",
+  })
+  vim.keymap.set("n", "q", "<cmd>close<CR>", { buffer = buf, silent = true })
+  vim.keymap.set("n", "<Esc>", "<cmd>close<CR>", { buffer = buf, silent = true })
+end, { desc = "Show LSP client info for current buffer" })
+
 -- [[ Go: fetch new dependencies and restart gopls ]]
 -- Use <leader>gG inside any Go buffer to run `go get ./...` + `go mod tidy`
 -- asynchronously, then restart gopls so it picks up the new packages.
