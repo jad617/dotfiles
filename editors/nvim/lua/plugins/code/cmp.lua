@@ -35,20 +35,12 @@ return {
       },
       snippet = { -- configure how nvim-cmp interacts with snippet engine
         expand = function(args)
-          print("Snippet expand called with body:", args.body)
           luasnip.lsp_expand(args.body)
         end,
       },
       mapping = cmp.mapping.preset.insert({
         ["<TAB>"] = cmp.mapping.confirm({ select = true }),
         ["<CR>"] = cmp.mapping.abort(),
-        -- ["<C-k>"] = cmp.mapping.select_prev_item(), -- previous suggestion
-        -- ["<C-j>"] = cmp.mapping.select_next_item(), -- next suggestion
-        -- ["<C-b>"] = cmp.mapping.scroll_docs(-4),
-        -- ["<C-f>"] = cmp.mapping.scroll_docs(4),
-        -- ["<C-Space>"] = cmp.mapping.complete(), -- show completion suggestions
-        -- ["<C-e>"] = cmp.mapping.abort(), -- close completion window
-        -- ["<CR>"] = cmp.mapping.confirm({ select = false }),
       }),
       -- sources for autocompletion
       -- group_index: lower number = higher priority group (shown first).
@@ -95,8 +87,8 @@ return {
       all = {
         luasnip.snippet({
           trig = "box",
-          namr = "Checkbox",
-          dscr = "Checkbox to for notes",
+          name = "Checkbox",
+          desc = "Checkbox for notes",
         }, {
           luasnip.function_node(checkbox, {}),
         }),

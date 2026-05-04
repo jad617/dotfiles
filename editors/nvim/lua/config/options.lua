@@ -124,18 +124,6 @@ cmd([[au FileType python,go,groovy setlocal tabstop=4 expandtab shiftwidth=4 sof
 vim.o.exrc = true   -- load .nvim.lua from project directories
 
 ------------------------------------------------------------
--- [[ Suppress upstream deprecation noise ]]
--- cmp-nvim-lsp, copilot-cmp, nvim-colorizer still call client.is_stopped
--- via dot syntax (triggers Neovim 0.11+ deprecation warning on every LSP
--- attach). Swallow only this one message; all others pass through normally.
-------------------------------------------------------------
-local _orig_deprecate = vim.deprecate
-vim.deprecate = function(name, ...)
-  if name == "client.is_stopped" then return end
-  return _orig_deprecate(name, ...)
-end
-
-------------------------------------------------------------
 -- [[ Providers ]]
 ------------------------------------------------------------
 
