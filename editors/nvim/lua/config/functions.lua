@@ -150,7 +150,7 @@ vim.api.nvim_create_user_command("LspInfo", function()
   end
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].filetype = "markdown"
+  vim.diagnostic.enable(false, { bufnr = buf })
   local width = math.min(70, vim.o.columns - 4)
   local height = math.min(#lines + 2, vim.o.lines - 6)
   vim.api.nvim_open_win(buf, true, {
