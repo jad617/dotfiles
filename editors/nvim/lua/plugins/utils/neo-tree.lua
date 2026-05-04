@@ -85,6 +85,7 @@ return {
       },
     },
     filesystem = {
+      use_libuv_file_watcher = true, -- auto-refresh on filesystem changes
       bind_to_cwd = true,
       filtered_items = {
         visible = false,
