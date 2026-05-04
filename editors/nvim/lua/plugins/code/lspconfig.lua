@@ -64,7 +64,7 @@ return {
         -- keymap.set("n", "<leader>de", "<cmd>lua vim.diagnostic.config({ virtual_text = true })<CR>", opts) -- show lsp implementations
 
         opts.desc = "See available code actions"
-        keymap.set({ "n", "v" }, "<leader>la", vim.lsp.buf.code_action, opts) -- see available code actions, in visual mode will apply to selection
+        keymap.set({ "n", "v" }, "<leader>ca", vim.lsp.buf.code_action, opts) -- see available code actions, in visual mode will apply to selection
 
         opts.desc = "Smart rename"
         keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts) -- smart rename
@@ -89,7 +89,7 @@ return {
 
         -- Disable built-in LSP document color (using nvim-colorizer instead)
         if vim.lsp.document_color then
-          vim.lsp.document_color.enable(false, ev.buf)
+          vim.lsp.document_color.enable(false, { bufnr = ev.buf })
         end
       end,
     })
@@ -113,6 +113,7 @@ return {
         capabilities = capabilities,
         settings = lsp_config.settings,
         cmd = lsp_config.cmd or nil,
+        root_dir = lsp_config.root_dir or nil,
       })
     end
   end,
