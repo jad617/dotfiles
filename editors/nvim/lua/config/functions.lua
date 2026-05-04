@@ -182,13 +182,18 @@ vim.api.nvim_create_autocmd("FileType", {
         cwd = root,
         on_exit = function(_, code)
           if code == 0 then
-            vim.notify("go get done — restarting gopls", vim.log.levels.INFO)
+            vim.notify("go get done — restarting gopls…", vim.log.levels.INFO)
             vim.schedule(function()
               for _, client in ipairs(vim.lsp.get_clients({ name = "gopls" })) do
                 client:stop()
               end
               vim.defer_fn(function()
                 vim.lsp.enable("gopls")
+                vim.api.nvim_exec_autocmds("FileType", {
+                  group = "nvim.lsp.enable",
+                  buffer = ev.buf,
+                })
+                vim.notify("gopls restarted — wait a moment for indexing", vim.log.levels.INFO)
               end, 500)
             end)
           else
