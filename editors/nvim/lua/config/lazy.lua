@@ -14,6 +14,8 @@ vim.opt.rtp:prepend(lazypath)
 vim.g.mapleader = " " -- Make sure to set `mapleader` before lazy so your mappings are correct
 vim.g.maplocalleader = "\\" -- Same for `maplocalleader`
 
+vim.env.PATH = vim.fn.stdpath("data") .. "/mason/bin:/opt/homebrew/bin:" .. vim.env.PATH
+
 require("lazy").setup({
   spec = {
     { import = "plugins.code" },

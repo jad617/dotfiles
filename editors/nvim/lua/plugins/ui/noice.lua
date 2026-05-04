@@ -8,6 +8,14 @@ return {
   },
   config = function()
     require("noice").setup({
+      cmdline = {
+        format = {
+          -- disable treesitter highlighting for cmdline (vim query incompatible with Neovim 0.12.2 bundled parser)
+          cmdline = { pattern = "^:", icon = "", lang = "" },
+          search_down = { kind = "search", pattern = "^/", icon = " ", lang = "" },
+          search_up = { kind = "search", pattern = "^%?", icon = " ", lang = "" },
+        },
+      },
       messages = {
         enabled = true,
       },

@@ -92,6 +92,12 @@ vim.api.nvim_create_autocmd("FileType", {
 -- Terminal: copy on select, easy exit from insert mode
 ------------------------------------------------------------
 vim.api.nvim_create_augroup("terminal_settings", { clear = true })
+local function is_shell_terminal(buf_name)
+  for _, shell in ipairs({ "zsh", "bash", "sh", "fish" }) do
+    if buf_name:match(shell .. "$") then return true end
+  end
+  return false
+end
 vim.api.nvim_create_autocmd("TermOpen", {
   group = "terminal_settings",
   callback = function(ev)
@@ -105,10 +111,17 @@ vim.api.nvim_create_autocmd("TermOpen", {
     -- (claude, gh copilot) operate at the shell/prompt level.
     vim.keymap.set("t", "<Esc>", "<C-\\><C-n>", { buffer = buf, noremap = true, silent = true })
 
-    -- Scroll up/down while staying in terminal insert mode
-    -- <C-\><C-o> executes one normal-mode command then returns to terminal insert mode
-    vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
-    vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
+    -- Scroll up/down while staying in terminal insert mode (shell terminals only).
+    -- <C-\><C-o> executes one normal-mode command then returns to terminal insert mode.
+    -- Excluded from AI CLI terminals (e.g. sidekick_terminal) because:
+    --   1. <C-p> is sidekick's built-in "insert prompt" binding — overriding it breaks it.
+    --   2. The brief normal-mode <C-\><C-o> hop can leave the buffer in normal mode if a
+    --      WinEnter autocmd fires during it, making <Space> silently swallowed as leader.
+    local buf_name = vim.api.nvim_buf_get_name(buf)
+    if is_shell_terminal(buf_name) then
+      vim.keymap.set("t", "<C-o>", "<C-\\><C-o><C-u>", { buffer = buf, noremap = true })
+      vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
+    end
 
     -- Shift+Arrow in terminal mode: use smart-splits which handles terminal
     -- mode natively — moves to a Neovim split if one exists in that direction,
@@ -133,17 +146,18 @@ vim.api.nvim_create_autocmd("TermOpen", {
 -- chansend("\x03") sends Ctrl+C to cancel partial input and redraw the prompt
 -- (fixes cursor drift) — but ONLY for shell terminals, not AI CLI tools which
 -- would be killed by Ctrl+C.
-local function is_shell_terminal(buf_name)
-  for _, shell in ipairs({ "zsh", "bash", "sh", "fish" }) do
-    if buf_name:match(shell .. "$") then return true end
-  end
-  return false
-end
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
   group = "terminal_settings",
   callback = function()
     if vim.bo.buftype ~= "terminal" then return end
-    vim.cmd("startinsert")
+    -- vim.schedule ensures startinsert fires after all synchronous WinEnter
+    -- handlers, including sidekick's which calls stopinsert() when restoring
+    -- a previously-saved normal mode. Without this, sidekick wins the race
+    -- and leaves the buffer in normal mode — where <Space> is swallowed as
+    -- the leader key and never reaches the terminal process.
+    vim.schedule(function()
+      if vim.bo.buftype == "terminal" then vim.cmd("startinsert") end
+    end)
     local job_id = vim.b.terminal_job_id
     local buf_name = vim.api.nvim_buf_get_name(0)
     if not is_shell_terminal(buf_name) then return end

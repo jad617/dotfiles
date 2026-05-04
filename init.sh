@@ -121,7 +121,8 @@ install_macos() {
         zellij \
         node \
         go \
-        uv
+        uv \
+        tree-sitter-cli
 
     brew install --cask wezterm@nightly
 
@@ -354,7 +355,10 @@ install_devops_linux() {
         npm install -g @github/copilot
     fi
 
-    # mysql-client (macOS: mysql-client@8.0 via brew)
+    # tree-sitter CLI — required by nvim-treesitter (main branch) for parser compilation
+    if ! cmd_exists tree-sitter; then
+        npm install -g tree-sitter-cli
+    fi
     # sudo apt install -y mysql-client
 
     # keyd — kernel-level key remapping (Wayland-compatible, macOS uses hidutil instead)

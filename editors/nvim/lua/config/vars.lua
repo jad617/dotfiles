@@ -72,6 +72,9 @@ M.lsp = {
     -- },
   },
   gopls = {
+    root_dir = function(fname)
+      return vim.fs.root(fname, { "go.work", "go.mod", ".git" })
+    end,
     settings = {
       gopls = {
         gofumpt = false,
