@@ -49,7 +49,7 @@ else
 	config.font_size = 12
 end
 
-config.font = wezterm.font("MesloLGS NF", { weight = "Bold" })
+config.font = wezterm.font("MesloLGS Nerd Font Mono", { weight = "Bold" })
 config.color_scheme = "Catppuccin Macchiato"
 config.audible_bell = "Disabled"
 
