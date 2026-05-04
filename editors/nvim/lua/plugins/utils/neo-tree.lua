@@ -2,9 +2,10 @@ return {
   {
     "nvim-tree/nvim-web-devicons",
     config = function()
+      local cogs = vim.fn.nr2char(0xF085) -- nf-fa-cogs 
       require("nvim-web-devicons").set_icon({
-        yaml = { icon = "", color = "#D70000", cterm_color = "160", name = "Yaml" },
-        yml  = { icon = "", color = "#D70000", cterm_color = "160", name = "Yml" },
+        yaml = { icon = cogs, color = "#D70000", cterm_color = "160", name = "Yaml" },
+        yml  = { icon = cogs, color = "#D70000", cterm_color = "160", name = "Yml" },
       })
     end,
   },
