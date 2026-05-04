@@ -17,9 +17,9 @@ return {
       kdl = { "trim_newlines", "trim_whitespace" },
       yaml = { "trim_newlines", "trim_whitespace" },
 
-      -- go
-      -- go = { "goimports", "goimports-reviser" },
-      go = { "gopls_add_imports", "goimports-reviser" },
+      -- go: gofmt on save (formats only, never removes imports)
+      -- use <leader>gi to run goimports on demand
+      go = { "gofmt" },
 
       -- json
       json = { "jq", "trim_newlines", "trim_whitespace" },
@@ -44,12 +44,6 @@ return {
       end
       return { lsp_fallback = true, timeout_ms = 500 }
     end,
-    formatters = {
-      gopls_add_imports = {
-        command = "gopls",
-        args = { "check", "--only=source.add_imports", "-" },
-        stdin = true,
-      },
-    },
+    formatters = {},
   },
 }
