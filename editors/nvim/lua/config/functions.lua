@@ -187,7 +187,7 @@ vim.api.nvim_create_autocmd("FileType", {
   callback = function(ev)
     vim.keymap.set("n", "<leader>gG", function()
       local root = vim.fs.root(ev.buf, { "go.mod", "go.work", ".git" }) or vim.fn.getcwd()
-      vim.cmd("silent! write")
+      vim.cmd("noautocmd silent! write") -- bypass goimports so unused imports stay on disk
       vim.notify("go get ./... && go mod tidy — running…", vim.log.levels.INFO)
       vim.fn.jobstart({ "sh", "-c", "go get ./... && go mod tidy" }, {
         cwd = root,
