@@ -61,6 +61,16 @@ return {
       require("nvim-treesitter").install(missing)
     end
 
+    -- Enable native treesitter highlighting for all buffers.
+    -- The main branch removed the highlight module; Neovim 0.11+ exposes
+    -- vim.treesitter.start() which must be called explicitly per buffer.
+    vim.api.nvim_create_autocmd("FileType", {
+      group = vim.api.nvim_create_augroup("NativeTreesitterHighlight", { clear = true }),
+      callback = function()
+        pcall(vim.treesitter.start)
+      end,
+    })
+
     -- autotag setup (uses native treesitter API, nvim-treesitter plugin is optional)
     require("nvim-ts-autotag").setup()
   end,
