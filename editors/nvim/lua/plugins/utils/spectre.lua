@@ -16,7 +16,7 @@ return {
     })
 
     local sed_args
-    if vim.loop.os_uname().sysname == "Darwin" then
+    if vim.uv.os_uname().sysname == "Darwin" then
       sed_args = { "-i", "", "-E" }
     else
       sed_args = { "-i", "-E" }
