@@ -74,7 +74,7 @@ map("n", "<A-n>", ":lua OpenNotesTelescope()<CR>", options)
 -- [[ Git ]]
 ------------------------------------------------------------
 function GitCommitAndPush(commit_message)
-  local command = 'git add -A && git commit -m "' .. commit_message .. '" && git push'
+  local command = "git add -A && git commit -m " .. vim.fn.shellescape(commit_message) .. " && git push"
   vim.fn.system(command)
 end
 
