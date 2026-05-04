@@ -121,7 +121,7 @@ cmd([[au FileType python,go,groovy setlocal tabstop=4 expandtab shiftwidth=4 sof
 -- Disabled: terraform-ls and other servers spam stderr which Neovim
 -- records as ERROR. Flip to "WARN" temporarily when debugging LSP issues.
 ------------------------------------------------------------
-vim.lsp.log.set_level("OFF")
+vim.o.exrc = true   -- load .nvim.lua from project directories
 
 ------------------------------------------------------------
 -- [[ Suppress upstream deprecation noise ]]
