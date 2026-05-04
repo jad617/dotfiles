@@ -5,6 +5,20 @@ local map = vim.api.nvim_set_keymap -- set keys
 local options = { noremap = true, silent = true }
 
 ------------------------------------------------------------
+-- [[ Auto-reload buffers changed on disk ]]
+-- autoread alone is passive; checktime actively polls for changes.
+-- Fires on focus regain, buffer enter, and every updatetime ms while idle.
+------------------------------------------------------------
+vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI" }, {
+  group = vim.api.nvim_create_augroup("AutoReload", { clear = true }),
+  callback = function()
+    if vim.fn.mode() ~= "c" and vim.fn.getcmdtype() == "" then
+      vim.cmd("silent! checktime")
+    end
+  end,
+})
+
+------------------------------------------------------------
 -- [[ Zellij ]]
 ------------------------------------------------------------
 -- Alt+o: Zellij floating terminal in Neovim's cwd, closes on Ctrl-D/exit
