@@ -101,3 +101,35 @@ map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit mess
 -- [[ Make ]]
 map("n", "<A-'>", ":!make ", options)
 map("i", "<A-'>", "<C-c>:!make ", options)
+
+-- [[ Go: fetch new dependencies and restart gopls ]]
+-- Use <leader>gG inside any Go buffer to run `go get ./...` + `go mod tidy`
+-- asynchronously, then restart gopls so it picks up the new packages.
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "go",
+  group = vim.api.nvim_create_augroup("GoGetDeps", { clear = true }),
+  callback = function(ev)
+    vim.keymap.set("n", "<leader>gG", function()
+      local root = vim.fs.root(ev.buf, { "go.mod", "go.work", ".git" }) or vim.fn.getcwd()
+      vim.notify("go get ./... && go mod tidy — running…", vim.log.levels.INFO)
+      vim.fn.jobstart({ "sh", "-c", "go get ./... && go mod tidy" }, {
+        cwd = root,
+        on_exit = function(_, code)
+          if code == 0 then
+            vim.notify("go get done — restarting gopls", vim.log.levels.INFO)
+            vim.schedule(function()
+              for _, client in ipairs(vim.lsp.get_clients({ name = "gopls" })) do
+                client:stop()
+              end
+              vim.defer_fn(function()
+                vim.lsp.enable("gopls")
+              end, 500)
+            end)
+          else
+            vim.notify("go get failed (exit " .. code .. ")", vim.log.levels.ERROR)
+          end
+        end,
+      })
+    end, { buffer = ev.buf, desc = "Go: get deps + restart gopls" })
+  end,
+})
