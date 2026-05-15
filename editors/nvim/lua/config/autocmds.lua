@@ -252,7 +252,7 @@ vim.api.nvim_create_autocmd("VimResized", {
           term:hide()
           vim.defer_fn(function()
             if not term:valid() then term:show() end
-          end, 200)
+          end, 400)
           return
         end
       end
