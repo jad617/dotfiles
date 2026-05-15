@@ -220,26 +220,43 @@ vim.api.nvim_create_autocmd("FocusGained", {
               vim.api.nvim_set_current_win(win)
               vim.defer_fn(function() _refocusing_from_wezterm = false end, 10)
             else
-              -- Float IS already current. Force a jobresize resync so ZLE
-              -- recovers from the SIGWINCH corruption caused by the WezTerm
-              -- pane resize that accompanies a split create/close.
-              -- This mirrors what the toggle-off/on does via WinEnter.
+              -- Float IS already current: just ensure we're in terminal mode.
+              -- VimResized handles the ZLE resync for pane-resize scenarios.
               if vim.fn.mode() ~= "t" then vim.cmd("startinsert") end
-              local job_id = vim.b[buf].terminal_job_id
-              if job_id and job_id > 0 then
-                local w = vim.api.nvim_win_get_width(win)
-                local h = vim.api.nvim_win_get_height(win)
-                vim.fn.jobresize(job_id, w, h + 1)
-                vim.defer_fn(function()
-                  if vim.api.nvim_win_is_valid(win) then
-                    vim.fn.jobresize(job_id, w, h)
-                  end
-                end, 100)
-              end
             end
             return
           end
         end
+      end
+    end)
+  end,
+})
+
+-- When a WezTerm split is created/closed, the Neovim pane resizes →
+-- VimResized fires → Neovim auto-sends jobresize to the terminal buffer.
+-- oh-my-posh right-aligned segments leave ZLE's cursor in the wrong
+-- column after that resize. Re-sending jobresize(h+1→h) immediately
+-- forces ZLE to fully redraw and land on ┗❯ with the correct cursor.
+vim.api.nvim_create_autocmd("VimResized", {
+  group = "terminal_settings",
+  callback = function()
+    vim.schedule(function()
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if not vim.api.nvim_win_is_valid(win) then goto continue end
+        local cfg = vim.api.nvim_win_get_config(win)
+        local buf = vim.api.nvim_win_get_buf(win)
+        if cfg.relative ~= "" and vim.bo[buf].buftype == "terminal" then
+          local job_id = vim.b[buf].terminal_job_id
+          if job_id and job_id > 0 then
+            local w = vim.api.nvim_win_get_width(win)
+            local h = vim.api.nvim_win_get_height(win)
+            vim.fn.jobresize(job_id, w, h + 1)
+            vim.defer_fn(function()
+              if vim.api.nvim_win_is_valid(win) then vim.fn.jobresize(job_id, w, h) end
+            end, 100)
+          end
+        end
+        ::continue::
       end
     end)
   end,
