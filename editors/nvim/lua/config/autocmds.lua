@@ -123,18 +123,25 @@ vim.api.nvim_create_autocmd("TermOpen", {
       vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
     end
 
-    -- Shift+Arrow in terminal mode: use smart-splits which handles terminal
-    -- mode natively — moves to a Neovim split if one exists in that direction,
-    -- otherwise falls back to WezTerm pane navigation. No ESC needed.
+    -- Shift+Arrow in terminal mode:
+    -- • floating terminal → skip smart-splits (it would land on the buffer
+    --   behind the float) and jump directly to the WezTerm pane instead.
+    -- • regular terminal split → use smart-splits as normal.
     local ss_dirs = {
-      ["<S-Left>"]  = "move_cursor_left",
-      ["<S-Right>"] = "move_cursor_right",
-      ["<S-Up>"]    = "move_cursor_up",
-      ["<S-Down>"]  = "move_cursor_down",
+      ["<S-Left>"]  = { ss = "move_cursor_left",  wez = "Left"  },
+      ["<S-Right>"] = { ss = "move_cursor_right", wez = "Right" },
+      ["<S-Up>"]    = { ss = "move_cursor_up",    wez = "Up"    },
+      ["<S-Down>"]  = { ss = "move_cursor_down",  wez = "Down"  },
     }
-    for key, fn in pairs(ss_dirs) do
+    for key, dirs in pairs(ss_dirs) do
       vim.keymap.set("t", key, function()
-        require("smart-splits")[fn]()
+        local cfg = vim.api.nvim_win_get_config(0)
+        if cfg.relative ~= "" then
+          -- floating window: go straight to WezTerm, ignore Neovim splits
+          vim.fn.jobstart({ "wezterm", "cli", "activate-pane-direction", dirs.wez }, { detach = true })
+        else
+          require("smart-splits")[dirs.ss]()
+        end
       end, { buffer = buf, noremap = true, silent = true })
     end
   end,
@@ -142,10 +149,6 @@ vim.api.nvim_create_autocmd("TermOpen", {
 
 -- Auto-enter insert mode whenever a terminal window is focused.
 -- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
--- defer_fn(50ms) lets Snacks finish showing the float before we touch anything.
--- chansend("\x03") sends Ctrl+C to cancel partial input and redraw the prompt
--- (fixes cursor drift) — but ONLY for shell terminals, not AI CLI tools which
--- would be killed by Ctrl+C.
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
   group = "terminal_settings",
   callback = function()
@@ -156,15 +159,35 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     -- and leaves the buffer in normal mode — where <Space> is swallowed as
     -- the leader key and never reaches the terminal process.
     vim.schedule(function()
-      if vim.bo.buftype == "terminal" then vim.cmd("startinsert") end
-    end)
-    local job_id = vim.b.terminal_job_id
-    local buf_name = vim.api.nvim_buf_get_name(0)
-    if not is_shell_terminal(buf_name) then return end
-    vim.defer_fn(function()
       if vim.bo.buftype ~= "terminal" then return end
-      if job_id and job_id > 0 then vim.fn.chansend(job_id, "\x03") end
-    end, 50)
+      local cfg = vim.api.nvim_win_get_config(0)
+      if cfg.relative ~= "" then
+        -- Scroll the window to the last buffer line so the prompt is visible
+        -- immediately (Snacks creates a new window on each show() which may
+        -- start scrolled to the top).
+        local last = vim.api.nvim_buf_line_count(0)
+        vim.api.nvim_win_set_cursor(0, { last, 0 })
+
+        -- oh-my-posh right-aligned segments leave VTerm's cursor on the ┏━
+        -- line after rendering, so startinsert alone puts input there instead
+        -- of ┗❯. jobresize() sends SIGWINCH to the process group (unlike
+        -- kill -WINCH which only hits the shell PID), which forces ZLE to
+        -- fully redraw the prompt — cursor ends up on ┗❯ where it belongs.
+        local job_id = vim.b.terminal_job_id
+        if job_id and job_id > 0 then
+          local win = vim.api.nvim_get_current_win()
+          local w = vim.api.nvim_win_get_width(win)
+          local h = vim.api.nvim_win_get_height(win)
+          vim.fn.jobresize(job_id, w, h + 1)
+          vim.defer_fn(function()
+            if vim.api.nvim_win_is_valid(win) then
+              vim.fn.jobresize(job_id, w, h)
+            end
+          end, 100)
+        end
+      end
+      vim.cmd("startinsert")
+    end)
   end,
 })
 
