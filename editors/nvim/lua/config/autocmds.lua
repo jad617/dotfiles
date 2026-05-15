@@ -207,6 +207,19 @@ vim.api.nvim_create_autocmd("FocusGained", {
   group = "terminal_settings",
   callback = function()
     vim.schedule(function()
+      local cur_win = vim.api.nvim_get_current_win()
+      local cur_buf = vim.api.nvim_win_get_buf(cur_win)
+      local cur_cfg = vim.api.nvim_win_get_config(cur_win)
+      -- Already in the floating terminal in insert mode: do nothing.
+      -- Calling set_current_win/startinsert triggers a mode transition that
+      -- disturbs ZLE and produces gibberish (e.g. when WezTerm closes a split).
+      if cur_cfg.relative ~= ""
+        and vim.bo[cur_buf].buftype == "terminal"
+        and vim.fn.mode() == "t"
+      then
+        return
+      end
+      -- Not focused on the float (or not in insert mode): find and focus it.
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_is_valid(win) then
           local cfg = vim.api.nvim_win_get_config(win)
@@ -215,7 +228,6 @@ vim.api.nvim_create_autocmd("FocusGained", {
             _refocusing_from_wezterm = true
             vim.api.nvim_set_current_win(win)
             vim.cmd("startinsert")
-            -- Reset after the WinEnter vim.schedule callback has had time to run
             vim.defer_fn(function() _refocusing_from_wezterm = false end, 10)
             return
           end
