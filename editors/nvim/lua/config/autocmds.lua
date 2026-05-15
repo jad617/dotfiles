@@ -160,23 +160,16 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     -- the leader key and never reaches the terminal process.
     vim.schedule(function()
       if vim.bo.buftype ~= "terminal" then return end
-      vim.cmd("startinsert")
       local cfg = vim.api.nvim_win_get_config(0)
       if cfg.relative ~= "" then
-        -- Snacks creates a brand-new nvim_open_win on each show(); the new
-        -- window may start scrolled to the top rather than where the terminal
-        -- cursor is. <C-\><C-o>G executes G (jump to last line) from terminal-
-        -- insert mode via a one-shot normal-mode command, scrolling the view to
-        -- the prompt without leaving insert mode or disturbing the shell.
-        vim.defer_fn(function()
-          if vim.bo.buftype == "terminal" then
-            vim.api.nvim_feedkeys(
-              vim.api.nvim_replace_termcodes("<C-\\><C-o>G", true, false, true),
-              "t", false
-            )
-          end
-        end, 30)
+        -- Snacks creates a new nvim_open_win on each show(); the new window
+        -- may be scrolled to the top of the buffer. Jump to the last line
+        -- (where the shell prompt is) while still in normal-mode context,
+        -- before startinsert hands control to the terminal.
+        local last = vim.api.nvim_buf_line_count(0)
+        vim.api.nvim_win_set_cursor(0, { last, 0 })
       end
+      vim.cmd("startinsert")
     end)
   end,
 })
