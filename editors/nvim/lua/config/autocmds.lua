@@ -163,20 +163,19 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
       vim.cmd("startinsert")
       local cfg = vim.api.nvim_win_get_config(0)
       if cfg.relative ~= "" then
-        -- oh-my-posh renders its prompt with cursor-up ANSI sequences; when the
-        -- float is re-shown zsh's ZLE doesn't know the window is visible again
-        -- and leaves the cursor mid-buffer. SIGWINCH tells zsh the terminal
-        -- changed size (even though it hasn't) which forces ZLE to redraw the
-        -- prompt at the correct position — no newline, no cleared screen.
-        local job_id = vim.b.terminal_job_id
-        if job_id and job_id > 0 then
-          local pid = vim.fn.jobpid(job_id)
-          if pid and pid > 0 then
-            vim.defer_fn(function()
-              vim.fn.jobstart({ "kill", "-WINCH", tostring(pid) }, { detach = true })
-            end, 50)
+        -- Snacks creates a brand-new nvim_open_win on each show(); the new
+        -- window may start scrolled to the top rather than where the terminal
+        -- cursor is. <C-\><C-o>G executes G (jump to last line) from terminal-
+        -- insert mode via a one-shot normal-mode command, scrolling the view to
+        -- the prompt without leaving insert mode or disturbing the shell.
+        vim.defer_fn(function()
+          if vim.bo.buftype == "terminal" then
+            vim.api.nvim_feedkeys(
+              vim.api.nvim_replace_termcodes("<C-\\><C-o>G", true, false, true),
+              "t", false
+            )
           end
-        end
+        end, 30)
       end
     end)
   end,
