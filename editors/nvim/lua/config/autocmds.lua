@@ -162,12 +162,29 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
       if vim.bo.buftype ~= "terminal" then return end
       local cfg = vim.api.nvim_win_get_config(0)
       if cfg.relative ~= "" then
-        -- Snacks creates a new nvim_open_win on each show(); the new window
-        -- may be scrolled to the top of the buffer. Jump to the last line
-        -- (where the shell prompt is) while still in normal-mode context,
-        -- before startinsert hands control to the terminal.
+        -- Scroll the window to the last buffer line so the prompt is visible
+        -- immediately (Snacks creates a new window on each show() which may
+        -- start scrolled to the top).
         local last = vim.api.nvim_buf_line_count(0)
         vim.api.nvim_win_set_cursor(0, { last, 0 })
+
+        -- oh-my-posh right-aligned segments leave VTerm's cursor on the ┏━
+        -- line after rendering, so startinsert alone puts input there instead
+        -- of ┗❯. jobresize() sends SIGWINCH to the process group (unlike
+        -- kill -WINCH which only hits the shell PID), which forces ZLE to
+        -- fully redraw the prompt — cursor ends up on ┗❯ where it belongs.
+        local job_id = vim.b.terminal_job_id
+        if job_id and job_id > 0 then
+          local win = vim.api.nvim_get_current_win()
+          local w = vim.api.nvim_win_get_width(win)
+          local h = vim.api.nvim_win_get_height(win)
+          vim.fn.jobresize(job_id, w, h + 1)
+          vim.defer_fn(function()
+            if vim.api.nvim_win_is_valid(win) then
+              vim.fn.jobresize(job_id, w, h)
+            end
+          end, 100)
+        end
       end
       vim.cmd("startinsert")
     end)
