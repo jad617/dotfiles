@@ -123,18 +123,25 @@ vim.api.nvim_create_autocmd("TermOpen", {
       vim.keymap.set("t", "<C-p>", "<C-\\><C-o><C-d>", { buffer = buf, noremap = true })
     end
 
-    -- Shift+Arrow in terminal mode: use smart-splits which handles terminal
-    -- mode natively — moves to a Neovim split if one exists in that direction,
-    -- otherwise falls back to WezTerm pane navigation. No ESC needed.
+    -- Shift+Arrow in terminal mode:
+    -- • floating terminal → skip smart-splits (it would land on the buffer
+    --   behind the float) and jump directly to the WezTerm pane instead.
+    -- • regular terminal split → use smart-splits as normal.
     local ss_dirs = {
-      ["<S-Left>"]  = "move_cursor_left",
-      ["<S-Right>"] = "move_cursor_right",
-      ["<S-Up>"]    = "move_cursor_up",
-      ["<S-Down>"]  = "move_cursor_down",
+      ["<S-Left>"]  = { ss = "move_cursor_left",  wez = "Left"  },
+      ["<S-Right>"] = { ss = "move_cursor_right", wez = "Right" },
+      ["<S-Up>"]    = { ss = "move_cursor_up",    wez = "Up"    },
+      ["<S-Down>"]  = { ss = "move_cursor_down",  wez = "Down"  },
     }
-    for key, fn in pairs(ss_dirs) do
+    for key, dirs in pairs(ss_dirs) do
       vim.keymap.set("t", key, function()
-        require("smart-splits")[fn]()
+        local cfg = vim.api.nvim_win_get_config(0)
+        if cfg.relative ~= "" then
+          -- floating window: go straight to WezTerm, ignore Neovim splits
+          vim.fn.jobstart({ "wezterm", "cli", "activate-pane-direction", dirs.wez }, { detach = true })
+        else
+          require("smart-splits")[dirs.ss]()
+        end
       end, { buffer = buf, noremap = true, silent = true })
     end
   end,
