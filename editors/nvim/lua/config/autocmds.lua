@@ -152,10 +152,6 @@ vim.api.nvim_create_autocmd("TermOpen", {
 -- window); in the FocusGained path the cursor is already at ┗❯ and jobresize
 -- would send a spurious SIGWINCH that scrambles ZLE → gibberish output.
 local _refocusing_from_wezterm = false
--- Set to true by VimResized when a WezTerm pane resize is detected while a
--- float terminal is open. Consumed (cleared) by FocusGained / WinEnter to
--- decide when to send Ctrl-L for ZLE cursor repair.
-local _pane_resized = false
 
 -- Auto-enter insert mode whenever a terminal window is focused.
 -- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
@@ -183,10 +179,10 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
         -- of ┗❯. jobresize() sends SIGWINCH to the process group (unlike
         -- kill -WINCH which only hits the shell PID), which forces ZLE to
         -- fully redraw the prompt — cursor ends up on ┗❯ where it belongs.
-        local job_id = vim.b.terminal_job_id
+        -- Skip when coming from FocusGained: cursor is already correct there,
+        -- and an extra SIGWINCH scrambles ZLE → gibberish in the prompt.
         if not _refocusing_from_wezterm then
-          -- Toggle case (new Snacks window): jobresize(h+1→h) fixes the
-          -- oh-my-posh cursor position that startinsert alone leaves wrong.
+          local job_id = vim.b.terminal_job_id
           if job_id and job_id > 0 then
             local win = vim.api.nvim_get_current_win()
             local w = vim.api.nvim_win_get_width(win)
@@ -197,15 +193,6 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
                 vim.fn.jobresize(job_id, w, h)
               end
             end, 100)
-          end
-        elseif _pane_resized then
-          -- WezTerm pane resize case: by the time FocusGained → nvim_set_current_win
-          -- fires WinEnter, oh-my-posh has settled. Ctrl-L (clear-screen) redraws
-          -- the prompt from scratch — fixing the ZLE cursor corruption — while
-          -- preserving any in-progress line buffer.
-          _pane_resized = false
-          if job_id and job_id > 0 then
-            vim.fn.chansend(job_id, "\x0c")
           end
         end
       end
@@ -233,15 +220,8 @@ vim.api.nvim_create_autocmd("FocusGained", {
               vim.api.nvim_set_current_win(win)
               vim.defer_fn(function() _refocusing_from_wezterm = false end, 10)
             else
-              -- Float IS already current: ensure terminal mode and, if a pane
-              -- resize happened, fix ZLE cursor corruption with Ctrl-L. By
-              -- FocusGained time, oh-my-posh has finished its SIGWINCH redraw.
+              -- Float IS already current: just ensure we're in terminal mode.
               if vim.fn.mode() ~= "t" then vim.cmd("startinsert") end
-              if _pane_resized then
-                _pane_resized = false
-                local job_id = vim.b[buf].terminal_job_id
-                if job_id and job_id > 0 then vim.fn.chansend(job_id, "\x0c") end
-              end
             end
             return
           end
@@ -251,23 +231,32 @@ vim.api.nvim_create_autocmd("FocusGained", {
   end,
 })
 
--- When a WezTerm split is created/closed, the Neovim pane resizes.
--- Record that so FocusGained / WinEnter know to send Ctrl-L when the user
--- returns to the float. We don't act here because VimResized fires before
--- oh-my-posh finishes its SIGWINCH redraw — timing is unreliable at this point.
+-- When a WezTerm split is created/closed, the Neovim pane resizes →
+-- VimResized fires → Neovim auto-jobresize sends SIGWINCH to ZSH, which
+-- corrupts VTerm's cursor state (oh-my-posh right-aligned segments leave the
+-- VTerm cursor on the ┏━ line). No SIGWINCH trick or Ctrl-L can fix an
+-- already-corrupted VTerm. Instead, replicate the Snacks toggle (hide+show):
+-- hide() destroys the window/VTerm, show() creates a fresh one, and the
+-- WinEnter jobresize(h+1→h) then fixes oh-my-posh cursor position — the
+-- exact same sequence that works when the user manually toggles off/on.
+-- 400ms delay gives oh-my-posh time to finish its auto-jobresize render
+-- before we do the hide, so the hide+show starts from a stable ZSH state.
 vim.api.nvim_create_autocmd("VimResized", {
   group = "terminal_settings",
   callback = function()
-    for _, win in ipairs(vim.api.nvim_list_wins()) do
-      if vim.api.nvim_win_is_valid(win) then
-        local cfg = vim.api.nvim_win_get_config(win)
-        local buf = vim.api.nvim_win_get_buf(win)
-        if cfg.relative ~= "" and vim.bo[buf].buftype == "terminal" then
-          _pane_resized = true
+    vim.schedule(function()
+      local ok, snacks = pcall(require, "snacks")
+      if not ok then return end
+      for _, term in ipairs(snacks.terminal.list()) do
+        if term:valid() then
+          term:hide()
+          vim.defer_fn(function()
+            if not term:valid() then term:show() end
+          end, 400)
           return
         end
       end
-    end
+    end)
   end,
 })
 
