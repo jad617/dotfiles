@@ -159,7 +159,14 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     -- and leaves the buffer in normal mode — where <Space> is swallowed as
     -- the leader key and never reaches the terminal process.
     vim.schedule(function()
-      if vim.bo.buftype == "terminal" then vim.cmd("startinsert") end
+      if vim.bo.buftype ~= "terminal" then return end
+      vim.cmd("startinsert")
+      -- Floating terminal toggled back into view: cursor can be invisible until
+      -- the shell receives input. Force a cursor redraw without touching the process.
+      local cfg = vim.api.nvim_win_get_config(0)
+      if cfg.relative ~= "" then
+        pcall(vim.api.nvim__redraw, { cursor = true, win = vim.api.nvim_get_current_win(), flush = true })
+      end
     end)
   end,
 })
