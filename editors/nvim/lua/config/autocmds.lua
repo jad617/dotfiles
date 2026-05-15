@@ -246,29 +246,16 @@ vim.api.nvim_create_autocmd("VimResized", {
   callback = function()
     vim.schedule(function()
       local ok, snacks = pcall(require, "snacks")
-      if not ok then
-        vim.notify("DBG VimResized: snacks unavailable", vim.log.levels.WARN)
-        return
-      end
-      local terms = snacks.terminal.list()
-      vim.notify("DBG VimResized: " .. #terms .. " terms", vim.log.levels.INFO)
-      for i, term in ipairs(terms) do
-        vim.notify("DBG term[" .. i .. "] valid=" .. tostring(term:valid()), vim.log.levels.INFO)
+      if not ok then return end
+      for _, term in ipairs(snacks.terminal.list()) do
         if term:valid() then
           term:hide()
-          vim.notify("DBG hiding, will show in 400ms", vim.log.levels.INFO)
           vim.defer_fn(function()
-            if not term:valid() then
-              term:show()
-              vim.notify("DBG showed", vim.log.levels.INFO)
-            else
-              vim.notify("DBG already valid, skip show", vim.log.levels.INFO)
-            end
+            if not term:valid() then term:show() end
           end, 400)
           return
         end
       end
-      vim.notify("DBG VimResized: no valid term found", vim.log.levels.WARN)
     end)
   end,
 })
