@@ -10,10 +10,12 @@ return {
     require("noice").setup({
       cmdline = {
         format = {
-          -- disable treesitter highlighting for cmdline (vim query incompatible with Neovim 0.12.2 bundled parser)
-          cmdline = { pattern = "^:", icon = "", lang = "" },
-          search_down = { kind = "search", pattern = "^/", icon = " ", lang = "" },
-          search_up = { kind = "search", pattern = "^%?", icon = " ", lang = "" },
+          -- lang="" is truthy in Lua and still invokes Syntax.highlight() via nvim_buf_call,
+          -- which interferes with ext_cmdline in Neovim 0.12 and drops the % range specifier.
+          -- lang=false is falsy: it skips the highlight branch entirely and keeps % working.
+          cmdline    = { pattern = "^:", icon = "", lang = false },
+          search_down = { kind = "search", pattern = "^/",  icon = " ", lang = false },
+          search_up   = { kind = "search", pattern = "^%?", icon = " ", lang = false },
         },
       },
       messages = {
