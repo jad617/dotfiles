@@ -180,6 +180,7 @@ vim.api.nvim_create_autocmd("FocusGained", {
           local buf = vim.api.nvim_win_get_buf(win)
           if cfg.relative ~= "" and vim.bo[buf].buftype == "terminal" then
             vim.api.nvim_set_current_win(win)
+            vim.cmd("startinsert")
             return
           end
         end
