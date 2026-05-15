@@ -149,10 +149,6 @@ vim.api.nvim_create_autocmd("TermOpen", {
 
 -- Auto-enter insert mode whenever a terminal window is focused.
 -- Covers re-toggling a hidden float (Snacks start_insert only fires on creation).
--- defer_fn(50ms) lets Snacks finish showing the float before we touch anything.
--- chansend("\x03") sends Ctrl+C to cancel partial input and redraw the prompt
--- (fixes cursor drift) — but ONLY for shell terminals, not AI CLI tools which
--- would be killed by Ctrl+C.
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
   group = "terminal_settings",
   callback = function()
@@ -165,13 +161,6 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     vim.schedule(function()
       if vim.bo.buftype == "terminal" then vim.cmd("startinsert") end
     end)
-    local job_id = vim.b.terminal_job_id
-    local buf_name = vim.api.nvim_buf_get_name(0)
-    if not is_shell_terminal(buf_name) then return end
-    vim.defer_fn(function()
-      if vim.bo.buftype ~= "terminal" then return end
-      if job_id and job_id > 0 then vim.fn.chansend(job_id, "\x03") end
-    end, 50)
   end,
 })
 
