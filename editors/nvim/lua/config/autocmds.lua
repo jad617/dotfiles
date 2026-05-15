@@ -232,11 +232,14 @@ vim.api.nvim_create_autocmd("FocusGained", {
   end,
 })
 
--- When a WezTerm split is created/closed, the Neovim pane resizes →
--- VimResized fires → Neovim auto-sends jobresize to the terminal buffer.
--- oh-my-posh right-aligned segments leave ZLE's cursor in the wrong
--- column after that resize. Re-sending jobresize(h+1→h) immediately
--- forces ZLE to fully redraw and land on ┗❯ with the correct cursor.
+-- When a WezTerm split is created/closed, Neovim's pane resizes →
+-- VimResized fires → Neovim auto-jobresize sends SIGWINCH to ZSH *before*
+-- VimResized fires. By the time our handler runs, ZSH has already redrawn
+-- with corrupted cursor state (oh-my-posh right-aligned segments leave the
+-- VTerm cursor on the ┏━ line). Extra SIGWINCHes just redraw from that
+-- corrupted state. Instead, send Ctrl-L after the resize settles: ZSH's
+-- clear-screen widget wipes the terminal and redraws from scratch with
+-- fresh cursor math, preserving any in-progress line buffer.
 vim.api.nvim_create_autocmd("VimResized", {
   group = "terminal_settings",
   callback = function()
@@ -248,12 +251,11 @@ vim.api.nvim_create_autocmd("VimResized", {
         if cfg.relative ~= "" and vim.bo[buf].buftype == "terminal" then
           local job_id = vim.b[buf].terminal_job_id
           if job_id and job_id > 0 then
-            local w = vim.api.nvim_win_get_width(win)
-            local h = vim.api.nvim_win_get_height(win)
-            vim.fn.jobresize(job_id, w, h + 1)
             vim.defer_fn(function()
-              if vim.api.nvim_win_is_valid(win) then vim.fn.jobresize(job_id, w, h) end
-            end, 100)
+              if vim.api.nvim_buf_is_valid(buf) then
+                vim.fn.chansend(job_id, "\x0c")
+              end
+            end, 200)
           end
         end
         ::continue::
