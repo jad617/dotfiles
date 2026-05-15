@@ -160,14 +160,24 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     -- the leader key and never reaches the terminal process.
     vim.schedule(function()
       if vim.bo.buftype ~= "terminal" then return end
+      vim.cmd("startinsert")
       local cfg = vim.api.nvim_win_get_config(0)
       if cfg.relative ~= "" then
-        -- Float re-shown: scroll to the last line so the shell prompt is in view,
-        -- then enter terminal mode. Without G, Neovim keeps whatever scroll
-        -- position the hidden window had, leaving the cursor off-screen.
-        vim.cmd("normal! G")
+        -- oh-my-posh renders its prompt with cursor-up ANSI sequences; when the
+        -- float is re-shown zsh's ZLE doesn't know the window is visible again
+        -- and leaves the cursor mid-buffer. SIGWINCH tells zsh the terminal
+        -- changed size (even though it hasn't) which forces ZLE to redraw the
+        -- prompt at the correct position — no newline, no cleared screen.
+        local job_id = vim.b.terminal_job_id
+        if job_id and job_id > 0 then
+          local pid = vim.fn.jobpid(job_id)
+          if pid and pid > 0 then
+            vim.defer_fn(function()
+              vim.fn.jobstart({ "kill", "-WINCH", tostring(pid) }, { detach = true })
+            end, 50)
+          end
+        end
       end
-      vim.cmd("startinsert")
     end)
   end,
 })
