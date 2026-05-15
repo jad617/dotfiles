@@ -168,6 +168,26 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
   end,
 })
 
+-- When Neovim regains focus (e.g. switching back from another WezTerm pane),
+-- if a floating terminal is visible, jump to it so it stays in the foreground.
+vim.api.nvim_create_autocmd("FocusGained", {
+  group = "terminal_settings",
+  callback = function()
+    vim.schedule(function()
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) then
+          local cfg = vim.api.nvim_win_get_config(win)
+          local buf = vim.api.nvim_win_get_buf(win)
+          if cfg.relative ~= "" and vim.bo[buf].buftype == "terminal" then
+            vim.api.nvim_set_current_win(win)
+            return
+          end
+        end
+      end
+    end)
+  end,
+})
+
 -- Close terminal buffer silently on exit regardless of exit code.
 -- Snacks' auto_close=false disables its built-in handler (which shows an
 -- error notification on non-zero exit); this replaces it quietly.
