@@ -231,6 +231,41 @@ vim.api.nvim_create_autocmd("FocusGained", {
   end,
 })
 
+-- When WezTerm creates or closes a split the Neovim pane is resized.
+-- Neovim fires VimResized, adjusts all windows, and internally sends SIGWINCH
+-- to the float terminal buffer. ZLE redraws for the new size — but the
+-- back-to-back SIGWINCHes (shrink → grow) can leave ZLE's column tracking in
+-- a corrupt state, causing gibberish input and a cursor one-behind.
+-- Waiting 300 ms lets the automatic SIGWINCH/redraw settle, then one more
+-- jobresize cycle forces a clean ZLE state.
+vim.api.nvim_create_autocmd("VimResized", {
+  group = "terminal_settings",
+  callback = function()
+    vim.defer_fn(function()
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) then
+          local cfg = vim.api.nvim_win_get_config(win)
+          local buf = vim.api.nvim_win_get_buf(win)
+          if cfg.relative ~= "" and vim.bo[buf].buftype == "terminal" then
+            local job_id = vim.b[buf].terminal_job_id
+            if job_id and job_id > 0 then
+              local w = vim.api.nvim_win_get_width(win)
+              local h = vim.api.nvim_win_get_height(win)
+              vim.fn.jobresize(job_id, w, h + 1)
+              vim.defer_fn(function()
+                if vim.api.nvim_win_is_valid(win) then
+                  vim.fn.jobresize(job_id, w, h)
+                end
+              end, 100)
+            end
+            break
+          end
+        end
+      end
+    end, 300)
+  end,
+})
+
 -- Close terminal buffer silently on exit regardless of exit code.
 -- Snacks' auto_close=false disables its built-in handler (which shows an
 -- error notification on non-zero exit); this replaces it quietly.
