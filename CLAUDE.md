@@ -6,3 +6,4 @@
 - **Never merge** a branch unless the user explicitly says to merge.
 - Default behavior for all git work: make changes locally only.
 - When a task is done, stop at the local commit and wait for the user to say "push", "merge", or "push and merge".
+- **Always squash commits** before merging a branch into main (`git merge --squash` or rebase squash), so main history stays clean.
