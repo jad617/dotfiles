@@ -103,6 +103,10 @@ wezterm.on("workspace-changed", function(window, _)
 	window:toast_notification("Workspace", "Switched to: " .. (ws or "default"), nil, 3000)
 end)
 
+wezterm.on("window-config-reloaded", function(window, _)
+	window:toast_notification("WezTerm", "Config reloaded ✓", nil, 2000)
+end)
+
 --------------------------------------------------------------------------------
 -- Borders and inactive pane dimming
 --------------------------------------------------------------------------------
@@ -308,31 +312,12 @@ config.keys = {
 	{ key = "Backspace", mods = "SHIFT", action = action.SendKey({ key = "Backspace", mods = "NONE" }) },
 	{ key = "phys:Space", mods = "SHIFT", action = action.SendKey({ key = "Space", mods = "NONE" }) },
 
-	-- Move tab to index (0-based); create missing tabs up to that index
+	-- Move tab to index (0-based); swaps if a tab already occupies that position.
+	-- LEADER+. then press a digit 0-9.
 	{
 		key = ".",
 		mods = "LEADER",
-		action = action.PromptInputLine({
-			description = "Move tab to new index (0-based)",
-			action = wezterm.action_callback(function(window, pane, line)
-				local idx = tonumber(line)
-				if not idx then
-					return
-				end
-				local ok, tabs = pcall(function()
-					return window:tabs()
-				end)
-				local count = (ok and tabs and #tabs) or 1
-				while count <= idx do
-					window:perform_action(action.SpawnCommandInNewTab({ cwd = wezterm.home_dir }), pane)
-					ok, tabs = pcall(function()
-						return window:tabs()
-					end)
-					count = (ok and tabs and #tabs) or (count + 1)
-				end
-				window:perform_action(action.MoveTab(idx), pane)
-			end),
-		}),
+		action = action.ActivateKeyTable({ name = "move_tab", one_shot = true, timeout_milliseconds = 2000 }),
 	},
 
 	-- Splits: h = right (side by side), v = down (top/bottom)
@@ -409,6 +394,13 @@ config.keys = {
 --------------------------------------------------------------------------------
 config.key_tables = {
 	broadcast_mode = broadcast_keys,
+	move_tab = (function()
+		local t = { { key = "Escape", mods = "NONE", action = action.PopKeyTable } }
+		for i = 0, 9 do
+			table.insert(t, { key = tostring(i), mods = "NONE", action = action.MoveTab(i) })
+		end
+		return t
+	end)(),
 	copy_mode = {
 		-- Movement
 		{ key = "h",          mods = "NONE",  action = action.CopyMode("MoveLeft") },
