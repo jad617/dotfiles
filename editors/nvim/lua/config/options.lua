@@ -16,6 +16,7 @@ local options = { noremap = true }
 ------------------------------------------------------------
 -- opt.iskeyword:append({ "-", "." })
 opt.iskeyword:append({ "-" })
+opt.shortmess:append("I") -- suppress intro message ("Type :qa to exit")
 
 -- Prevent nvim from auto-equalizing window widths (keeps explorer fixed)
 vim.o.equalalways = false
