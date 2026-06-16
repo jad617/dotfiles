@@ -172,3 +172,6 @@ alias ssu='sudo su -'
 alias apt='sudo apt'
 alias podman='sudo podman'
 alias podman-compose='sudo podman-compose'
+
+# DevOps dashboard
+alias devops='nvim +DevOps'

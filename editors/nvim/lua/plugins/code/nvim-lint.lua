@@ -58,6 +58,12 @@ return {
     vim.api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "InsertLeave" }, {
       group = lint_augroup,
       callback = function()
+        -- Only lint real, on-disk files. Skip scratch/UI/terminal buffers
+        -- (buftype ~= "") and unnamed buffers so heavyweight linters like
+        -- proselint never run on throwaway markdown buffers (e.g. plugin
+        -- preview floats), which otherwise pegs the CPU.
+        if vim.bo.buftype ~= "" or vim.api.nvim_buf_get_name(0) == "" then return end
+
         -- pcall prevents hard crashes when a linter binary is missing or not yet installed.
         local ok, err = pcall(lint.try_lint)
         if not ok then
