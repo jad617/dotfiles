@@ -11,7 +11,10 @@ vim.api.nvim_create_autocmd("UiEnter", {
   desc = "Open workspaces automatically",
   group = "workspaces",
   callback = function()
-    if vim.fn.argc() == 0 then vim.fn.execute("SnacksWorkspaces") end
+    -- Skip if a file was given or a +command was passed (e.g. nvim +DevOps)
+    if vim.fn.argc() == 0 and not vim.tbl_contains(vim.v.argv, "+DevOps") then
+      vim.fn.execute("SnacksWorkspaces")
+    end
   end,
 })
 
