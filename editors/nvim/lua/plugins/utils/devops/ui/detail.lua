@@ -17,6 +17,23 @@ local M = {}
 local ns = vim.api.nvim_create_namespace("DevOpsDetail")
 local state = { win = nil, buf = nil, prev_win = nil, comment_rows = {} }
 
+---------------------------------------------------------------------------
+-- Render builder output into an external buffer (for inline/nav-stack use).
+-- Returns the highlight data for the caller to apply.
+---------------------------------------------------------------------------
+function M.write_to_buf(buf, b)
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, b.lines())
+  vim.bo[buf].modifiable = false
+  local ns_ext = vim.api.nvim_create_namespace("DevOps")
+  vim.api.nvim_buf_clear_namespace(buf, ns_ext, 0, -1)
+  for _, h in ipairs(b.highlights()) do
+    pcall(vim.api.nvim_buf_set_extmark, buf, ns_ext, h.line, h.col_start, {
+      end_col = h.col_end, hl_group = h.hl,
+    })
+  end
+end
+
 local function close()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, true)
@@ -105,7 +122,7 @@ local function show(title, b, on_open)
     vim.wo[state.win].wrap = true
     vim.wo[state.win].cursorline = true
     vim.wo[state.win].winhighlight = "FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle"
-    for _, k in ipairs({ "q", "<Esc>" }) do
+    for _, k in ipairs({ "q", "<C-d>", "<Esc>" }) do
       vim.keymap.set("n", k, close, { buffer = buf, nowait = true, desc = "Close" })
     end
   end
@@ -853,6 +870,189 @@ function M.open_pr(pr)
       end)
     end
   end)
+end
+
+---------------------------------------------------------------------------
+-- Inline detail API — render into an external buffer (nav-stack use).
+-- Each returns nothing but calls `on_ready(b, setup_keys_fn)` async.
+---------------------------------------------------------------------------
+
+--- Load and render a Jira issue detail. Calls on_ready(b, setup_keys_fn) once
+--- the initial data is available, and calls on_update(b, setup_keys_fn) each
+--- time async enrichment (comments, linked PRs) arrives.
+function M.load_issue(key, opts)
+  opts = opts or {}
+  local on_ready = opts.on_ready or function() end
+  local on_update = opts.on_update or on_ready
+  local on_navigate = opts.on_navigate  -- callback(kind, data) for linked-item nav
+
+  api.get_issue(key, function(ok, issue, err)
+    if not ok or not issue then
+      return vim.notify("DevOps: " .. (err or ("failed to load " .. key)), vim.log.levels.ERROR)
+    end
+    local project_key = key:match("^(%u+)-")
+
+    local function make_keys(buf)
+      local browse = client.base_url() .. "/browse/" .. issue.key
+      vim.keymap.set("n", "o", function() vim.ui.open(browse) end, { buffer = buf, nowait = true, desc = "Open in browser" })
+      vim.keymap.set("n", "c", function()
+        input.open("Comment " .. key, "", function(text)
+          if text == "" then return end
+          api.add_comment(key, text, function(ok3, _, err3)
+            if not ok3 then return vim.notify("DevOps: " .. (err3 or "comment failed"), vim.log.levels.ERROR) end
+            vim.notify("DevOps: comment added to " .. key, vim.log.levels.INFO)
+            M.load_issue(key, opts)
+          end)
+        end, { on_mention = jira_mention() })
+      end, { buffer = buf, nowait = true, desc = "Comment" })
+      vim.keymap.set("n", "e", function()
+        api.get_issue(key, function(ok3, iss, err3)
+          if not ok3 then return vim.notify("DevOps: " .. (err3 or "fetch failed"), vim.log.levels.ERROR) end
+          local f = iss.fields or {}
+          vim.ui.input({ prompt = "Summary: ", default = f.summary or "" }, function(new_summary)
+            if not new_summary then return end
+            local desc_text = table.concat(adf.adf_to_lines(f.description), "\n")
+            input.open("Description " .. key, desc_text, function(new_desc)
+              local fields = {}
+              if new_summary ~= (f.summary or "") then fields.summary = new_summary end
+              fields.description = adf.text_to_adf(new_desc)
+              api.update_issue(key, fields, function(ok4, _, err4)
+                if not ok4 then return vim.notify("DevOps: " .. (err4 or "update failed"), vim.log.levels.ERROR) end
+                vim.notify("DevOps: " .. key .. " updated", vim.log.levels.INFO)
+                M.load_issue(key, opts)
+              end)
+            end)
+          end)
+        end)
+      end, { buffer = buf, nowait = true, desc = "Edit" })
+      vim.keymap.set("n", "a", function()
+        api.assignable_users(project_key, function(ok3, users, err3)
+          if not ok3 then return vim.notify("DevOps: " .. (err3 or "user lookup failed"), vim.log.levels.ERROR) end
+          local choices = {}
+          local me_id = client.account_id()
+          if me_id then
+            choices[#choices + 1] = { label = "● Me (" .. (client.display_name() or "") .. ")", account_id = me_id }
+          end
+          choices[#choices + 1] = { label = "✗ Unassigned", account_id = nil }
+          for _, u in ipairs(users) do
+            if u.accountId and u.accountType ~= "app" then
+              choices[#choices + 1] = { label = u.displayName or u.accountId, account_id = u.accountId }
+            end
+          end
+          vim.ui.select(choices, {
+            prompt = "Assign " .. key .. " to:",
+            format_item = function(c2) return c2.label end,
+          }, function(choice)
+            if not choice then return end
+            api.assign(key, choice.account_id, function(ok4, _, err4)
+              if not ok4 then return vim.notify("DevOps: " .. (err4 or "assign failed"), vim.log.levels.ERROR) end
+              vim.notify("DevOps: " .. key .. " assigned to " .. choice.label, vim.log.levels.INFO)
+              M.load_issue(key, opts)
+            end)
+          end)
+        end)
+      end, { buffer = buf, nowait = true, desc = "Assign" })
+    end
+
+    local b_initial = build_issue(issue, nil, nil)
+    on_ready(b_initial, make_keys)
+
+    -- Async enrichment
+    local async_prs, async_comments
+    local function rebuild()
+      local b_new = build_issue(issue, async_prs, async_comments)
+      on_update(b_new, make_keys)
+    end
+    api.dev_status(issue.id, function(ok2, prs)
+      async_prs = ok2 and prs or {}
+      rebuild()
+    end)
+    api.comments(issue.key, function(ok2, cmts)
+      async_comments = ok2 and cmts or {}
+      rebuild()
+    end)
+  end)
+end
+
+--- Load and render a GitHub PR detail. Calls on_ready(b, setup_keys_fn) once
+--- the initial data is available, and on_update when enriched data arrives.
+function M.load_pr(pr, opts)
+  opts = opts or {}
+  local on_ready = opts.on_ready or function() end
+  local on_update = opts.on_update or on_ready
+
+  local repo = pr.repository and pr.repository.nameWithOwner
+  local n = pr.number
+
+  local function make_keys(buf)
+    vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, nowait = true, desc = "Open in browser" })
+    if not repo or not n then return end
+    vim.keymap.set("n", "a", function()
+      gh.pr_approve(repo, n, function(ok, _, err)
+        if not ok then return vim.notify("DevOps: " .. (err or "approve failed"), vim.log.levels.ERROR) end
+        vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
+        M.load_pr(pr, opts)
+      end)
+    end, { buffer = buf, nowait = true, desc = "Approve" })
+    vim.keymap.set("n", "R", function()
+      input.open("Request changes #" .. n, "", function(body)
+        if body == "" then return end
+        gh.pr_request_changes(repo, n, body, function(ok, _, err)
+          if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
+          vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
+        end)
+      end)
+    end, { buffer = buf, nowait = true, desc = "Request changes" })
+    vim.keymap.set("n", "c", function()
+      input.open("Comment #" .. n, "", function(body)
+        if body == "" then return end
+        gh.pr_comment(repo, n, body, function(ok, _, err)
+          if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+          vim.notify("DevOps: commented on #" .. n, vim.log.levels.INFO)
+        end)
+      end)
+    end, { buffer = buf, nowait = true, desc = "Comment" })
+    vim.keymap.set("n", "d", function()
+      gh.pr_diff(repo, n, function(ok, diff_text, err)
+        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+        diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
+      end)
+    end, { buffer = buf, nowait = true, desc = "Diff" })
+    vim.keymap.set("n", "D", function()
+      gh.pr_ready(repo, n, function(ok, _, err)
+        if not ok then return vim.notify("DevOps: " .. (err or "ready failed"), vim.log.levels.ERROR) end
+        vim.notify("DevOps: #" .. n .. " marked ready for review", vim.log.levels.INFO)
+        M.load_pr(pr, opts)
+      end)
+    end, { buffer = buf, nowait = true, desc = "Mark ready" })
+    vim.keymap.set("n", "m", function()
+      vim.ui.select({ "Yes, squash merge", "Cancel" }, { prompt = "Merge #" .. n .. "?" }, function(choice)
+        if not choice or choice:match("^Cancel") then return end
+        gh.pr_merge(repo, n, function(ok, _, err)
+          if not ok then return vim.notify("DevOps: " .. (err or "merge failed"), vim.log.levels.ERROR) end
+          vim.notify("DevOps: #" .. n .. " merged!", vim.log.levels.INFO)
+        end)
+      end)
+    end, { buffer = buf, nowait = true, desc = "Merge" })
+    vim.keymap.set("n", "x", function()
+      gh.pr_checkout(repo, n, function(ok, _, err)
+        if not ok then return vim.notify("DevOps: " .. (err or "checkout failed — cwd must be the repo"), vim.log.levels.ERROR) end
+        vim.notify("DevOps: checked out #" .. n, vim.log.levels.INFO)
+      end)
+    end, { buffer = buf, nowait = true, desc = "Checkout" })
+  end
+
+  on_ready(build_pr(pr), make_keys)
+
+  -- Enrich with full PR data
+  if repo and n then
+    gh.pr_view(repo, n, function(ok, full)
+      if not ok or not full then return end
+      full.repository = pr.repository
+      full.url = pr.url
+      on_update(build_pr(full), make_keys)
+    end)
+  end
 end
 
 return M
