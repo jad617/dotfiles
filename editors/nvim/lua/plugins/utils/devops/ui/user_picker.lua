@@ -151,6 +151,7 @@ function M.open(on_select, opts)
 
   km({ "i", "n" }, "<Esc>", do_close, "Cancel")
   km("n", "q", do_close, "Cancel")
+  km("n", "<C-d>", do_close, "Cancel")
 
   -- Start in insert mode and show initial placeholder.
   vim.cmd("startinsert")

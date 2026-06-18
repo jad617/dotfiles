@@ -83,6 +83,13 @@ local function file_separator(title, width)
   return string.rep(dash, prefix_dashes) .. label .. string.rep(dash, suffix_dashes)
 end
 
+local function sep_rule(width)
+  -- "─ ─ ─ ─ …" pattern filling the width (each "─ " is 4 bytes, 2 display chars)
+  local pair = "─ "
+  local count = math.floor(width / 2)
+  return string.rep(pair, count)
+end
+
 local function map_buf(buf, lhs, rhs, desc)
   vim.keymap.set("n", lhs, rhs, { buffer = buf, nowait = true, silent = true, desc = desc })
 end
@@ -204,13 +211,33 @@ end
 
 local function setup_keymaps(buf)
   map_buf(buf, "q", close, "Close diff")
+  map_buf(buf, "<C-d>", close, "Close diff")
   map_buf(buf, "<Esc>", close, "Close diff")
   map_buf(buf, "<Tab>", function()
     state.mode = state.mode == "unified" and "split" or "unified"
     M.open(state.diff_text, state.title)
   end, "Toggle diff mode")
+  map_buf(buf, "T", function()
+    local render = require("plugins.utils.devops.ui.render")
+    local name = render.cycle_diff_theme(1)
+    vim.notify("Diff theme: " .. name, vim.log.levels.INFO, { title = "DevOps" })
+    M.open(state.diff_text, state.title)
+  end, "Cycle diff theme")
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
+  -- Open in browser at current file/line position
+  if state.pr then
+    map_buf(buf, "o", function()
+      local info = get_line_info()
+      local base = "https://github.com/" .. state.pr.repo .. "/pull/" .. state.pr.number .. "/files"
+      if info and info.path then
+        local hash = vim.fn.sha256(info.path)
+        vim.ui.open(base .. "#diff-" .. hash .. "R" .. info.line)
+      else
+        vim.ui.open(base)
+      end
+    end, "Open in browser")
+  end
   -- Review keymaps (only active when PR context exists)
   if state.pr then
     map_buf(buf, "c", add_inline_comment, "Inline comment")
@@ -308,6 +335,8 @@ local function apply_marks(buf, marks)
       vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffEmpty" })
     elseif m.type == "ctx" then
       vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffCtx" })
+    elseif m.type == "sep" then
+      vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffSep" })
     end
     -- Line number gutter highlight
     if m.gutter_end then
@@ -345,6 +374,8 @@ local function render_footer(total_width, footer_row)
     })
   end
   vim.list_extend(parts, {
+    { sep, nil },
+    { "T ", "DevOpsKey" }, { "theme", "DevOpsAction" },
     { sep, nil },
     { "q ", "DevOpsKey" }, { "close", "DevOpsAction" },
   })
@@ -395,14 +426,26 @@ local function render_unified()
   local line_map = {}
 
   for fi, file in ipairs(files) do
-    if fi > 1 then lines[#lines + 1] = "" end
+    if fi > 1 then
+      local rule = sep_rule(total_w)
+      lines[#lines + 1] = rule
+      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
+      lines[#lines + 1] = rule
+      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
+    end
     local title = file.new_path or file.old_path or "unknown"
     local fpath = file.new_path or file.old_path or ""
 
     state.file_positions[#state.file_positions + 1] = #lines
     lines[#lines + 1] = file_separator(title, total_w)
     marks[#marks + 1] = { line = #lines - 1, type = "file" }
-    lines[#lines + 1] = ""
+    do
+      local rule = sep_rule(total_w)
+      lines[#lines + 1] = rule
+      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
+      lines[#lines + 1] = rule
+      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
+    end
 
     for hi, hunk in ipairs(file.hunks or {}) do
       if hi > 1 then lines[#lines + 1] = "" end
@@ -486,13 +529,21 @@ local function build_split_data(files, pane_width)
   end
 
   for fi, file in ipairs(files) do
-    if fi > 1 then add(nil, "", "") end
+    if fi > 1 then
+      local rule = sep_rule(pane_width)
+      add(nil, rule, rule, "sep", "sep")
+      add(nil, rule, rule, "sep", "sep")
+    end
     local title = file.new_path or file.old_path or "unknown"
     local fpath = file.new_path or file.old_path or ""
     file_pos[#file_pos + 1] = #left
-    local sep = file_separator(title, pane_width)
-    add(nil, sep, sep, "file", "file")
-    add(nil, "", "")
+    local sep_line = file_separator(title, pane_width)
+    add(nil, sep_line, sep_line, "file", "file")
+    do
+      local rule = sep_rule(pane_width)
+      add(nil, rule, rule, "sep", "sep")
+      add(nil, rule, rule, "sep", "sep")
+    end
 
     for hi, hunk in ipairs(file.hunks or {}) do
       if hi > 1 then add(nil, "", "") end

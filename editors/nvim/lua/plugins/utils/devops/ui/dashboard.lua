@@ -39,6 +39,8 @@ local state = {
   content_cursor = nil, -- remembered content cursor {row,col}
   scope_override = nil, -- nil | "project" | "sprint"
   include_done = false, -- when true, include Done issues
+  nav_stack = {},    -- navigation stack: each entry = { cursor, rows, lines_snapshot }
+  in_detail = false, -- true when showing a detail view in content pane
 }
 
 ---------------------------------------------------------------------------
@@ -164,7 +166,25 @@ local function render_footer()
   if not state.footer.buf or not vim.api.nvim_buf_is_valid(state.footer.buf) then return end
   local sec_id = SECTIONS[state.section] and SECTIONS[state.section].id or ""
   local groups
-  if sec_id == "jira_issues" then
+
+  if state.in_detail then
+    -- Detail view footer
+    if sec_id == "jira_issues" then
+      groups = {
+        { "Navigate", { "q back", "BS back", "Tab section", "←→ pane" } },
+        { "Actions",  { "c comment", "e edit", "a assign", "o browser" } },
+        { "Jira",     { "r reply", "? help" } },
+        { "Window",   { "Q close" } },
+      }
+    else
+      groups = {
+        { "Navigate", { "q back", "BS back", "Tab section", "←→ pane" } },
+        { "Actions",  { "a approve", "R changes", "c comment", "d diff" } },
+        { "PR",       { "D ready", "x checkout", "m merge", "o browser" } },
+        { "Window",   { "? help", "Q close" } },
+      }
+    end
+  elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "←→ pane" } },
       { "Actions",  { "c comment", "e edit", "a assign", "t move", "n new", "y clone" } },
@@ -180,46 +200,89 @@ local function render_footer()
     }
   end
 
-  -- Build two lines, distributing groups across them
-  local line1_parts, line2_parts = {}, {}
-  local hls1, hls2 = {}, {}
-  local mid = math.ceil(#groups / 2)
+  local sep = " │ "
 
-  local function build_line(group_list)
-    local parts, highlights = {}, {}
-    local col = 1 -- start with 1 char padding
-    for gi, grp in ipairs(group_list) do
-      local label = grp[1]
-      local keys = grp[2]
-      -- Group label
-      highlights[#highlights + 1] = { col_start = col, col_end = col + #label, hl = "DevOpsSection" }
-      local segment = label .. "  "
-      for ki, k in ipairs(keys) do
-        local key_part, desc_part = k:match("^(%S+)%s+(.+)$")
-        if key_part then
-          highlights[#highlights + 1] = { col_start = col + #segment, col_end = col + #segment + #key_part, hl = "DevOpsKey" }
-          segment = segment .. key_part .. " "
-          highlights[#highlights + 1] = { col_start = col + #segment, col_end = col + #segment + #desc_part, hl = "DevOpsAction" }
-          segment = segment .. desc_part
-        else
-          segment = segment .. k
-        end
-        if ki < #keys then segment = segment .. "  " end
+  -- Compute the max display width of any single key-desc pair across all groups.
+  local max_pair_dw = 0
+  for _, grp in ipairs(groups) do
+    for _, k in ipairs(grp[2]) do
+      local dw = vim.fn.strdisplaywidth(k)
+      if dw > max_pair_dw then max_pair_dw = dw end
+    end
+  end
+
+  -- Compute max label width per column (row pairs share columns).
+  local row1_groups = { groups[1], groups[2] }
+  local row2_groups = { groups[3], groups[4] }
+  local label_widths = {}
+  for i = 1, 2 do
+    local lw1 = #row1_groups[i][1]
+    local lw2 = #row2_groups[i][1]
+    label_widths[i] = math.max(lw1, lw2)
+  end
+
+  -- Render a single group with fixed-width key-desc pairs and padded label.
+  local function render_group(grp, col_idx)
+    local highlights = {}
+    local label = grp[1]
+    local keys = grp[2]
+    local col = 0
+
+    highlights[#highlights + 1] = { col_start = col, col_end = col + #label, hl = "DevOpsSection" }
+    local label_pad = string.rep(" ", label_widths[col_idx] - #label)
+    local segment = label .. label_pad .. "  "
+    for ki, k in ipairs(keys) do
+      local key_part, desc_part = k:match("^(%S+)%s+(.+)$")
+      if key_part then
+        highlights[#highlights + 1] = { col_start = col + #segment, col_end = col + #segment + #key_part, hl = "DevOpsKey" }
+        segment = segment .. key_part .. " "
+        highlights[#highlights + 1] = { col_start = col + #segment, col_end = col + #segment + #desc_part, hl = "DevOpsAction" }
+        segment = segment .. desc_part
+      else
+        segment = segment .. k
       end
-      parts[#parts + 1] = segment
-      col = col + #segment
-      if gi < #group_list then
-        local sep = "   │   "
-        parts[#parts + 1] = sep
-        highlights[#highlights + 1] = { col_start = col + 3, col_end = col + 3 + #"│", hl = "DevOpsBorder" }
+      -- Pad this pair to fixed width
+      local pair_dw = vim.fn.strdisplaywidth(k)
+      local pair_pad = max_pair_dw - pair_dw
+      if ki < #keys then
+        segment = segment .. string.rep(" ", pair_pad + 2)
+      end
+    end
+    return segment, highlights, vim.fn.strdisplaywidth(segment)
+  end
+
+  -- Compute max display width per column so separators align visually.
+  local col_widths = {}
+  for i = 1, 2 do
+    local w1 = select(3, render_group(row1_groups[i], i))
+    local w2 = select(3, render_group(row2_groups[i], i))
+    col_widths[i] = math.max(w1, w2)
+  end
+
+  local function build_line(grp_list)
+    local text = " "
+    local highlights = {}
+    local col = 1
+    for gi, grp in ipairs(grp_list) do
+      local segment, hls, dw = render_group(grp, gi)
+      -- Pad with spaces to reach the column's display width
+      local padded = segment .. string.rep(" ", col_widths[gi] - dw)
+      for _, h in ipairs(hls) do
+        highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
+      end
+      text = text .. padded
+      col = col + #padded
+      if gi < #grp_list then
+        highlights[#highlights + 1] = { col_start = col + 1, col_end = col + 1 + #"│", hl = "DevOpsBorder" }
+        text = text .. sep
         col = col + #sep
       end
     end
-    return " " .. table.concat(parts), highlights
+    return text, highlights
   end
 
-  local text1, h1 = build_line({ groups[1], groups[2] })
-  local text2, h2 = build_line({ groups[3], groups[4] })
+  local text1, h1 = build_line(row1_groups)
+  local text2, h2 = build_line(row2_groups)
 
   vim.bo[state.footer.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.footer.buf, 0, -1, false, { text1, text2 })
@@ -520,13 +583,77 @@ local function current_item()
   return state.rows[vim.api.nvim_win_get_cursor(state.content.win)[1]]
 end
 
+---------------------------------------------------------------------------
+-- Navigation stack — detail views render into the content pane
+---------------------------------------------------------------------------
+local function nav_push()
+  local cursor = state.content.win and vim.api.nvim_win_is_valid(state.content.win)
+    and vim.api.nvim_win_get_cursor(state.content.win) or { 1, 0 }
+  state.nav_stack[#state.nav_stack + 1] = {
+    cursor = cursor,
+    rows = state.rows,
+    in_detail = state.in_detail,
+  }
+end
+
+local function nav_render_detail(b, make_keys)
+  if not is_open() then return end
+  state.in_detail = true
+  state.rows = {}
+  detail.write_to_buf(state.content.buf, b)
+  -- Clear old keymaps by resetting buffer-local keymaps for action keys
+  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "n", "y", "t" }
+  for _, k in ipairs(action_keys) do
+    pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
+  end
+  if make_keys then make_keys(state.content.buf) end
+  pcall(vim.api.nvim_win_set_cursor, state.content.win, { 1, 0 })
+  render_footer()
+end
+
+local function nav_pop()
+  if #state.nav_stack == 0 then return false end
+  local entry = table.remove(state.nav_stack)
+  state.in_detail = entry.in_detail
+  state.rows = entry.rows
+  if not entry.in_detail then
+    -- Restore the list view
+    load_section()
+    vim.schedule(function()
+      if state.content.win and vim.api.nvim_win_is_valid(state.content.win) then
+        pcall(vim.api.nvim_win_set_cursor, state.content.win, entry.cursor)
+      end
+    end)
+  else
+    -- Restore a previous detail (nested nav)
+    -- This case is handled by the caller re-rendering
+  end
+  render_footer()
+  return true
+end
+
+local function nav_back()
+  if not nav_pop() then return end
+end
+
 local function open_detail()
   local item = current_item()
   if not item then return end
+  nav_push()
   if item.kind == "jira" then
-    detail.open_issue(item.key)
+    detail.load_issue(item.key, {
+      on_ready = nav_render_detail,
+      on_update = function(b, make_keys)
+        if state.in_detail then nav_render_detail(b, make_keys) end
+      end,
+    })
   elseif item.kind == "pr" then
-    detail.open_pr(item.pr)
+    detail.load_pr(item.pr, {
+      on_ready = nav_render_detail,
+      on_update = function(b, make_keys)
+        if state.in_detail then nav_render_detail(b, make_keys) end
+      end,
+    })
   end
 end
 
@@ -544,6 +671,8 @@ local function switch_section(idx)
   if idx < 1 then idx = #SECTIONS elseif idx > #SECTIONS then idx = 1 end
   state.section = idx
   state.content_cursor = nil
+  state.nav_stack = {}
+  state.in_detail = false
   render_sidebar()
   render_footer()
   state.sidebar_line = sidebar_line_for_section(idx)
@@ -844,21 +973,8 @@ local function gh_diff()
   if not item then return end
   gh.pr_diff(repo, n, function(ok, diff_text, err)
     if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
-    local buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[buf].bufhidden = "wipe"
-    vim.bo[buf].filetype = "diff"
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(diff_text, "\n", { plain = true }))
-    local w = math.floor(vim.o.columns * 0.85)
-    local h = math.floor(vim.o.lines * 0.85)
-    local win = vim.api.nvim_open_win(buf, true, {
-      relative = "editor", width = w, height = h,
-      row = math.floor((vim.o.lines - h) / 2),
-      col = math.floor((vim.o.columns - w) / 2),
-      style = "minimal", border = "rounded",
-      title = " Diff #" .. n .. " ", title_pos = "center",
-    })
-    vim.keymap.set("n", "q", function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
-    vim.keymap.set("n", "<Esc>", function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
+    local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
+    diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
   end)
 end
 
@@ -960,9 +1076,11 @@ local function show_help()
     style = "minimal", border = "rounded",
     title = " Help (press any key) ", title_pos = "center",
   })
-  vim.keymap.set("n", "q", function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
-  vim.keymap.set("n", "<Esc>", function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
-  vim.keymap.set("n", "?", function() vim.api.nvim_win_close(win, true) end, { buffer = buf })
+  local function close_help() vim.api.nvim_win_close(win, true) end
+  vim.keymap.set("n", "q", close_help, { buffer = buf })
+  vim.keymap.set("n", "<C-d>", close_help, { buffer = buf })
+  vim.keymap.set("n", "<Esc>", close_help, { buffer = buf })
+  vim.keymap.set("n", "?", close_help, { buffer = buf })
   vim.api.nvim_create_autocmd("BufLeave", {
     buffer = buf, once = true,
     callback = function() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end end,
@@ -1124,17 +1242,19 @@ end
 -- Window lifecycle
 ---------------------------------------------------------------------------
 local function close()
-  pcall(vim.api.nvim_clear_autocmds, { group = "DevOpsWin" })
-  for _, w in ipairs({ state.sidebar.win, state.content.win, state.footer.win }) do
-    if w and vim.api.nvim_win_is_valid(w) then pcall(vim.api.nvim_win_close, w, true) end
-  end
-  for _, b in ipairs({ state.sidebar.buf, state.content.buf, state.footer.buf }) do
-    if b and vim.api.nvim_buf_is_valid(b) then pcall(vim.api.nvim_buf_delete, b, { force = true }) end
-  end
-  state.sidebar = { win = nil, buf = nil }
-  state.content = { win = nil, buf = nil }
-  state.footer = { win = nil, buf = nil }
-  state.rows = {}
+  vim.schedule(function()
+    pcall(vim.api.nvim_clear_autocmds, { group = "DevOpsWin" })
+    for _, w in ipairs({ state.sidebar.win, state.content.win, state.footer.win }) do
+      if w and vim.api.nvim_win_is_valid(w) then pcall(vim.api.nvim_win_close, w, true) end
+    end
+    for _, b in ipairs({ state.sidebar.buf, state.content.buf, state.footer.buf }) do
+      if b and vim.api.nvim_buf_is_valid(b) then pcall(vim.api.nvim_buf_delete, b, { force = true }) end
+    end
+    state.sidebar = { win = nil, buf = nil }
+    state.content = { win = nil, buf = nil }
+    state.footer = { win = nil, buf = nil }
+    state.rows = {}
+  end)
 end
 
 -- Hide: close windows but keep buffers + state so we can restore quickly.
@@ -1247,8 +1367,13 @@ local function map(lhs, fn, desc)
 end
 
 local function setup_keymaps()
-  map("q", hide, "hide (toggle off)")
-  map("<Esc>", hide, "hide (toggle off)")
+  local function smart_back()
+    if state.in_detail then nav_back() else hide() end
+  end
+  map("q", smart_back, "back / hide")
+  map("<C-d>", smart_back, "back / hide")
+  map("<Esc>", smart_back, "back / hide")
+  map("<BS>", nav_back, "back")
   map("Q", close, "close (destroy)")
   map("<Tab>", function() switch_section(state.section + 1) end, "next section")
   map("<S-Tab>", function() switch_section(state.section - 1) end, "prev section")
@@ -1286,6 +1411,7 @@ local function setup_sidebar_keymaps()
     vim.keymap.set("n", lhs, fn, { buffer = b, nowait = true, silent = true, desc = "DevOps: " .. desc })
   end
   smap("q", hide, "hide (toggle off)")
+  smap("<C-d>", hide, "hide (toggle off)")
   smap("<Esc>", hide, "hide (toggle off)")
   smap("Q", close, "close (destroy)")
   smap("<S-Right>", focus_content, "focus list")
