@@ -6,7 +6,11 @@ local config = require("plugins.utils.devops.config")
 
 local M = {}
 
-local PR_FIELDS = "number,title,url,state,isDraft,repository,author,createdAt,updatedAt"
+-- Fields available in `gh search prs --json`
+local SEARCH_FIELDS = "number,title,url,state,isDraft,repository,author,createdAt,updatedAt"
+
+-- Full fields for `gh pr view --json` (includes checks, branch)
+local PR_FIELDS = "number,title,url,state,isDraft,statusCheckRollup,headRefName"
 
 -- Run `gh <args>` expecting JSON on stdout. cb(ok, data, err)
 local function gh_json(args, cb)
@@ -29,9 +33,29 @@ function M.available() return vim.fn.executable("gh") == 1 end
 
 local function limit() return tostring(config.options.github.pr_limit or 30) end
 
+function M.notifications_count(cb)
+  local cmd = { "gh", "api", "/notifications", "--jq", "length" }
+  vim.system(cmd, { text = true }, function(res)
+    vim.schedule(function()
+      local count = tonumber((res.stdout or ""):match("%d+")) or 0
+      cb(count)
+    end)
+  end)
+end
+
 -- Open PRs authored by the current user.
 function M.my_prs(cb)
-  gh_json({ "search", "prs", "--author=@me", "--state=open", "--limit", limit(), "--json", PR_FIELDS }, cb)
+  gh_json({ "search", "prs", "--author=@me", "--state=open", "--limit", limit(), "--json", SEARCH_FIELDS }, cb)
+end
+
+function M.search_prs(query, opts, cb)
+  opts = opts or {}
+  local args = { "search", "prs", "--state=open", "--limit", limit(), "--json", SEARCH_FIELDS }
+  if opts.repo then
+    vim.list_extend(args, { "--repo", opts.repo })
+  end
+  vim.list_extend(args, { "--", query })
+  gh_json(args, cb)
 end
 
 -- Open PRs where the current user is requested as a reviewer.
@@ -43,7 +67,7 @@ query($n: Int!) {
   search(query: "is:pr is:open review-requested:@me", type: ISSUE, first: $n) {
     nodes {
       ... on PullRequest {
-        number title url state isDraft
+        number title url state isDraft headRefName
         repository { nameWithOwner name }
         author { login }
         createdAt updatedAt
@@ -90,6 +114,24 @@ function M.pr_view(repo, number, cb)
   gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_FIELDS }, cb)
 end
 
+function M.prs_for_issue(issue_key, cb)
+  gh_json({
+    "search", "prs",
+    "--state=all",
+    "--limit", "10",
+    "--json", "number,title,url,state,isDraft,repository,author,headRefName",
+    "--", issue_key,
+  }, cb)
+end
+
+function M.pr_checks(repo, n, cb)
+  gh_json({
+    "pr", "checks", tostring(n),
+    "--repo", repo,
+    "--json", "name,state,conclusion,startedAt,completedAt,detailsUrl",
+  }, cb)
+end
+
 ---------------------------------------------------------------------------
 -- PR write actions (non-JSON runner for operations returning plain text)
 ---------------------------------------------------------------------------
@@ -129,6 +171,14 @@ end
 
 function M.pr_checkout(repo, n, cb)
   gh_run({ "pr", "checkout", tostring(n), "--repo", repo }, cb)
+end
+
+function M.pr_create(title, body, base, cb)
+  local args = { "pr", "create", "--title", title, "--body", body or "" }
+  if base and base ~= "" then
+    vim.list_extend(args, { "--base", base })
+  end
+  gh_run(args, cb)
 end
 
 -- Submit a PR review with optional inline comments.

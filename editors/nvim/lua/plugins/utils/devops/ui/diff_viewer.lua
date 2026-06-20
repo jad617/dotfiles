@@ -6,6 +6,7 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("DevOpsDiffViewer")
 local ns_comments = vim.api.nvim_create_namespace("DevOpsDiffComments")
+local ns_blame = vim.api.nvim_create_namespace("DevOpsDiffBlame")
 local augroup = vim.api.nvim_create_augroup("DevOpsDiffViewer", { clear = true })
 local state = {
   mode = "split",
@@ -20,6 +21,8 @@ local state = {
   pr = nil,       -- { repo = "owner/repo", number = 123 }
   line_map = {},   -- [buf_line_1indexed] = { path = "...", line = N }
   pending_comments = {}, -- { { path, line, body }, ... }
+  blame_visible = false,
+  blame_data = {}, -- [filepath] = { [line_num] = "author date" }
 }
 
 ---------------------------------------------------------------------------
@@ -46,6 +49,8 @@ local function close()
   state.mode = "split"
   state.pr = nil
   state.pending_comments = {}
+  state.blame_visible = false
+  state.blame_data = {}
   if state.prev_win and vim.api.nvim_win_is_valid(state.prev_win) then
     vim.api.nvim_set_current_win(state.prev_win)
   end
@@ -209,6 +214,89 @@ local function submit_review()
   end)
 end
 
+local function toggle_blame()
+  state.blame_visible = not state.blame_visible
+  for _, key in ipairs({ "unified", "left", "right" }) do
+    local b = state.bufs[key]
+    if b and vim.api.nvim_buf_is_valid(b) then
+      vim.api.nvim_buf_clear_namespace(b, ns_blame, 0, -1)
+    end
+  end
+  if not state.blame_visible then
+    vim.notify("DevOps: blame off", vim.log.levels.INFO)
+    return
+  end
+  if not state.pr then
+    vim.notify("DevOps: no PR context for blame", vim.log.levels.WARN)
+    state.blame_visible = false
+    return
+  end
+  local paths = {}
+  local seen = {}
+  for _, info in pairs(state.line_map) do
+    if info.path and not seen[info.path] then
+      seen[info.path] = true
+      paths[#paths + 1] = info.path
+    end
+  end
+  local remaining = #paths
+  if remaining == 0 then
+    vim.notify("DevOps: no files to blame", vim.log.levels.INFO)
+    state.blame_visible = false
+    return
+  end
+  for _, fpath in ipairs(paths) do
+    local cmd = { "git", "blame", "--porcelain", fpath }
+    vim.system(cmd, { text = true }, function(res)
+      vim.schedule(function()
+        if res.code == 0 and res.stdout then
+          local blame = {}
+          local current_line
+          for line in res.stdout:gmatch("[^\n]+") do
+            local hash, ln = line:match("^(%x+)%s+%d+%s+(%d+)")
+            if hash then
+              current_line = tonumber(ln)
+            end
+            local author = line:match("^author%s+(.+)")
+            if author and current_line then
+              blame[current_line] = author
+            end
+            local time = line:match("^author%-time%s+(%d+)")
+            if time and current_line and blame[current_line] then
+              local ago = os.difftime(os.time(), tonumber(time))
+              local label
+              if ago < 3600 then label = math.floor(ago / 60) .. "m"
+              elseif ago < 86400 then label = math.floor(ago / 3600) .. "h"
+              elseif ago < 2592000 then label = math.floor(ago / 86400) .. "d"
+              else label = math.floor(ago / 2592000) .. "mo" end
+              blame[current_line] = blame[current_line] .. " " .. label
+            end
+          end
+          state.blame_data[fpath] = blame
+        end
+        remaining = remaining - 1
+        if remaining == 0 and state.blame_visible then
+          for lnum, info in pairs(state.line_map) do
+            local bd = state.blame_data[info.path]
+            if bd and bd[info.line] then
+              for _, key in ipairs({ "unified", "left", "right" }) do
+                local b = state.bufs[key]
+                if b and vim.api.nvim_buf_is_valid(b) then
+                  pcall(vim.api.nvim_buf_set_extmark, b, ns_blame, lnum - 1, 0, {
+                    virt_text = { { "  " .. bd[info.line], "DevOpsDim" } },
+                    virt_text_pos = "eol",
+                  })
+                end
+              end
+            end
+          end
+          vim.notify("DevOps: blame on", vim.log.levels.INFO)
+        end
+      end)
+    end)
+  end
+end
+
 local function setup_keymaps(buf)
   map_buf(buf, "q", close, "Close diff")
   map_buf(buf, "<C-d>", close, "Close diff")
@@ -223,6 +311,7 @@ local function setup_keymaps(buf)
     vim.notify("Diff theme: " .. name, vim.log.levels.INFO, { title = "DevOps" })
     M.open(state.diff_text, state.title)
   end, "Cycle diff theme")
+  map_buf(buf, "B", toggle_blame, "Toggle blame")
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
   -- Open in browser at current file/line position
@@ -376,6 +465,8 @@ local function render_footer(total_width, footer_row)
   vim.list_extend(parts, {
     { sep, nil },
     { "T ", "DevOpsKey" }, { "theme", "DevOpsAction" },
+    { "  ", nil },
+    { "B ", "DevOpsKey" }, { "blame", "DevOpsAction" },
     { sep, nil },
     { "q ", "DevOpsKey" }, { "close", "DevOpsAction" },
   })
@@ -694,6 +785,7 @@ end
 --- @param opts table|nil    { pr = { repo = "owner/repo", number = N } }
 function M.open(diff_text, title, opts)
   opts = opts or {}
+  local reapply_blame = state.blame_visible
   if not state.prev_win or not vim.api.nvim_win_is_valid(state.prev_win) then
     state.prev_win = vim.api.nvim_get_current_win()
   end
@@ -708,6 +800,10 @@ function M.open(diff_text, title, opts)
     render_split()
   else
     render_unified()
+  end
+  if reapply_blame and state.pr then
+    state.blame_visible = false
+    toggle_blame()
   end
 end
 

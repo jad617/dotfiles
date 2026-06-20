@@ -52,6 +52,78 @@ function M.search(opts, cb)
   end)
 end
 
+function M.epics(project_key, cb)
+  local jql = 'project = "' .. project_key .. '" AND issuetype = Epic AND statusCategory != Done ORDER BY updated DESC'
+  local body = {
+    jql = jql,
+    fields = LIST_FIELDS,
+    maxResults = config.options.jira.page_size or 50,
+  }
+  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.issues) or {}, nil)
+  end)
+end
+
+function M.backlog(project_key, cb)
+  local jql = 'project = "' .. project_key .. '" AND sprint is EMPTY AND statusCategory != Done ORDER BY updated DESC'
+  local body = {
+    jql = jql,
+    fields = LIST_FIELDS,
+    maxResults = config.options.jira.page_size or 50,
+  }
+  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.issues) or {}, nil)
+  end)
+end
+
+function M.text_search(query, opts, cb)
+  opts = opts or {}
+  local conditions = {}
+
+  -- Detect issue key patterns (e.g. "DEVOPS-123" or partial "DEVOPS-")
+  local key_pattern = query:match("([A-Z][A-Z0-9_]+%-%d+)")
+  if key_pattern then
+    -- Exact key match: use key = "PROJ-123" combined with text for rest
+    conditions[#conditions + 1] = 'key = "' .. key_pattern .. '"'
+  else
+    -- Check for partial key prefix like "DEVOPS-" or "DEVOPS"
+    local prefix = query:match("^([A-Z][A-Z0-9_]+%-?)%s")
+    if prefix then
+      -- Use project filter from key prefix + text search for remaining words
+      local proj = prefix:gsub("%-$", "")
+      conditions[#conditions + 1] = 'project = "' .. proj .. '"'
+      local rest = query:sub(#prefix + 1):gsub("^%s+", "")
+      if rest ~= "" then
+        conditions[#conditions + 1] = 'text ~ "' .. rest:gsub('"', '\\"') .. '"'
+      end
+    else
+      -- General text search — all words
+      conditions[#conditions + 1] = 'text ~ "' .. query:gsub('"', '\\"') .. '"'
+    end
+  end
+
+  if not key_pattern then
+    if opts.project_key and opts.project_key ~= "" and not query:match("^[A-Z][A-Z0-9_]+%-?%s") then
+      conditions[#conditions + 1] = 'project = "' .. opts.project_key .. '"'
+    end
+  end
+  if opts.sprint then
+    conditions[#conditions + 1] = "sprint in openSprints()"
+  end
+  local jql = table.concat(conditions, " AND ") .. " ORDER BY updated DESC"
+  local body = {
+    jql = jql,
+    fields = LIST_FIELDS,
+    maxResults = config.options.jira.page_size or 50,
+  }
+  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.issues) or {}, nil)
+  end)
+end
+
 -- Projects the user can see (for the project picker). cb(ok, projects[], err)
 function M.list_projects(query, cb)
   local path = "/rest/api/3/project/search?maxResults=100&orderBy=key"
@@ -126,9 +198,17 @@ function M.assignable_users(project_key, cb)
 end
 
 -- Search all users by name/email (for mentions). cb(ok, users[], err)
-function M.search_users(query, cb)
+function M.search_users(query, cb, opts)
+  opts = opts or {}
   local q = (query and query ~= "") and query or ""
-  local path = "/rest/api/3/user/search?maxResults=200&query=" .. vim.uri_encode(q)
+  -- Use assignable/search to restrict to org members for the project
+  local path
+  if opts.project_key and opts.project_key ~= "" then
+    path = "/rest/api/3/user/assignable/search?maxResults=50&project="
+      .. vim.uri_encode(opts.project_key) .. "&query=" .. vim.uri_encode(q)
+  else
+    path = "/rest/api/3/user/search?maxResults=50&query=" .. vim.uri_encode(q)
+  end
   client.get(path, function(ok, data, err) cb(ok, data or {}, err) end)
 end
 
@@ -159,6 +239,12 @@ end
 function M.add_comment(key, text, cb)
   local adf = require("plugins.utils.devops.jira.adf")
   client.post("/rest/api/3/issue/" .. key .. "/comment", { body = adf.text_to_adf(text) }, cb)
+end
+
+-- Update an existing comment. cb(ok, data, err)
+function M.update_comment(key, comment_id, text, cb)
+  local adf = require("plugins.utils.devops.jira.adf")
+  client.put("/rest/api/3/issue/" .. key .. "/comment/" .. comment_id, { body = adf.text_to_adf(text) }, cb)
 end
 
 -- Update issue fields (summary, description, etc). cb(ok, data, err)

@@ -9,13 +9,14 @@ local adf = require("plugins.utils.devops.jira.adf")
 local gh = require("plugins.utils.devops.github.api")
 local input = require("plugins.utils.devops.ui.input")
 local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
+local markdown = require("plugins.utils.devops.ui.markdown")
 local render = require("plugins.utils.devops.ui.render")
 local user_picker = require("plugins.utils.devops.ui.user_picker")
 
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("DevOpsDetail")
-local state = { win = nil, buf = nil, prev_win = nil, comment_rows = {} }
+local state = { win = nil, buf = nil, prev_win = nil, comment_rows = {}, desc_range = nil }
 
 ---------------------------------------------------------------------------
 -- Render builder output into an external buffer (for inline/nav-stack use).
@@ -134,7 +135,7 @@ end
 local function jira_mention()
   return function(insert_fn)
     user_picker.open(function(choice)
-      insert_fn("@[" .. choice.name .. "]{" .. choice.id .. "}")
+      insert_fn(choice.name, choice.id)
     end, { title = "Mention User" })
   end
 end
@@ -181,7 +182,44 @@ local function active_sprint_name(f)
   return name
 end
 
-local function build_issue(issue, prs, comments)
+local function branch_issue_keys(branch_name)
+  local keys, seen = {}, {}
+  if not branch_name or branch_name == "" then return keys end
+  for key in branch_name:gmatch("([A-Z][A-Z0-9_]+%-%d+)") do
+    if not seen[key] then
+      seen[key] = true
+      keys[#keys + 1] = key
+    end
+  end
+  return keys
+end
+
+local function merge_issue_prs(dev_prs, gh_prs)
+  if dev_prs == nil and gh_prs == nil then return nil end
+  local merged, seen = {}, {}
+  for _, pr in ipairs(dev_prs or {}) do
+    merged[#merged + 1] = pr
+    seen[(pr.url or "") .. "::" .. (pr.id or "")] = true
+  end
+  for _, pr in ipairs(gh_prs or {}) do
+    local id = "#" .. tostring(pr.number or "?")
+    local key = (pr.url or "") .. "::" .. id
+    if not seen[key] then
+      seen[key] = true
+      merged[#merged + 1] = {
+        id = id,
+        name = pr.title,
+        title = pr.title,
+        url = pr.url,
+        status = pr.state,
+        state = pr.state,
+      }
+    end
+  end
+  return merged
+end
+
+local function build_issue(issue, prs, comments, width)
   local f = issue.fields or {}
   local b = builder()
 
@@ -235,7 +273,9 @@ local function build_issue(issue, prs, comments)
 
   -- Description.
   b.divider("Description")
+  local desc_start = #b.lines() + 1
   for _, line in ipairs(adf.adf_to_lines(f.description)) do b.add("  " .. (line:gsub("\r", ""))) end
+  local desc_end = #b.lines()
 
   -- Comments.
   local comment_rows = {} -- 1-based line → comment object
@@ -254,8 +294,8 @@ local function build_issue(issue, prs, comments)
   end
 
   -- Card-style comment rendering.
-  -- Cards fill the available float width minus indent and a small right margin.
-  local float_w = math.max(60, math.floor(vim.o.columns * 0.75))
+  -- Cards fill the available width minus indent and a small right margin.
+  local float_w = width or math.max(60, math.floor(vim.o.columns * 0.75))
 
   -- Word-wrap a string to fit within max_w characters.
   local function wrap(str, max_w)
@@ -292,11 +332,13 @@ local function build_issue(issue, prs, comments)
     local author = comment.author and comment.author.displayName or "?"
     local date = (comment.created or ""):sub(1, 10)
 
+    local dw = vim.fn.strdisplaywidth
+
     -- ╭─ Author ─────────────────────────── 2026-06-10 ─╮
     local top_left = "╭─ "
     local top_right = " ─╮"
     local date_part = " " .. date .. " "
-    local fill_len = card_w - #top_left - #author - #date_part - #top_right + 4
+    local fill_len = card_w - dw(top_left) - dw(author) - 1 - dw(date_part) - dw(top_right)
     if fill_len < 2 then fill_len = 2 end
     local top_border = top_left .. author .. " " .. string.rep("─", fill_len) .. date_part .. top_right
     local top_line = b.add(pad .. top_border)
@@ -314,8 +356,8 @@ local function build_issue(issue, prs, comments)
     local empty_inner = "│" .. string.rep(" ", inner_w) .. "│"
     local el = b.add(pad .. empty_inner)
     comment_rows[el] = comment
-    b.hl(el, 0, #pad + 1, border_hl)
-    b.hl(el, #pad + #empty_inner - 1, #pad + #empty_inner, border_hl)
+    b.hl(el, 0, #pad + 3, border_hl)
+    b.hl(el, #pad + #empty_inner - 3, #pad + #empty_inner, border_hl)
 
     -- │  body text lines  │  (word-wrapped)
     local text_w = inner_w - 2
@@ -324,19 +366,21 @@ local function build_issue(issue, prs, comments)
       if clean == "" then clean = " " end
       for _, wline in ipairs(wrap(clean, text_w)) do
         local text = "  " .. wline
-        local body_row = "│" .. text .. string.rep(" ", inner_w - #text) .. "│"
+        local padding = inner_w - dw(text)
+        if padding < 0 then padding = 0 end
+        local body_row = "│" .. text .. string.rep(" ", padding) .. "│"
         local cl = b.add(pad .. body_row)
         comment_rows[cl] = comment
-        b.hl(cl, 0, #pad + 1, border_hl)
-        b.hl(cl, #pad + #body_row - 1, #pad + #body_row, border_hl)
+        b.hl(cl, 0, #pad + 3, border_hl)
+        b.hl(cl, #pad + #body_row - 3, #pad + #body_row, border_hl)
       end
     end
 
     -- │ (breathing room)
     local el2 = b.add(pad .. empty_inner)
     comment_rows[el2] = comment
-    b.hl(el2, 0, #pad + 1, border_hl)
-    b.hl(el2, #pad + #empty_inner - 1, #pad + #empty_inner, border_hl)
+    b.hl(el2, 0, #pad + 3, border_hl)
+    b.hl(el2, #pad + #empty_inner - 3, #pad + #empty_inner, border_hl)
 
     -- ╰──────────────────────────────────────────────────╯
     local bottom = "╰" .. string.rep("─", inner_w) .. "╯"
@@ -373,7 +417,7 @@ local function build_issue(issue, prs, comments)
     end
   end
 
-  return b, comment_rows
+  return b, comment_rows, { desc_start, desc_end }
 end
 
 function M.open_issue(key)
@@ -396,7 +440,7 @@ function M.open_issue(key)
             vim.notify("DevOps: comment added to " .. key, vim.log.levels.INFO)
             M.open_issue(key)
           end)
-        end, { on_mention = jira_mention() })
+        end, { on_mention = jira_mention(), compact = true })
       end, { buffer = buf, desc = "Comment" })
 
       -- Reply to comment under cursor (or pick if cursor not on a comment)
@@ -429,27 +473,53 @@ function M.open_issue(key)
         end
       end, { buffer = buf, desc = "Reply to comment" })
 
-      -- Edit
+      -- Edit: context-aware — comment, description, or summary based on cursor
       vim.keymap.set("n", "e", function()
-        api.get_issue(key, function(ok3, iss, err3)
-          if not ok3 then return vim.notify("DevOps: " .. (err3 or "fetch failed"), vim.log.levels.ERROR) end
-          local f = iss.fields or {}
-          vim.ui.input({ prompt = "Summary: ", default = f.summary or "" }, function(new_summary)
-            if not new_summary then return end
+        local cursor = vim.api.nvim_win_get_cursor(state.win)
+        local row = cursor[1]
+        local cmt = state.comment_rows[row]
+        local dr = state.desc_range
+
+        if cmt and cmt.id then
+          -- Edit the comment under cursor
+          local body_text = table.concat(adf.adf_to_lines(cmt.body), "\n")
+          input.open("Edit Comment " .. key, body_text, function(new_text)
+            if new_text == "" then return end
+            api.update_comment(key, cmt.id, new_text, function(ok3, _, err3)
+              if not ok3 then return vim.notify("DevOps: " .. (err3 or "edit failed"), vim.log.levels.ERROR) end
+              vim.notify("DevOps: comment updated", vim.log.levels.INFO)
+              M.open_issue(key)
+            end)
+          end, { on_mention = jira_mention() })
+        elseif dr and row >= dr[1] and row <= dr[2] then
+          -- Edit description only
+          api.get_issue(key, function(ok3, iss, err3)
+            if not ok3 then return vim.notify("DevOps: " .. (err3 or "fetch failed"), vim.log.levels.ERROR) end
+            local f = iss.fields or {}
             local desc_text = table.concat(adf.adf_to_lines(f.description), "\n")
             input.open("Description " .. key, desc_text, function(new_desc)
-              local fields = {}
-              if new_summary ~= (f.summary or "") then fields.summary = new_summary end
-              fields.description = adf.text_to_adf(new_desc)
-              api.update_issue(key, fields, function(ok4, _, err4)
+              api.update_issue(key, { description = adf.text_to_adf(new_desc) }, function(ok4, _, err4)
                 if not ok4 then return vim.notify("DevOps: " .. (err4 or "update failed"), vim.log.levels.ERROR) end
-                vim.notify("DevOps: " .. key .. " updated", vim.log.levels.INFO)
-                -- Refresh detail
+                vim.notify("DevOps: description updated", vim.log.levels.INFO)
                 M.open_issue(key)
               end)
             end)
           end)
-        end)
+        else
+          -- Edit summary (title)
+          api.get_issue(key, function(ok3, iss, err3)
+            if not ok3 then return vim.notify("DevOps: " .. (err3 or "fetch failed"), vim.log.levels.ERROR) end
+            local f = iss.fields or {}
+            vim.ui.input({ prompt = "Summary: ", default = f.summary or "" }, function(new_summary)
+              if not new_summary or new_summary == (f.summary or "") then return end
+              api.update_issue(key, { summary = new_summary }, function(ok4, _, err4)
+                if not ok4 then return vim.notify("DevOps: " .. (err4 or "update failed"), vim.log.levels.ERROR) end
+                vim.notify("DevOps: summary updated", vim.log.levels.INFO)
+                M.open_issue(key)
+              end)
+            end)
+          end)
+        end
       end, { buffer = buf, desc = "Edit" })
 
       -- Assign
@@ -482,22 +552,30 @@ function M.open_issue(key)
       end, { buffer = buf, desc = "Assign" })
     end
 
-    local b_initial, cr_initial = build_issue(issue, nil, nil)
+    local b_initial, cr_initial, dr_initial = build_issue(issue, nil, nil)
     state.comment_rows = cr_initial
+    state.desc_range = dr_initial
     show("Jira · " .. issue.key, b_initial, function(buf)
       setup_keys(buf)
       -- Linked PRs and comments arrive async; rebuild as each completes.
-      local async_prs, async_comments
+      local async_dev_prs, async_gh_prs, async_comments
       local function rebuild()
         if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
-        local b_new, cr_new = build_issue(issue, async_prs, async_comments)
+        local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments)
         state.comment_rows = cr_new
+        state.desc_range = dr_new
         show("Jira · " .. issue.key, b_new, setup_keys)
       end
       api.dev_status(issue.id, function(ok2, prs)
-        async_prs = ok2 and prs or {}
+        async_dev_prs = ok2 and prs or {}
         rebuild()
       end)
+      if gh.available() then
+        gh.prs_for_issue(issue.key, function(ok2, prs)
+          async_gh_prs = ok2 and prs or {}
+          rebuild()
+        end)
+      end
       api.comments(issue.key, function(ok2, cmts)
         async_comments = ok2 and cmts or {}
         rebuild()
@@ -604,6 +682,35 @@ local function mergeable_text(pr)
   return #parts > 0 and table.concat(parts, " · ") or nil
 end
 
+local function check_contexts(rollup)
+  if type(rollup) ~= "table" then return {} end
+  local contexts = rollup.contexts
+  if type(contexts) ~= "table" then return {} end
+  if vim.islist(contexts) then return contexts end
+  if type(contexts.nodes) == "table" then return contexts.nodes end
+  return {}
+end
+
+local function check_display(ctx)
+  local conclusion = ctx.conclusion
+  local status = ctx.status or ctx.state
+  local state = conclusion or status or "UNKNOWN"
+  if conclusion == "SUCCESS" then
+    return "✓", "DevOpsOk", "passed"
+  end
+  if conclusion == "FAILURE" or conclusion == "ERROR" or conclusion == "TIMED_OUT"
+    or conclusion == "CANCELLED" or conclusion == "ACTION_REQUIRED"
+  then
+    return "✗", "DevOpsErr", "failed"
+  end
+  if status == "IN_PROGRESS" or status == "PENDING" or status == "QUEUED"
+    or status == "WAITING" or status == "REQUESTED"
+  then
+    return "⏳", "DevOpsWarn", status:lower()
+  end
+  return "○", "DevOpsDim", tostring(state):lower()
+end
+
 local function build_pr(pr)
   local b = builder()
   local draft = pr.isDraft
@@ -669,6 +776,15 @@ local function build_pr(pr)
     b.field("Labels", table.concat(names, "  "), "DevOpsLabel")
   end
 
+  local linked_keys = branch_issue_keys(pr.headRefName)
+  if #linked_keys > 0 then
+    b.divider("Linked Jira Issues")
+    for _, key in ipairs(linked_keys) do
+      local l = b.add("  🔗  " .. key)
+      b.hl(l, #"  🔗  ", #"  🔗  " + #key, "DevOpsId")
+    end
+  end
+
   if pr.reviews ~= nil or pr.reviewRequests ~= nil then
     local reviewers = review_rows(pr)
     b.divider("Reviewers")
@@ -685,10 +801,29 @@ local function build_pr(pr)
     end
   end
 
+  local contexts = check_contexts(pr.statusCheckRollup)
+  if #contexts > 0 then
+    b.divider("Checks")
+    for _, ctx in ipairs(contexts) do
+      local icon, hl_group, label = check_display(ctx)
+      local name = ctx.name or ctx.context or ctx.__typename or "check"
+      local line = b.add(("  %s %-14s %s"):format(icon, render.truncate(name, 14), label))
+      b.hl(line, 2, 2 + #icon, hl_group)
+      b.hl(line, 4, 4 + #render.truncate(name, 14), "DevOpsDetailTitle")
+      b.hl(line, #b.lines()[line] - #label, #b.lines()[line], hl_group)
+    end
+  end
+
   b.divider("Description")
   local body = (pr.body and pr.body ~= "" and pr.body or "_No description_"):gsub("\r", "")
-  for _, line in ipairs(vim.split(body, "\n", { plain = true })) do
-    b.add("  " .. line)
+  local md = markdown.render(body)
+  for i, line in ipairs(md.lines) do
+    local li = b.add(line)
+    for _, h in ipairs(md.highlights) do
+      if h.line == i - 1 then
+        b.hl(li, h.col_start, h.col_end, h.hl)
+      end
+    end
   end
 
   -- Timeline: merge comments, reviews, and commits in chronological order
@@ -892,10 +1027,27 @@ function M.load_issue(key, opts)
     end
     local project_key = key:match("^(%u+)-")
 
+    -- Track rows for context-aware edit actions (populated after build)
+    local issue_comment_rows = {}
+    local issue_desc_range = nil
+
+    -- Get content pane width for card rendering
+    local function content_width()
+      if opts.content_win and vim.api.nvim_win_is_valid(opts.content_win) then
+        return vim.api.nvim_win_get_width(opts.content_win)
+      end
+      return nil
+    end
+
     local function make_keys(buf)
+      local function input_opts()
+        return { on_mention = jira_mention(), parent_win = vim.fn.bufwinid(buf) }
+      end
       local browse = client.base_url() .. "/browse/" .. issue.key
       vim.keymap.set("n", "o", function() vim.ui.open(browse) end, { buffer = buf, nowait = true, desc = "Open in browser" })
       vim.keymap.set("n", "c", function()
+        local iopts = input_opts()
+        iopts.compact = true
         input.open("Comment " .. key, "", function(text)
           if text == "" then return end
           api.add_comment(key, text, function(ok3, _, err3)
@@ -903,27 +1055,52 @@ function M.load_issue(key, opts)
             vim.notify("DevOps: comment added to " .. key, vim.log.levels.INFO)
             M.load_issue(key, opts)
           end)
-        end, { on_mention = jira_mention() })
+        end, iopts)
       end, { buffer = buf, nowait = true, desc = "Comment" })
       vim.keymap.set("n", "e", function()
-        api.get_issue(key, function(ok3, iss, err3)
-          if not ok3 then return vim.notify("DevOps: " .. (err3 or "fetch failed"), vim.log.levels.ERROR) end
-          local f = iss.fields or {}
-          vim.ui.input({ prompt = "Summary: ", default = f.summary or "" }, function(new_summary)
-            if not new_summary then return end
+        local win = vim.api.nvim_get_current_win()
+        local cursor = vim.api.nvim_win_get_cursor(win)
+        local row = cursor[1]
+        local cmt = issue_comment_rows[row]
+        local dr = issue_desc_range
+
+        if cmt and cmt.id then
+          local body_text = table.concat(adf.adf_to_lines(cmt.body), "\n")
+          input.open("Edit Comment " .. key, body_text, function(new_text)
+            if new_text == "" then return end
+            api.update_comment(key, cmt.id, new_text, function(ok3, _, err3)
+              if not ok3 then return vim.notify("DevOps: " .. (err3 or "edit failed"), vim.log.levels.ERROR) end
+              vim.notify("DevOps: comment updated", vim.log.levels.INFO)
+              M.load_issue(key, opts)
+            end)
+          end, input_opts())
+        elseif dr and row >= dr[1] and row <= dr[2] then
+          api.get_issue(key, function(ok3, iss, err3)
+            if not ok3 then return vim.notify("DevOps: " .. (err3 or "fetch failed"), vim.log.levels.ERROR) end
+            local f = iss.fields or {}
             local desc_text = table.concat(adf.adf_to_lines(f.description), "\n")
             input.open("Description " .. key, desc_text, function(new_desc)
-              local fields = {}
-              if new_summary ~= (f.summary or "") then fields.summary = new_summary end
-              fields.description = adf.text_to_adf(new_desc)
-              api.update_issue(key, fields, function(ok4, _, err4)
+              api.update_issue(key, { description = adf.text_to_adf(new_desc) }, function(ok4, _, err4)
                 if not ok4 then return vim.notify("DevOps: " .. (err4 or "update failed"), vim.log.levels.ERROR) end
-                vim.notify("DevOps: " .. key .. " updated", vim.log.levels.INFO)
+                vim.notify("DevOps: description updated", vim.log.levels.INFO)
+                M.load_issue(key, opts)
+              end)
+            end, input_opts())
+          end)
+        else
+          api.get_issue(key, function(ok3, iss, err3)
+            if not ok3 then return vim.notify("DevOps: " .. (err3 or "fetch failed"), vim.log.levels.ERROR) end
+            local f = iss.fields or {}
+            vim.ui.input({ prompt = "Summary: ", default = f.summary or "" }, function(new_summary)
+              if not new_summary or new_summary == (f.summary or "") then return end
+              api.update_issue(key, { summary = new_summary }, function(ok4, _, err4)
+                if not ok4 then return vim.notify("DevOps: " .. (err4 or "update failed"), vim.log.levels.ERROR) end
+                vim.notify("DevOps: summary updated", vim.log.levels.INFO)
                 M.load_issue(key, opts)
               end)
             end)
           end)
-        end)
+        end
       end, { buffer = buf, nowait = true, desc = "Edit" })
       vim.keymap.set("n", "a", function()
         api.assignable_users(project_key, function(ok3, users, err3)
@@ -954,19 +1131,29 @@ function M.load_issue(key, opts)
       end, { buffer = buf, nowait = true, desc = "Assign" })
     end
 
-    local b_initial = build_issue(issue, nil, nil)
+    local b_initial, cr_initial, dr_initial = build_issue(issue, nil, nil, content_width())
+    issue_comment_rows = cr_initial
+    issue_desc_range = dr_initial
     on_ready(b_initial, make_keys)
 
     -- Async enrichment
-    local async_prs, async_comments
+    local async_dev_prs, async_gh_prs, async_comments
     local function rebuild()
-      local b_new = build_issue(issue, async_prs, async_comments)
+      local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, content_width())
+      issue_comment_rows = cr_new
+      issue_desc_range = dr_new
       on_update(b_new, make_keys)
     end
     api.dev_status(issue.id, function(ok2, prs)
-      async_prs = ok2 and prs or {}
+      async_dev_prs = ok2 and prs or {}
       rebuild()
     end)
+    if gh.available() then
+      gh.prs_for_issue(issue.key, function(ok2, prs)
+        async_gh_prs = ok2 and prs or {}
+        rebuild()
+      end)
+    end
     api.comments(issue.key, function(ok2, cmts)
       async_comments = ok2 and cmts or {}
       rebuild()

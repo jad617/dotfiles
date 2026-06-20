@@ -85,6 +85,8 @@ local function set_hl()
     DevOpsIcon           = { fg = "#7aa2f7" },
     DevOpsBorder         = { fg = "#3b4261" },
     DevOpsBorderActive   = { fg = "#99bc80" },
+    DevOpsWinbar         = { fg = "#ff8050", bold = true },
+    DevOpsBadge          = { fg = "#ff8050" },
     DevOpsCommentBorder  = { fg = "#7aa2f7" },
     DevOpsReplyBorder    = { fg = "#e0af68" },
     DevOpsReplyLabel     = { fg = "#e0af68", bold = true },
@@ -95,6 +97,12 @@ local function set_hl()
     DevOpsWarn           = { fg = "#e0af68" },
     DevOpsPill           = { fg = "#1a1b26", bg = "#7aa2f7", bold = true },
     DevOpsAction         = { fg = "#f7768e" },
+    DevOpsMdHeader       = { fg = "#7aa2f7", bold = true },
+    DevOpsMdBold         = { bold = true },
+    DevOpsMdItalic       = { italic = true },
+    DevOpsMdCode         = { fg = "#9ece6a", bg = "#1f2335" },
+    DevOpsMdCodeBlock    = { fg = "#9ece6a", bg = "#1f2335" },
+    DevOpsMdListBullet   = { fg = "#e0af68", bold = true },
   }
   for name, val in pairs(hls) do vim.api.nvim_set_hl(0, name, val) end
   M.apply_diff_theme()
