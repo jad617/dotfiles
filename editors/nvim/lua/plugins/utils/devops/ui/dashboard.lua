@@ -27,7 +27,6 @@ local TABS = {
   { id = "github", label = "GitHub", icon = "", sections = {
     { id = "gh_prs", label = "My PRs" },
     { id = "gh_reviews", label = "Reviews" },
-    { id = "gh_review_queue", label = "Review Queue" },
     { id = "gh_bookmarks", label = "Bookmarks" },
   } },
 }
@@ -64,6 +63,7 @@ local state = {
   content_cursor = nil, -- remembered content cursor {row,col}
   scope_override = nil, -- nil | "project" | "sprint"
   include_done = false, -- when true, include Done issues
+  reviews_sort = "newest", -- "newest" | "oldest"
   nav_stack = {},    -- navigation stack: each entry = { cursor, rows, lines_snapshot }
   in_detail = false, -- true when showing a detail view in content pane
   detail_kind = nil, -- nil | "jira" | "pr"
@@ -322,11 +322,11 @@ local function render_footer()
       { "Actions",  { "* unpin", "o browser", "r refresh" } },
       { "Window",   { "? help", "q hide", "Q close" } },
     }
-  elseif sec_id == "gh_review_queue" then
+  elseif sec_id == "gh_reviews" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
       { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "/ search", "* pin" } },
-      { "PR",       { "D ready", "x checkout", "r refresh" } },
+      { "PR",       { "s sort", "D ready", "x checkout", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   else
@@ -457,7 +457,10 @@ local function park_cursor_on_first_item()
   end
 end
 
+local stop_spinner -- forward declaration (defined after set_message)
+
 local function render_jira(issues, assignee_name, columns, title_override)
+  stop_spinner()
   local scope = state.sprint and "Active sprints" or (state.project and state.project.key or "no project")
   local subtitle = scope .. "  ·  " .. assignee_name .. "  ·  " .. #issues .. " issue" .. (#issues == 1 and "" or "s")
   local lines, hls = header(title_override or "Jira  ·  My Issues", subtitle)
@@ -519,7 +522,7 @@ local function render_jira(issues, assignee_name, columns, title_override)
     local head = left .. string.rep(" ", pad) .. cnt
     lines[#lines + 1] = head
     local lidx = #lines - 1
-    hls[#hls + 1] = { line = lidx, col_start = 0, col_end = #left, hl = render.column_hl(cat) }
+    hls[#hls + 1] = { line = lidx, col_start = 0, col_end = #left, hl = render.column_hl(cat, name) }
     hls[#hls + 1] = { line = lidx, col_start = #head - #cnt, col_end = #head, hl = "DevOpsCount" }
   end
 
@@ -576,8 +579,35 @@ local function github_check_status(rollup)
   return "", nil
 end
 
+local function time_ago(iso)
+  if not iso or iso == "" then return "?" end
+  local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+  if not y then return "?" end
+  local ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
+    hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
+  local diff = os.time(os.date("!*t")) - ts
+  if diff < 60 then return "just now" end
+  if diff < 3600 then return math.floor(diff / 60) .. "m ago" end
+  if diff < 86400 then return math.floor(diff / 3600) .. "h ago" end
+  local days = math.floor(diff / 86400)
+  if days == 1 then return "1 day ago" end
+  if days < 30 then return days .. " days ago" end
+  return math.floor(days / 30) .. " months ago"
+end
+
 local function render_github(prs, title, show_meta)
-  local subtitle = #prs .. " pull request" .. (#prs == 1 and "" or "s")
+  stop_spinner()
+  -- Sort reviews by user preference
+  if show_meta then
+    prs = vim.deepcopy(prs or {})
+    if state.reviews_sort == "oldest" then
+      table.sort(prs, function(a, b) return (a.createdAt or "") < (b.createdAt or "") end)
+    else
+      table.sort(prs, function(a, b) return (a.createdAt or "") > (b.createdAt or "") end)
+    end
+  end
+  local sort_hint = show_meta and (" · " .. state.reviews_sort .. " first") or ""
+  local subtitle = #prs .. " pull request" .. (#prs == 1 and "" or "s") .. sort_hint
   local lines, hls = header(title, subtitle)
   local rows = {}
   local w = content_width()
@@ -642,6 +672,15 @@ local function render_github(prs, title, show_meta)
       local rv = #lines - 1
       hls[#hls + 1] = { line = rv, col_start = #indent, col_end = #indent + #lbl_rv, hl = "DevOpsDim" }
       hls[#hls + 1] = { line = rv, col_start = #indent + #lbl_rv, col_end = #indent + #lbl_rv + #reviewers, hl = "DevOpsAction" }
+
+      -- Age line
+      local age = time_ago(pr.createdAt)
+      local lbl_age = pad_lbl("Age:")
+      lines[#lines + 1] = indent .. lbl_age .. age
+      rows[#lines] = { kind = "pr", pr = pr }
+      local ag = #lines - 1
+      hls[#hls + 1] = { line = ag, col_start = #indent, col_end = #indent + #lbl_age, hl = "DevOpsDim" }
+      hls[#hls + 1] = { line = ag, col_start = #indent + #lbl_age, col_end = #indent + #lbl_age + #age, hl = "DevOpsWarn" }
     end
   end
 
@@ -650,15 +689,6 @@ local function render_github(prs, title, show_meta)
   apply_highlights(state.content.buf, hls)
   state.rows = rows
   park_cursor_on_first_item()
-end
-
-local function render_review_queue(prs, title)
-  -- Sort oldest first (most urgent) then render same as Reviews
-  prs = vim.deepcopy(prs or {})
-  table.sort(prs, function(a, b)
-    return (a.createdAt or "") < (b.createdAt or "")
-  end)
-  render_github(prs, title, true) -- show_meta = true (same as Reviews)
 end
 
 local function render_bookmarks(tab_id)
@@ -705,20 +735,62 @@ local function render_bookmarks(tab_id)
   park_cursor_on_first_item()
 end
 
+-- Animated loading spinner
+local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local spinner_timer = nil
+
+stop_spinner = function()
+  if not spinner_timer then return end
+  local t = spinner_timer
+  spinner_timer = nil
+  t:stop()
+  if not t:is_closing() then t:close() end
+end
+
 local function set_message(msg)
+  stop_spinner()
   set_buf_lines(state.content.buf, { "", "  " .. msg })
   apply_highlights(state.content.buf, {})
   state.rows = {}
+end
+
+local function start_spinner(label)
+  stop_spinner()
+  local i = 1
+  label = label or "Loading"
+  set_message(spinner_frames[1] .. " " .. label .. "…")
+  spinner_timer = vim.uv.new_timer()
+  spinner_timer:start(80, 80, vim.schedule_wrap(function()
+    if not spinner_timer or not is_open() then
+      stop_spinner()
+      return
+    end
+    i = (i % #spinner_frames) + 1
+    set_buf_lines(state.content.buf, { "", "  " .. spinner_frames[i] .. " " .. label .. "…" })
+    apply_highlights(state.content.buf, {})
+  end))
 end
 
 ---------------------------------------------------------------------------
 -- Data loading per section
 ---------------------------------------------------------------------------
 -- Cache: avoid re-fetching when switching back to a section within TTL.
+-- Seeded from disk on first access for instant startup.
 local cache = {} -- { [sec_id] = { data = ..., ts = os.time() } }
 local CACHE_TTL = 120 -- seconds
+local cache_loaded = false
+
+local function ensure_cache_loaded()
+  if cache_loaded then return end
+  cache_loaded = true
+  local persisted = store.load_section_cache()
+  for k, v in pairs(persisted) do
+    if not cache[k] then cache[k] = v end
+  end
+end
 
 local function cache_get(sec_id)
+  ensure_cache_loaded()
   local entry = cache[sec_id]
   if entry and (os.time() - entry.ts) < CACHE_TTL then return entry.data end
   return nil
@@ -726,6 +798,8 @@ end
 
 local function cache_set(sec_id, data)
   cache[sec_id] = { data = data, ts = os.time() }
+  -- Persist async to avoid blocking UI
+  vim.schedule(function() store.save_section_cache(cache) end)
 end
 
 local function cache_invalidate(sec_id)
@@ -763,17 +837,15 @@ local function load_section(force)
         render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Epics")
       elseif sec_id == "jira_backlog" then
         render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Backlog")
-      elseif sec_id == "gh_review_queue" then
-        render_review_queue(cached, "GitHub · Review Queue")
       else
-        local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Review Requests"
+        local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
         render_github(cached, title, sec_id == "gh_reviews")
       end
       return
     end
   end
 
-  set_message("Loading…")
+  start_spinner("Loading")
 
   if sec_id == "jira_issues" then
     if not client.configured() then
@@ -845,18 +917,10 @@ local function load_section(force)
       cache_set(sec_id, issues)
       render_jira(issues, state.project.key, nil, "Jira  ·  Backlog")
     end)
-  elseif sec_id == "gh_review_queue" then
-    if not gh.available() then return set_message("⚠ gh CLI not found") end
-    gh.my_reviews(function(ok, prs, err)
-      if not is_open() or current_section_id() ~= sec_id then return end
-      if not ok then return set_message("⚠ " .. (err or "gh failed")) end
-      cache_set(sec_id, prs)
-      render_review_queue(prs, "GitHub · Review Queue")
-    end)
   else -- gh_prs / gh_reviews
     if not gh.available() then return set_message("⚠ gh CLI not found") end
     local fn = sec_id == "gh_prs" and gh.my_prs or gh.my_reviews
-    local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Review Requests"
+    local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
     local show_meta = sec_id == "gh_reviews"
     fn(function(ok, prs, err)
       if not is_open() or current_section_id() ~= sec_id then return end
@@ -1313,12 +1377,19 @@ local function jira_search()
   end
 
   -- Debounced search renders results into dashboard content pane
+  local last_query = ""
   local function do_search(query)
     timer:stop()
     if query == "" then
+      last_query = ""
       load_section() -- restore normal view
       return
     end
+    -- Skip queries under 2 chars to reduce noise
+    if #query < 2 then return end
+    -- Skip if query hasn't changed
+    if query == last_query then return end
+    last_query = query
     timer:start(400, 0, vim.schedule_wrap(function()
       if closed then return end
       local opts = { project_key = state.project and state.project.key }
@@ -1434,12 +1505,17 @@ local function gh_search()
     end
   end
 
+  local last_query = ""
   local function do_search(query)
     timer:stop()
     if query == "" then
+      last_query = ""
       load_section()
       return
     end
+    if #query < 2 then return end
+    if query == last_query then return end
+    last_query = query
     timer:start(400, 0, vim.schedule_wrap(function()
       if closed then return end
       local opts = {}
@@ -1525,7 +1601,7 @@ local function gh_approve()
   gh.pr_approve(repo, n, function(ok, _, err)
     if not ok then return vim.notify("DevOps: " .. (err or "approve failed"), vim.log.levels.ERROR) end
     vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
-    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
+    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
   end)
 end
 
@@ -1537,7 +1613,7 @@ local function gh_request_changes()
     gh.pr_request_changes(repo, n, body, function(ok, _, err)
       if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
       vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
-      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
+      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
     end)
   end)
 end
@@ -1560,7 +1636,7 @@ local function gh_ready()
   gh.pr_ready(repo, n, function(ok, _, err)
     if not ok then return vim.notify("DevOps: " .. (err or "ready failed"), vim.log.levels.ERROR) end
     vim.notify("DevOps: #" .. n .. " marked ready for review", vim.log.levels.INFO)
-    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
+    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
   end)
 end
 
@@ -1572,7 +1648,7 @@ local function gh_merge()
     gh.pr_merge(repo, n, function(ok, _, err)
       if not ok then return vim.notify("DevOps: " .. (err or "merge failed"), vim.log.levels.ERROR) end
       vim.notify("DevOps: #" .. n .. " merged!", vim.log.levels.INFO)
-      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
+      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
     end)
   end)
 end
@@ -1598,7 +1674,7 @@ end
 
 local function gh_create_pr()
   local sec_id = current_section_id()
-  if sec_id ~= "gh_prs" and sec_id ~= "gh_reviews" and sec_id ~= "gh_review_queue" then
+  if sec_id ~= "gh_prs" and sec_id ~= "gh_reviews" then
     vim.notify("DevOps: switch to a GitHub section first", vim.log.levels.INFO)
     return
   end
@@ -1675,6 +1751,20 @@ end
 ---------------------------------------------------------------------------
 
 local function toggle_scope()
+  local sec_id = current_section_id()
+
+  -- GitHub Reviews: toggle sort order
+  if sec_id == "gh_reviews" then
+    state.reviews_sort = state.reviews_sort == "newest" and "oldest" or "newest"
+    local cached = cache_get("gh_reviews")
+    if cached then
+      render_github(cached, "GitHub · Reviews", true)
+    end
+    render_footer()
+    return
+  end
+
+  -- Jira: toggle sprint/project scope
   if not state.sprint then
     return vim.notify("DevOps: no active sprints — scope toggle N/A", vim.log.levels.INFO)
   end
@@ -1685,7 +1775,7 @@ local function toggle_scope()
   end
   render_sidebar()
   update_winbar()
-  if current_section_id() == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+  if sec_id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
 end
 
 local function toggle_done()
@@ -1956,6 +2046,7 @@ end
 -- Window lifecycle
 ---------------------------------------------------------------------------
 local function close()
+  stop_spinner()
   vim.schedule(function()
     pcall(vim.api.nvim_clear_autocmds, { group = "DevOpsWin" })
     for _, w in ipairs({ state.sidebar.win, state.content.win, state.footer.win }) do
@@ -2203,6 +2294,70 @@ local function ensure_me(cb)
   end)
 end
 
+---------------------------------------------------------------------------
+-- Prefetch — after the initial section loads, silently warm the cache
+-- for all other sections so switching feels instant.
+---------------------------------------------------------------------------
+local prefetched = false
+local function prefetch_other_sections()
+  if prefetched then return end
+  prefetched = true
+
+  -- Jira sections
+  if client.configured() then
+    local account = client.account_id()
+    local project_key = state.project and state.project.key or nil
+
+    if account and not cache_get("jira_issues") then
+      api.search({
+        account_id = account,
+        project_key = project_key,
+        open_sprints = state.sprint ~= nil,
+        include_done = false,
+      }, function(ok, issues)
+        if ok and issues then cache_set("jira_issues", issues) end
+      end)
+    end
+
+    if state.sprint and not cache_get("jira_sprint") then
+      api.search({
+        account_id = nil,
+        project_key = project_key,
+        open_sprints = true,
+        include_done = true,
+      }, function(ok, issues)
+        if ok and issues then cache_set("jira_sprint", issues) end
+      end)
+    end
+
+    if project_key and not cache_get("jira_epics") then
+      api.epics(project_key, function(ok, issues)
+        if ok and issues then cache_set("jira_epics", issues) end
+      end)
+    end
+
+    if project_key and not cache_get("jira_backlog") then
+      api.backlog(project_key, function(ok, issues)
+        if ok and issues then cache_set("jira_backlog", issues) end
+      end)
+    end
+  end
+
+  -- GitHub sections
+  if gh.available() then
+    if not cache_get("gh_prs") then
+      gh.my_prs(function(ok, prs)
+        if ok and prs then cache_set("gh_prs", prs) end
+      end)
+    end
+    if not cache_get("gh_reviews") then
+      gh.my_reviews(function(ok, prs)
+        if ok and prs then cache_set("gh_reviews", prs) end
+      end)
+    end
+  end
+end
+
 function M.open(layout)
   layout = layout or config.options.layout or "float"
 
@@ -2265,10 +2420,12 @@ function M.open(layout)
         update_winbar()
         refresh_notifications()
         load_section()
+        prefetch_other_sections()
       end)
     else
       refresh_notifications()
       load_section()
+      prefetch_other_sections()
     end
   end)
 end

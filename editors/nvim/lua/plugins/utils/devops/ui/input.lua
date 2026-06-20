@@ -249,6 +249,7 @@ function M.open(title, initial, on_submit, opts)
 
   vim.keymap.set({ "n", "i" }, "<C-s>", submit, { buffer = buf, desc = "Submit" })
   vim.keymap.set("n", "q", do_close, { buffer = buf, desc = "Cancel" })
+  vim.keymap.set({ "n", "i" }, "<C-c>", do_close, { buffer = buf, desc = "Cancel" })
   vim.keymap.set("n", "<C-d>", do_close, { buffer = buf, desc = "Cancel" })
   vim.keymap.set("n", "<Esc>", do_close, { buffer = buf, desc = "Cancel" })
 
