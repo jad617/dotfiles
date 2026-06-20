@@ -2,7 +2,7 @@
 -- Live-search user picker — a two-pane float (search input + results list)
 -- that queries Jira as you type with debounced API calls.
 --
--- Tab / S-Tab / C-j / C-k  navigate results
+-- Tab / S-Tab / C-j / C-k / ↑ / ↓  navigate results
 -- Enter                     selects
 -- Esc / q                   cancels
 ---------------------------------------------------------------------------
@@ -13,10 +13,11 @@ local ns = vim.api.nvim_create_namespace("devops_user_picker")
 
 --- Open the live-search user picker.
 --- @param on_select fun(choice: {name:string, id:string})  called with the picked user
---- @param opts table|nil  { title = string }
+--- @param opts table|nil  { title = string, project_key = string }
 function M.open(on_select, opts)
   opts = opts or {}
   local title = opts.title or "Search User"
+  local project_key = opts.project_key
   local prev_win = vim.api.nvim_get_current_win()
 
   -- Buffers ------------------------------------------------------------------
@@ -26,11 +27,23 @@ function M.open(on_select, opts)
   vim.bo[list_buf].bufhidden = "wipe"
   vim.bo[list_buf].modifiable = false
 
-  -- Layout -------------------------------------------------------------------
+  -- Layout — overlaps ~75% of the comment float at the bottom ---------------
   local w = math.min(math.floor(vim.o.columns * 0.4), 60)
   local list_h = 10
-  local row = math.floor((vim.o.lines - list_h - 4) / 2)
+  -- Comment float sits at row: vim.o.lines - floor(lines*0.3) - 4
+  local comment_h = math.floor(vim.o.lines * 0.3)
+  local comment_top = vim.o.lines - comment_h - 4
+  -- Place picker so it overlaps ~75% into the comment area
+  local row = comment_top + math.floor(comment_h * 0.25) - list_h - 3
+  row = math.max(1, row)
   local col = math.floor((vim.o.columns - w) / 2)
+
+  -- Snacks-style highlights for the picker
+  vim.api.nvim_set_hl(0, "DevOpsPickerNormal", { fg = "#e06c75", bg = "#242b38" })
+  vim.api.nvim_set_hl(0, "DevOpsPickerBorder", { fg = "#ff9e64", bg = "#242b38" })
+  vim.api.nvim_set_hl(0, "DevOpsPickerTitle", { fg = "#c27fd7", bg = "#242b38", bold = true })
+  vim.api.nvim_set_hl(0, "DevOpsPickerCursorLine", { bg = "#98C379", fg = "#282c34", bold = true })
+  vim.api.nvim_set_hl(0, "DevOpsPickerDim", { fg = "#565f89", bg = "#242b38" })
 
   local input_win = vim.api.nvim_open_win(input_buf, true, {
     relative = "editor",
@@ -42,8 +55,9 @@ function M.open(on_select, opts)
     border = "rounded",
     title = " " .. title .. " ",
     title_pos = "center",
-    zindex = 300,
+    zindex = 400,
   })
+  vim.wo[input_win].winhighlight = "Normal:DevOpsPickerNormal,FloatBorder:DevOpsPickerBorder,FloatTitle:DevOpsPickerTitle"
 
   local list_win = vim.api.nvim_open_win(list_buf, false, {
     relative = "editor",
@@ -53,10 +67,11 @@ function M.open(on_select, opts)
     col = col,
     style = "minimal",
     border = "rounded",
-    title = " Tab ↑↓  ⏎ Select  Esc Cancel ",
+    title = " ↑↓/Tab  ⏎ Select  Esc Cancel ",
     title_pos = "center",
-    zindex = 300,
+    zindex = 400,
   })
+  vim.wo[list_win].winhighlight = "Normal:DevOpsPickerNormal,FloatBorder:DevOpsPickerBorder,FloatTitle:DevOpsPickerTitle,CursorLine:DevOpsPickerCursorLine"
 
   -- State --------------------------------------------------------------------
   local users = {}
@@ -75,8 +90,13 @@ function M.open(on_select, opts)
     vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, lines)
     vim.bo[list_buf].modifiable = false
     vim.api.nvim_buf_clear_namespace(list_buf, ns, 0, -1)
-    if #users > 0 and sel <= #users then
-      vim.api.nvim_buf_add_highlight(list_buf, ns, "Visual", sel - 1, 0, -1)
+    for i = 1, #users do
+      local hl = (i == sel) and "DevOpsPickerCursorLine" or "DevOpsPickerNormal"
+      vim.api.nvim_buf_add_highlight(list_buf, ns, hl, i - 1, 0, -1)
+    end
+    -- Dim the placeholder text
+    if #users == 0 then
+      vim.api.nvim_buf_add_highlight(list_buf, ns, "DevOpsPickerDim", 0, 0, -1)
     end
   end
 
@@ -106,7 +126,7 @@ function M.open(on_select, opts)
         end
         sel = math.min(sel, math.max(1, #users))
         render()
-      end)
+      end, { project_key = project_key })
     end))
   end
 
@@ -119,6 +139,10 @@ function M.open(on_select, opts)
       search(q)
     end,
   })
+
+  -- Disable nvim-cmp in this buffer to avoid stealing keymaps
+  local cmp_ok, cmp = pcall(require, "cmp")
+  if cmp_ok then cmp.setup.buffer({ enabled = false }) end
 
   -- Keymaps ------------------------------------------------------------------
   local function km(modes, lhs, fn, desc)
@@ -141,6 +165,14 @@ function M.open(on_select, opts)
     if #users > 0 then sel = ((sel - 2) % #users) + 1; render() end
   end, "Prev result")
 
+  km({ "i", "n" }, "<Down>", function()
+    if #users > 0 then sel = (sel % #users) + 1; render() end
+  end, "Next result")
+
+  km({ "i", "n" }, "<Up>", function()
+    if #users > 0 then sel = ((sel - 2) % #users) + 1; render() end
+  end, "Prev result")
+
   km({ "i", "n" }, "<CR>", function()
     if #users > 0 and users[sel] then
       local choice = users[sel]
@@ -153,9 +185,14 @@ function M.open(on_select, opts)
   km("n", "q", do_close, "Cancel")
   km("n", "<C-d>", do_close, "Cancel")
 
-  -- Start in insert mode and show initial placeholder.
-  vim.cmd("startinsert")
+  -- Start in insert mode ready to type (deferred so the float is fully drawn).
   render()
+  vim.schedule(function()
+    if not closed and vim.api.nvim_win_is_valid(input_win) then
+      vim.api.nvim_set_current_win(input_win)
+      vim.cmd("startinsert!")
+    end
+  end)
 end
 
 return M

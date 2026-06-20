@@ -16,17 +16,42 @@ local store = require("plugins.utils.devops.store")
 
 local M = {}
 
-local SECTIONS = {
-  { id = "jira_issues", group = "Jira", label = "My Issues" },
-  { id = "gh_prs", group = "GitHub", label = "My PRs" },
-  { id = "gh_reviews", group = "GitHub", label = "Reviews" },
+local TABS = {
+  { id = "jira", label = "Jira", icon = "", sections = {
+    { id = "jira_issues", label = "My Issues" },
+    { id = "jira_sprint", label = "Sprint Board" },
+    { id = "jira_epics", label = "Epics" },
+    { id = "jira_backlog", label = "Backlog" },
+    { id = "jira_bookmarks", label = "Bookmarks" },
+  } },
+  { id = "github", label = "GitHub", icon = "", sections = {
+    { id = "gh_prs", label = "My PRs" },
+    { id = "gh_reviews", label = "Reviews" },
+    { id = "gh_review_queue", label = "Review Queue" },
+    { id = "gh_bookmarks", label = "Bookmarks" },
+  } },
 }
+
+local SECTIONS = {}
+for ti, tab in ipairs(TABS) do
+  for si, sec in ipairs(tab.sections) do
+    SECTIONS[#SECTIONS + 1] = {
+      id = sec.id,
+      label = sec.label,
+      group = tab.label,
+      tab_id = tab.id,
+      tab_index = ti,
+      section_index = si,
+    }
+  end
+end
 
 local state = {
   layout = "float",
   sidebar = { win = nil, buf = nil },
   content = { win = nil, buf = nil },
   footer = { win = nil, buf = nil },
+  tab = 1,
   section = 1,
   jira_user = nil,   -- { account_id, name } or nil => current user
   project = nil,     -- { key, id, name }
@@ -34,14 +59,74 @@ local state = {
   sprint = nil,      -- { id, name } active sprint, or nil
   columns = nil,     -- ordered board columns, or nil for a flat list
   rows = {},         -- 1-based content line → item
-  sidebar_rows = {}, -- 1-based sidebar line → section index
+  sidebar_rows = {}, -- 1-based sidebar line → local section index
   sidebar_line = nil,-- remembered sidebar cursor line
   content_cursor = nil, -- remembered content cursor {row,col}
   scope_override = nil, -- nil | "project" | "sprint"
   include_done = false, -- when true, include Done issues
   nav_stack = {},    -- navigation stack: each entry = { cursor, rows, lines_snapshot }
   in_detail = false, -- true when showing a detail view in content pane
+  detail_kind = nil, -- nil | "jira" | "pr"
+  gh_notif_count = 0,
+  bookmarks = {},
 }
+
+local function wrap_index(idx, count)
+  if count <= 0 then return 1 end
+  if idx < 1 then return count end
+  if idx > count then return 1 end
+  return idx
+end
+
+local function tab_index_by_id(tab_id)
+  for i, tab in ipairs(TABS) do
+    if tab.id == tab_id then return i end
+  end
+end
+
+local function current_tab(tab_idx)
+  return TABS[tab_idx or state.tab]
+end
+
+local function current_section(section_idx, tab_idx)
+  local tab = current_tab(tab_idx)
+  return tab and tab.sections[section_idx or state.section] or nil
+end
+
+local function current_tab_id()
+  local tab = current_tab()
+  return tab and tab.id or ""
+end
+
+local function current_section_id()
+  local sec = current_section()
+  return sec and sec.id or ""
+end
+
+local function current_section_label()
+  local sec = current_section()
+  return sec and sec.label or ""
+end
+
+local function section_count(tab_idx)
+  local tab = current_tab(tab_idx)
+  return tab and #tab.sections or 0
+end
+
+local function tab_title(tab)
+  if not tab then return "" end
+  if tab.icon and tab.icon ~= "" then
+    return tab.icon .. " " .. tab.label
+  end
+  return tab.label
+end
+
+local function is_jira_section(sec_id)
+  return sec_id == "jira_issues"
+    or sec_id == "jira_sprint"
+    or sec_id == "jira_epics"
+    or sec_id == "jira_backlog"
+end
 
 ---------------------------------------------------------------------------
 -- Low-level buffer/window helpers
@@ -58,6 +143,10 @@ local function make_buf()
 end
 
 local function set_buf_lines(buf, lines)
+  -- Sanitize: nvim_buf_set_lines rejects embedded newlines
+  for i, l in ipairs(lines) do
+    if l:find("\n") then lines[i] = l:gsub("\n", " ") end
+  end
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
@@ -78,6 +167,51 @@ local function content_width()
   return 80
 end
 
+local NUM_BADGE = { "❶", "❷", "❸", "❹", "❺", "❻", "❼", "❽", "❾" }
+
+local function update_sidebar_winbar()
+  if not state.sidebar.win or not vim.api.nvim_win_is_valid(state.sidebar.win) then return end
+  local parts = {}
+  for i, tab in ipairs(TABS) do
+    local hl = (i == state.tab) and "%#DevOpsWinbar#" or "%#DevOpsGroup#"
+    local piece = hl .. " " .. tab_title(tab)
+    if tab.id == "github" and state.gh_notif_count > 0 then
+      piece = piece .. " %#DevOpsErr#" .. tostring(state.gh_notif_count) .. hl
+    end
+    parts[#parts + 1] = piece .. " "
+  end
+  vim.wo[state.sidebar.win].winbar = table.concat(parts, "%#DevOpsBorder#│") .. "%*"
+end
+
+local function update_winbar()
+  if not state.content.win or not vim.api.nvim_win_is_valid(state.content.win) then return end
+  local tab = current_tab()
+  local sec = current_section()
+  if not tab or not sec then return end
+  local icon = tab.icon and tab.icon ~= "" and (tab.icon .. " ") or ""
+  local bar = " " .. icon .. tab.label .. " › " .. sec.label
+
+  -- Jira context: project · scope
+  if tab.id == "jira" then
+    local parts = {}
+    if state.project then parts[#parts + 1] = state.project.key end
+    if state.sprint then
+      if state.scope_override == "project" then
+        parts[#parts + 1] = "project"
+      else
+        parts[#parts + 1] = "sprint"
+      end
+    end
+    if state.include_done then parts[#parts + 1] = "+Done" end
+    if #parts > 0 then
+      bar = bar .. "  ·  " .. table.concat(parts, "  ·  ")
+    end
+  end
+
+  bar = bar .. " "
+  vim.wo[state.content.win].winbar = "%#DevOpsWinbar#" .. bar .. "%*"
+end
+
 -- Sidebar buffer line for a given section index (defined early: used by
 -- switch_section above and the pane-focus helpers below).
 local function sidebar_line_for_section(idx)
@@ -89,12 +223,10 @@ end
 ---------------------------------------------------------------------------
 -- Rendering
 ---------------------------------------------------------------------------
-local GROUP_ICON = { Jira = "", GitHub = "" }
 
 local function render_sidebar()
   local lines, hls, rows = {}, {}, {}
-  local sw = (state.sidebar.win and vim.api.nvim_win_is_valid(state.sidebar.win))
-    and vim.api.nvim_win_get_width(state.sidebar.win) or 32
+  local tab = current_tab()
   local function push(text, hl)
     lines[#lines + 1] = text
     if hl then hls[#hls + 1] = { line = #lines - 1, col_start = 0, col_end = #text, hl = hl } end
@@ -102,50 +234,34 @@ local function render_sidebar()
 
   push("")
   push("   DEVOPS", "DevOpsTitle")
-
-  -- Group the sections in declared order so we can nest extras per group.
-  local order, by_group = {}, {}
-  for i, sec in ipairs(SECTIONS) do
-    if not by_group[sec.group] then by_group[sec.group] = {}; order[#order + 1] = sec.group end
-    table.insert(by_group[sec.group], { idx = i, sec = sec })
-  end
-
-  for _, gname in ipairs(order) do
-    push("")
-    push("  " .. (GROUP_ICON[gname] or "") .. "  " .. gname:upper(), "DevOpsGroup")
-    for _, e in ipairs(by_group[gname]) do
-      local active = (e.idx == state.section)
-      local text = (active and "  ▌ " or "    ") .. e.sec.label
-      lines[#lines + 1] = text
-      rows[#lines] = e.idx
-      if active then
-        hls[#hls + 1] = { line = #lines - 1, col_start = 0, col_end = 5, hl = "DevOpsSectionBar" }
-        hls[#hls + 1] = { line = #lines - 1, col_start = 5, col_end = #text, hl = "DevOpsSectionActive" }
-      end
+  if tab and tab.id == "jira" then
+    local parts = {}
+    if state.project then parts[#parts + 1] = state.project.key end
+    if state.sprint then parts[#parts + 1] = (state.scope_override == "project") and "project" or "sprint" end
+    if state.include_done then parts[#parts + 1] = "+Done" end
+    if #parts > 0 then
+      push("   " .. table.concat(parts, " · "), "DevOpsDim")
     end
-    -- Jira context (project / board / scope) shown as a labeled tree block.
-    if gname == "Jira" then
-      local scope_label
-      if state.sprint then
-        if state.scope_override == "project" then
-          scope_label = "project (all)"
-        else
-          scope_label = "active sprints"
-        end
-      end
-      local meta = { { "project", state.project and state.project.key or "(none)", "DevOpsId" } }
-      if state.board then meta[#meta + 1] = { "board", state.board.name, "DevOpsDim" } end
-      if scope_label then meta[#meta + 1] = { "scope", scope_label, "DevOpsStatusProgress" } end
-      if state.include_done then meta[#meta + 1] = { "filter", "+Done", "DevOpsWarn" } end
-      for i, m in ipairs(meta) do
-        local conn = (#meta == 1 and "╶") or (i == 1 and "╭") or (i == #meta and "╰") or "│"
-        local prefix = "  " .. conn .. " " .. render.pad(m[1], 7) .. " "
-        local avail = math.max(4, sw - vim.fn.strdisplaywidth(prefix) - 1)
-        local text = prefix .. render.truncate(m[2], avail)
-        lines[#lines + 1] = text
-        hls[#hls + 1] = { line = #lines - 1, col_start = 0, col_end = #prefix, hl = "DevOpsDim" }
-        hls[#hls + 1] = { line = #lines - 1, col_start = #prefix, col_end = #text, hl = m[3] }
-      end
+  end
+  push("")
+
+  for i, sec in ipairs(tab and tab.sections or {}) do
+    local active = (i == state.section)
+    local badge = NUM_BADGE[i] or tostring(i)
+    local text = (active and "  ▌ " or "    ") .. badge .. " " .. sec.label
+    local badge_start = 4
+    local badge_end = badge_start + #badge
+    local label_start = badge_end + 1
+    lines[#lines + 1] = text
+    rows[#lines] = i
+    if active then
+      hls[#hls + 1] = { line = #lines - 1, col_start = 0, col_end = label_start - 1, hl = "DevOpsSectionBar" }
+      hls[#hls + 1] = { line = #lines - 1, col_start = badge_start, col_end = badge_end, hl = "DevOpsBadge" }
+      hls[#hls + 1] = { line = #lines - 1, col_start = label_start, col_end = #text, hl = "DevOpsSectionActive" }
+    else
+      hls[#hls + 1] = { line = #lines - 1, col_start = 0, col_end = 4, hl = "DevOpsDim" }
+      hls[#hls + 1] = { line = #lines - 1, col_start = badge_start, col_end = badge_end, hl = "DevOpsBadge" }
+      hls[#hls + 1] = { line = #lines - 1, col_start = label_start, col_end = #text, hl = "DevOpsSection" }
     end
   end
 
@@ -155,6 +271,7 @@ local function render_sidebar()
   set_buf_lines(state.sidebar.buf, lines)
   apply_highlights(state.sidebar.buf, hls)
   state.sidebar_rows = rows
+  update_sidebar_winbar()
 end
 
 ---------------------------------------------------------------------------
@@ -164,21 +281,22 @@ local footer_ns = vim.api.nvim_create_namespace("DevOpsFooter")
 
 local function render_footer()
   if not state.footer.buf or not vim.api.nvim_buf_is_valid(state.footer.buf) then return end
-  local sec_id = SECTIONS[state.section] and SECTIONS[state.section].id or ""
+  local sec_id = current_section_id()
+  local local_sections = tostring(section_count())
   local groups
 
   if state.in_detail then
     -- Detail view footer
-    if sec_id == "jira_issues" then
+    if state.detail_kind == "jira" then
       groups = {
-        { "Navigate", { "q back", "BS back", "Tab section", "←→ pane" } },
+        { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
         { "Actions",  { "c comment", "e edit", "a assign", "o browser" } },
         { "Jira",     { "r reply", "? help" } },
         { "Window",   { "Q close" } },
       }
     else
       groups = {
-        { "Navigate", { "q back", "BS back", "Tab section", "←→ pane" } },
+        { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
         { "Actions",  { "a approve", "R changes", "c comment", "d diff" } },
         { "PR",       { "D ready", "x checkout", "m merge", "o browser" } },
         { "Window",   { "? help", "Q close" } },
@@ -186,16 +304,36 @@ local function render_footer()
     end
   elseif sec_id == "jira_issues" then
     groups = {
-      { "Navigate", { "↵ open", "j/k move", "Tab section", "←→ pane" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "t move", "n new", "y clone" } },
-      { "Toggles",  { "s scope", "H done", "p project", "b board", "r refresh" } },
+      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "t move", "n new", "y clone", "/ search", "* pin" } },
+      { "Toggles",  { "s scope", "h done", "p project", "b board", "r refresh" } },
+      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
+    }
+  elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
+    groups = {
+      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
+      { "Actions",  { "t move", "c comment", "a assign", "/ search", "* pin" } },
+      { "Jira",     { "p project", "b board", "r refresh" } },
+      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
+    }
+  elseif sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
+    groups = {
+      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
+      { "Actions",  { "* unpin", "o browser", "r refresh" } },
+      { "Window",   { "? help", "q hide", "Q close" } },
+    }
+  elseif sec_id == "gh_review_queue" then
+    groups = {
+      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "/ search", "* pin" } },
+      { "PR",       { "D ready", "x checkout", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   else
     groups = {
-      { "Navigate", { "↵ open", "j/k move", "Tab section", "←→ pane" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge" } },
-      { "PR",       { "D ready", "x checkout", "r refresh" } },
+      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "/ search", "* pin" } },
+      { "PR",       { "D ready", "x checkout", "N new", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   end
@@ -301,11 +439,10 @@ local function render_footer()
   end
 end
 
-local function header(title, subtitle)
-  local lines = { "", "  " .. title, "  " .. subtitle, "" }
+local function header(_, subtitle)
+  local lines = { "", "  " .. subtitle, "" }
   local hls = {
-    { line = 1, col_start = 0, col_end = #lines[2], hl = "DevOpsTitle" },
-    { line = 2, col_start = 0, col_end = #lines[3], hl = "DevOpsDim" },
+    { line = 1, col_start = 0, col_end = #lines[2], hl = "DevOpsDim" },
   }
   return lines, hls
 end
@@ -320,10 +457,10 @@ local function park_cursor_on_first_item()
   end
 end
 
-local function render_jira(issues, assignee_name, columns)
+local function render_jira(issues, assignee_name, columns, title_override)
   local scope = state.sprint and "Active sprints" or (state.project and state.project.key or "no project")
   local subtitle = scope .. "  ·  " .. assignee_name .. "  ·  " .. #issues .. " issue" .. (#issues == 1 and "" or "s")
-  local lines, hls = header("Jira  ·  My Issues", subtitle)
+  local lines, hls = header(title_override or "Jira  ·  My Issues", subtitle)
   local rows = {}
   local w = content_width()
 
@@ -364,7 +501,14 @@ local function render_jira(issues, assignee_name, columns)
       local status_start = key_start + #keypad + 2
       hls[#hls + 1] = { line = lidx, col_start = status_start, col_end = status_start + #status_str, hl = render.status_hl(cat) }
     end
-    rows[#lines] = { kind = "jira", key = issue.key, id = issue.id, status = f.status and f.status.name or nil }
+    rows[#lines] = {
+      kind = "jira",
+      key = issue.key,
+      id = issue.id,
+      status = f.status and f.status.name or nil,
+      title = f.summary or "",
+      type_name = f.issuetype and f.issuetype.name or "",
+    }
   end
 
   -- Colored column header with the count right-aligned.
@@ -423,6 +567,15 @@ local function render_jira(issues, assignee_name, columns)
   park_cursor_on_first_item()
 end
 
+local function github_check_status(rollup)
+  if not rollup then return "", nil end
+  local state_val = type(rollup) == "table" and rollup.state or rollup
+  if state_val == "SUCCESS" then return " ✓", "DevOpsOk" end
+  if state_val == "FAILURE" or state_val == "ERROR" then return " ✗", "DevOpsErr" end
+  if state_val == "PENDING" or state_val == "IN_PROGRESS" then return " ⏳", "DevOpsWarn" end
+  return "", nil
+end
+
 local function render_github(prs, title, show_meta)
   local subtitle = #prs .. " pull request" .. (#prs == 1 and "" or "s")
   local lines, hls = header(title, subtitle)
@@ -434,18 +587,23 @@ local function render_github(prs, title, show_meta)
     local icon = pr.isDraft and "" or ""
     local num = "#" .. tostring(pr.number or "?")
     local numpad = render.pad(num, 6)
+    local check_icon, check_hl = github_check_status(pr.statusCheckRollup)
     local repo = (pr.repository and pr.repository.name) or ""
     local tag = (not show_meta) and repo or ""
-    local summary = render.truncate(pr.title or "", math.max(10, w - 14 - #tag))
+    local summary = render.truncate(pr.title or "", math.max(10, w - 14 - #tag - #check_icon))
 
     local prefix = "  " .. icon .. "  "
-    local text = prefix .. numpad .. "  " .. summary
+    local text = prefix .. numpad .. check_icon .. "  " .. summary
     if tag ~= "" then text = text .. "  " .. tag end
     lines[#lines + 1] = text
     local lidx = #lines - 1
     hls[#hls + 1] = { line = lidx, col_start = #("  "), col_end = #("  ") + #icon, hl = pr.isDraft and "DevOpsPrDraft" or "DevOpsPrOpen" }
     local num_start = #prefix
     hls[#hls + 1] = { line = lidx, col_start = num_start, col_end = num_start + #num, hl = "DevOpsId" }
+    if check_hl then
+      local check_start = #prefix + #numpad
+      hls[#hls + 1] = { line = lidx, col_start = check_start, col_end = check_start + #check_icon, hl = check_hl }
+    end
     if tag ~= "" then
       hls[#hls + 1] = { line = lidx, col_start = #text - #tag, col_end = #text, hl = "DevOpsDim" }
     end
@@ -494,6 +652,59 @@ local function render_github(prs, title, show_meta)
   park_cursor_on_first_item()
 end
 
+local function render_review_queue(prs, title)
+  -- Sort oldest first (most urgent) then render same as Reviews
+  prs = vim.deepcopy(prs or {})
+  table.sort(prs, function(a, b)
+    return (a.createdAt or "") < (b.createdAt or "")
+  end)
+  render_github(prs, title, true) -- show_meta = true (same as Reviews)
+end
+
+local function render_bookmarks(tab_id)
+  local pins = state.bookmarks[tab_id] or {}
+  local lines, hls = header(nil, #pins .. " pinned")
+  local rows = {}
+  local w = content_width()
+
+  if #pins == 0 then
+    lines[#lines + 1] = "  (no bookmarks — press * on any item to pin)"
+  end
+
+  for _, bm in ipairs(pins) do
+    if bm.kind == "jira" then
+      local icon = render.issue_icon(bm.type_name)
+      local key = bm.key or ""
+      local text = "  " .. icon .. "  " .. render.pad(key, 10) .. "  " .. render.truncate(bm.title or "", w - 20)
+      lines[#lines + 1] = text
+      local lidx = #lines - 1
+      local key_start = #("  " .. icon .. "  ")
+      hls[#hls + 1] = { line = lidx, col_start = key_start, col_end = key_start + #key, hl = "DevOpsId" }
+      rows[#lines] = { kind = "jira", key = bm.key, id = bm.id, title = bm.title, type_name = bm.type_name }
+    elseif bm.kind == "pr" then
+      local num = "#" .. tostring(bm.number or "?")
+      local text = "  " .. render.pad(num, 6) .. "  " .. render.truncate(bm.title or "", w - 20)
+      if bm.repo and bm.repo ~= "" then text = text .. "  " .. bm.repo end
+      lines[#lines + 1] = text
+      local lidx = #lines - 1
+      hls[#hls + 1] = { line = lidx, col_start = 2, col_end = 2 + #num, hl = "DevOpsId" }
+      if bm.repo and bm.repo ~= "" then
+        hls[#hls + 1] = { line = lidx, col_start = #text - #bm.repo, col_end = #text, hl = "DevOpsDim" }
+      end
+      rows[#lines] = {
+        kind = "pr",
+        pr = { number = bm.number, title = bm.title, url = bm.url,
+               repository = { nameWithOwner = bm.repo_full, name = bm.repo } },
+      }
+    end
+  end
+
+  set_buf_lines(state.content.buf, lines)
+  apply_highlights(state.content.buf, hls)
+  state.rows = rows
+  park_cursor_on_first_item()
+end
+
 local function set_message(msg)
   set_buf_lines(state.content.buf, { "", "  " .. msg })
   apply_highlights(state.content.buf, {})
@@ -521,8 +732,23 @@ local function cache_invalidate(sec_id)
   cache[sec_id] = nil
 end
 
+local function invalidate_tab_cache(tab_id)
+  local ti = tab_index_by_id(tab_id)
+  local tab = ti and TABS[ti] or nil
+  for _, sec in ipairs(tab and tab.sections or {}) do
+    cache_invalidate(sec.id)
+  end
+end
+
 local function load_section(force)
-  local sec_id = SECTIONS[state.section].id
+  local sec_id = current_section_id()
+
+  -- Bookmark sections are local — no API call needed
+  if sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
+    state.bookmarks = store.load_bookmarks()
+    render_bookmarks(current_tab_id())
+    return
+  end
 
   -- Serve from cache unless forced (manual refresh)
   if not force then
@@ -531,6 +757,14 @@ local function load_section(force)
       if sec_id == "jira_issues" then
         local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
         render_jira(cached, name, state.columns)
+      elseif sec_id == "jira_sprint" then
+        render_jira(cached, "all", state.columns, "Jira  ·  Sprint Board")
+      elseif sec_id == "jira_epics" then
+        render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Epics")
+      elseif sec_id == "jira_backlog" then
+        render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Backlog")
+      elseif sec_id == "gh_review_queue" then
+        render_review_queue(cached, "GitHub · Review Queue")
       else
         local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Review Requests"
         render_github(cached, title, sec_id == "gh_reviews")
@@ -549,7 +783,7 @@ local function load_section(force)
     local account = state.jira_user and state.jira_user.account_id or client.account_id()
     local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
     local function on_issues(ok, issues, err)
-      if not is_open() or SECTIONS[state.section].id ~= sec_id then return end
+      if not is_open() or current_section_id() ~= sec_id then return end
       if not ok then return set_message("⚠ " .. (err or "Jira search failed")) end
       cache_set(sec_id, issues)
       render_jira(issues, name, state.columns)
@@ -561,18 +795,85 @@ local function load_section(force)
       open_sprints = use_sprints,
       include_done = state.include_done,
     }, on_issues)
+  elseif sec_id == "jira_sprint" then
+    if not client.configured() then
+      set_message("⚠ Jira not configured — run :JiraAuth. Missing: " .. table.concat(client.missing(), ", "))
+      return
+    end
+    if not state.sprint then
+      set_message("⚠ No active sprint — select a Scrum board with 'b'")
+      return
+    end
+    api.search({
+      account_id = nil,
+      project_key = state.project and state.project.key,
+      open_sprints = true,
+      include_done = true,
+    }, function(ok, issues, err)
+      if not is_open() or current_section_id() ~= sec_id then return end
+      if not ok then return set_message("⚠ " .. (err or "sprint fetch failed")) end
+      cache_set(sec_id, issues)
+      render_jira(issues, "all", state.columns, "Jira  ·  Sprint Board")
+    end)
+  elseif sec_id == "jira_epics" then
+    if not client.configured() then
+      set_message("⚠ Jira not configured — run :JiraAuth. Missing: " .. table.concat(client.missing(), ", "))
+      return
+    end
+    if not state.project or not state.project.key then
+      set_message("⚠ Pick a Jira project with 'p'")
+      return
+    end
+    api.epics(state.project.key, function(ok, issues, err)
+      if not is_open() or current_section_id() ~= sec_id then return end
+      if not ok then return set_message("⚠ " .. (err or "epics fetch failed")) end
+      cache_set(sec_id, issues)
+      render_jira(issues, state.project.key, nil, "Jira  ·  Epics")
+    end)
+  elseif sec_id == "jira_backlog" then
+    if not client.configured() then
+      set_message("⚠ Jira not configured — run :JiraAuth. Missing: " .. table.concat(client.missing(), ", "))
+      return
+    end
+    if not state.project or not state.project.key then
+      set_message("⚠ Pick a Jira project with 'p'")
+      return
+    end
+    api.backlog(state.project.key, function(ok, issues, err)
+      if not is_open() or current_section_id() ~= sec_id then return end
+      if not ok then return set_message("⚠ " .. (err or "backlog fetch failed")) end
+      cache_set(sec_id, issues)
+      render_jira(issues, state.project.key, nil, "Jira  ·  Backlog")
+    end)
+  elseif sec_id == "gh_review_queue" then
+    if not gh.available() then return set_message("⚠ gh CLI not found") end
+    gh.my_reviews(function(ok, prs, err)
+      if not is_open() or current_section_id() ~= sec_id then return end
+      if not ok then return set_message("⚠ " .. (err or "gh failed")) end
+      cache_set(sec_id, prs)
+      render_review_queue(prs, "GitHub · Review Queue")
+    end)
   else -- gh_prs / gh_reviews
     if not gh.available() then return set_message("⚠ gh CLI not found") end
     local fn = sec_id == "gh_prs" and gh.my_prs or gh.my_reviews
     local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Review Requests"
     local show_meta = sec_id == "gh_reviews"
     fn(function(ok, prs, err)
-      if not is_open() or SECTIONS[state.section].id ~= sec_id then return end
+      if not is_open() or current_section_id() ~= sec_id then return end
       if not ok then return set_message("⚠ " .. (err or "gh failed")) end
       cache_set(sec_id, prs)
       render_github(prs, title, show_meta)
     end)
   end
+end
+
+local function refresh_notifications()
+  if not gh.available() then return end
+  gh.notifications_count(function(count)
+    if not is_open() then return end
+    state.gh_notif_count = count
+    render_sidebar()
+  end)
 end
 
 ---------------------------------------------------------------------------
@@ -593,6 +894,7 @@ local function nav_push()
     cursor = cursor,
     rows = state.rows,
     in_detail = state.in_detail,
+    detail_kind = state.detail_kind,
   }
 end
 
@@ -615,6 +917,7 @@ local function nav_pop()
   if #state.nav_stack == 0 then return false end
   local entry = table.remove(state.nav_stack)
   state.in_detail = entry.in_detail
+  state.detail_kind = entry.detail_kind
   state.rows = entry.rows
   if not entry.in_detail then
     -- Restore the list view
@@ -641,13 +944,16 @@ local function open_detail()
   if not item then return end
   nav_push()
   if item.kind == "jira" then
+    state.detail_kind = "jira"
     detail.load_issue(item.key, {
+      content_win = state.content.win,
       on_ready = nav_render_detail,
       on_update = function(b, make_keys)
         if state.in_detail then nav_render_detail(b, make_keys) end
       end,
     })
   elseif item.kind == "pr" then
+    state.detail_kind = "pr"
     detail.load_pr(item.pr, {
       on_ready = nav_render_detail,
       on_update = function(b, make_keys)
@@ -667,20 +973,36 @@ local function open_browser()
   end
 end
 
-local function switch_section(idx)
-  if idx < 1 then idx = #SECTIONS elseif idx > #SECTIONS then idx = 1 end
-  state.section = idx
+local function refresh_current_jira_section()
+  local sec_id = current_section_id()
+  if is_open() and is_jira_section(sec_id) then
+    cache_invalidate(sec_id)
+    load_section(true)
+  end
+end
+
+local function switch_section(section_idx, tab_idx)
+  local next_tab = wrap_index(tab_idx or state.tab, #TABS)
+  local next_section = wrap_index(section_idx or state.section, section_count(next_tab))
+  state.tab = next_tab
+  state.section = next_section
   state.content_cursor = nil
   state.nav_stack = {}
   state.in_detail = false
+  state.detail_kind = nil
   render_sidebar()
   render_footer()
-  state.sidebar_line = sidebar_line_for_section(idx)
+  update_winbar()
+  state.sidebar_line = sidebar_line_for_section(next_section)
   load_section()
 end
 
+local function switch_tab(delta)
+  switch_section(1, state.tab + delta)
+end
+
 local function select_user()
-  if SECTIONS[state.section].id ~= "jira_issues" then
+  if current_section_id() ~= "jira_issues" then
     vim.notify("DevOps: user filter applies to the Jira section", vim.log.levels.INFO)
     return
   end
@@ -699,7 +1021,8 @@ local function select_user()
     }, function(choice)
       if not choice then return end
       state.jira_user = choice.me and nil or { account_id = choice.account_id, name = choice.label }
-      switch_section(1)
+      invalidate_tab_cache("jira")
+      switch_section(1, tab_index_by_id("jira"))
     end)
   end)
 end
@@ -721,7 +1044,7 @@ local function transition()
       api.do_transition(item.key, choice.id, function(ok2, _, err2)
         if not ok2 then return vim.notify("DevOps: " .. (err2 or "transition failed"), vim.log.levels.ERROR) end
         vim.notify("DevOps: " .. item.key .. " → " .. choice.name, vim.log.levels.INFO)
-        if is_open() and SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+        refresh_current_jira_section()
       end)
     end)
   end)
@@ -734,26 +1057,76 @@ end
 -- Mention handler for Jira input floats: opens the live-search user picker
 -- and inserts @[Name]{id} at cursor.
 local function jira_mention_handler(insert_fn)
+  local pk = state.project and state.project.key or nil
   user_picker.open(function(choice)
-    insert_fn("@[" .. choice.name .. "]{" .. choice.id .. "}")
-  end, { title = "Mention User" })
+    insert_fn(choice.name, choice.id)
+  end, { title = "Mention User", project_key = pk })
 end
 
 local mention_opts = { on_mention = jira_mention_handler }
+
+local function input_opts_with_win()
+  return { on_mention = jira_mention_handler, parent_win = state.content and state.content.win or nil, compact = true }
+end
 
 local function jira_comment()
   local item = current_item()
   if not item or item.kind ~= "jira" then
     return vim.notify("DevOps: select a Jira issue first", vim.log.levels.INFO)
   end
+
+  -- If we're in the list view, open detail first, scroll to comments, then open input
+  if not state.in_detail then
+    nav_push()
+    state.detail_kind = "jira"
+    detail.load_issue(item.key, {
+      content_win = state.content.win,
+      on_ready = function(b, make_keys)
+        nav_render_detail(b, make_keys)
+        -- Scroll to the last line (latest comment) then open comment input
+        vim.defer_fn(function()
+          if state.content.win and vim.api.nvim_win_is_valid(state.content.win) then
+            local lc = vim.api.nvim_buf_line_count(state.content.buf)
+            pcall(vim.api.nvim_win_set_cursor, state.content.win, { lc, 0 })
+            -- Force redraw so the scroll position is visible
+            vim.cmd("redraw")
+          end
+          input.open("Comment " .. item.key, "", function(text)
+            if text == "" then return end
+            api.add_comment(item.key, text, function(ok, _, err)
+              if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+              vim.notify("DevOps: comment added to " .. item.key, vim.log.levels.INFO)
+              -- Refresh the detail view
+              detail.load_issue(item.key, {
+                content_win = state.content.win,
+                on_ready = function(b2, mk2)
+                  if state.in_detail then nav_render_detail(b2, mk2) end
+                  vim.defer_fn(function()
+                    local lc2 = vim.api.nvim_buf_line_count(state.content.buf)
+                    pcall(vim.api.nvim_win_set_cursor, state.content.win, { lc2, 0 })
+                  end, 50)
+                end,
+              })
+            end)
+          end, input_opts_with_win())
+        end, 50)
+      end,
+      on_update = function(b, make_keys)
+        if state.in_detail then nav_render_detail(b, make_keys) end
+      end,
+    })
+    return
+  end
+
+  -- Already in detail view — just open the comment input
   input.open("Comment " .. item.key, "", function(text)
     if text == "" then return end
     api.add_comment(item.key, text, function(ok, _, err)
       if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
       vim.notify("DevOps: comment added to " .. item.key, vim.log.levels.INFO)
-      if is_open() and SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+      refresh_current_jira_section()
     end)
-  end, mention_opts)
+  end, input_opts_with_win())
 end
 
 local function jira_edit()
@@ -776,7 +1149,7 @@ local function jira_edit()
         api.update_issue(item.key, fields, function(ok2, _, err2)
           if not ok2 then return vim.notify("DevOps: " .. (err2 or "update failed"), vim.log.levels.ERROR) end
           vim.notify("DevOps: " .. item.key .. " updated", vim.log.levels.INFO)
-          if is_open() and SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+          refresh_current_jira_section()
         end)
       end)
     end)
@@ -810,7 +1183,7 @@ local function jira_assign()
       api.assign(item.key, choice.account_id, function(ok2, _, err2)
         if not ok2 then return vim.notify("DevOps: " .. (err2 or "assign failed"), vim.log.levels.ERROR) end
         vim.notify("DevOps: " .. item.key .. " assigned to " .. choice.label, vim.log.levels.INFO)
-        if is_open() and SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+        refresh_current_jira_section()
       end)
     end)
   end)
@@ -854,7 +1227,7 @@ local function jira_create()
                 if not ok3 then return vim.notify("DevOps: " .. (err3 or "create failed"), vim.log.levels.ERROR) end
                 local new_key = data and data.key or "?"
                 vim.notify("DevOps: created " .. new_key, vim.log.levels.INFO)
-                if is_open() and SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+                refresh_current_jira_section()
               end)
             end)
           end)
@@ -886,9 +1259,245 @@ local function jira_clone()
       if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
       local new_key = data and data.key or "?"
       vim.notify("DevOps: cloned " .. item.key .. " → " .. new_key, vim.log.levels.INFO)
-      if is_open() and SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+      refresh_current_jira_section()
     end)
   end)
+end
+
+local function jira_search()
+  if not client.configured() then
+    vim.notify("DevOps: Jira not configured — run :JiraAuth", vim.log.levels.ERROR)
+    return
+  end
+  local prev_win = vim.api.nvim_get_current_win()
+
+  -- Snacks-style search bar anchored to top of content pane
+  local input_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[input_buf].bufhidden = "wipe"
+  local content_cfg = vim.api.nvim_win_get_config(state.content.win)
+  local w = content_cfg.width - 2
+  local scope_sprint = false -- default: global search
+
+  local function title_text()
+    local scope_label = scope_sprint and "sprint" or "global"
+    return " 🔍 Jira [" .. scope_label .. "]  C-t: toggle "
+  end
+
+  -- Highlight groups matching Snacks picker style
+  vim.api.nvim_set_hl(0, "DevOpsSearchBorder", { fg = "#ff9e64" })
+  vim.api.nvim_set_hl(0, "DevOpsSearchTitle", { fg = "#c27fd7", bold = true })
+  vim.api.nvim_set_hl(0, "DevOpsSearchNormal", { bg = "#242b38" })
+
+  local input_win = vim.api.nvim_open_win(input_buf, true, {
+    relative = "win", win = state.content.win,
+    width = w, height = 1,
+    row = -1, col = 0,
+    style = "minimal", border = "rounded",
+    title = title_text(), title_pos = "center",
+    zindex = 300,
+  })
+  vim.wo[input_win].winhighlight = "Normal:DevOpsSearchNormal,FloatBorder:DevOpsSearchBorder,FloatTitle:DevOpsSearchTitle"
+
+  local timer = vim.uv.new_timer()
+  local closed = false
+
+  local function do_close()
+    if closed then return end
+    closed = true
+    timer:stop()
+    vim.cmd("stopinsert")
+    if vim.api.nvim_win_is_valid(input_win) then vim.api.nvim_win_close(input_win, true) end
+    if prev_win and vim.api.nvim_win_is_valid(prev_win) then
+      vim.api.nvim_set_current_win(prev_win)
+    end
+  end
+
+  -- Debounced search renders results into dashboard content pane
+  local function do_search(query)
+    timer:stop()
+    if query == "" then
+      load_section() -- restore normal view
+      return
+    end
+    timer:start(400, 0, vim.schedule_wrap(function()
+      if closed then return end
+      local opts = { project_key = state.project and state.project.key }
+      if scope_sprint and state.sprint then
+        opts.sprint = true
+      end
+      api.text_search(query, opts, function(ok, issues, err)
+        if closed or not is_open() then return end
+        if not ok then return set_message("⚠ " .. (err or "search failed")) end
+        render_jira(issues, "search: " .. query, nil, "Jira  ·  Search Results")
+      end)
+    end))
+  end
+
+  -- React to typing
+  vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
+    buffer = input_buf,
+    callback = function()
+      if closed then return end
+      local q = (vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
+      do_search(q)
+    end,
+  })
+
+  -- Keymaps
+  local function km(modes, lhs, fn, desc)
+    vim.keymap.set(modes, lhs, fn, { buffer = input_buf, nowait = true, desc = desc })
+  end
+
+  -- Toggle scope
+  km({ "i", "n" }, "<C-t>", function()
+    scope_sprint = not scope_sprint
+    vim.api.nvim_win_set_config(input_win, { title = title_text(), title_pos = "center" })
+    -- Re-trigger search with current query
+    local q = (vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
+    do_search(q)
+  end, "Toggle scope")
+
+  -- Select item under cursor in content pane
+  km({ "i", "n" }, "<CR>", function()
+    do_close()
+    -- Open detail of the item under content cursor
+    local item = current_item()
+    if item then open_detail() end
+  end, "Open selected")
+
+  km({ "i", "n" }, "<Esc>", function()
+    do_close()
+    load_section() -- restore normal list
+  end, "Cancel")
+  km("n", "q", function()
+    do_close()
+    load_section()
+  end, "Cancel")
+  km("n", "<C-d>", function()
+    do_close()
+    load_section()
+  end, "Cancel")
+
+  vim.cmd("startinsert")
+end
+
+local function gh_search()
+  if not gh.available() then
+    vim.notify("DevOps: gh CLI not found", vim.log.levels.ERROR)
+    return
+  end
+  local prev_win = vim.api.nvim_get_current_win()
+
+  local input_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[input_buf].bufhidden = "wipe"
+  local content_cfg = vim.api.nvim_win_get_config(state.content.win)
+  local w = content_cfg.width - 2
+
+  -- Detect current repo from cwd for local scope
+  local cwd_repo = nil
+  local git_remote = vim.fn.systemlist("git -C " .. vim.fn.getcwd() .. " remote get-url origin 2>/dev/null")[1] or ""
+  local owner_repo = git_remote:match("[:/]([%w%.%-]+/[%w%.%-]+)%.?g?i?t?$")
+  if owner_repo then cwd_repo = owner_repo:gsub("%.git$", "") end
+
+  local scope_local = false -- default: global
+
+  local function title_text()
+    local scope_label = scope_local and ("local: " .. (cwd_repo or "repo")) or "global"
+    return " 🔍 GitHub [" .. scope_label .. "]  C-t: toggle "
+  end
+
+  vim.api.nvim_set_hl(0, "DevOpsSearchBorder", { fg = "#ff9e64" })
+  vim.api.nvim_set_hl(0, "DevOpsSearchTitle", { fg = "#c27fd7", bold = true })
+  vim.api.nvim_set_hl(0, "DevOpsSearchNormal", { bg = "#242b38" })
+
+  local input_win = vim.api.nvim_open_win(input_buf, true, {
+    relative = "win", win = state.content.win,
+    width = w, height = 1,
+    row = -1, col = 0,
+    style = "minimal", border = "rounded",
+    title = title_text(), title_pos = "center",
+    zindex = 300,
+  })
+  vim.wo[input_win].winhighlight = "Normal:DevOpsSearchNormal,FloatBorder:DevOpsSearchBorder,FloatTitle:DevOpsSearchTitle"
+
+  local timer = vim.uv.new_timer()
+  local closed = false
+
+  local function do_close()
+    if closed then return end
+    closed = true
+    timer:stop()
+    vim.cmd("stopinsert")
+    if vim.api.nvim_win_is_valid(input_win) then vim.api.nvim_win_close(input_win, true) end
+    if prev_win and vim.api.nvim_win_is_valid(prev_win) then
+      vim.api.nvim_set_current_win(prev_win)
+    end
+  end
+
+  local function do_search(query)
+    timer:stop()
+    if query == "" then
+      load_section()
+      return
+    end
+    timer:start(400, 0, vim.schedule_wrap(function()
+      if closed then return end
+      local opts = {}
+      if scope_local and cwd_repo then opts.repo = cwd_repo end
+      gh.search_prs(query, opts, function(ok, prs, err)
+        if closed or not is_open() then return end
+        if not ok then return set_message("⚠ " .. (err or "search failed")) end
+        render_github(prs, "search: " .. query, true)
+      end)
+    end))
+  end
+
+  vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
+    buffer = input_buf,
+    callback = function()
+      if closed then return end
+      local q = (vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
+      do_search(q)
+    end,
+  })
+
+  local function km(modes, lhs, fn, desc)
+    vim.keymap.set(modes, lhs, fn, { buffer = input_buf, nowait = true, desc = desc })
+  end
+
+  -- Toggle scope
+  km({ "i", "n" }, "<C-t>", function()
+    scope_local = not scope_local
+    vim.api.nvim_win_set_config(input_win, { title = title_text(), title_pos = "center" })
+    local q = (vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
+    do_search(q)
+  end, "Toggle scope")
+
+  km({ "i", "n" }, "<CR>", function()
+    do_close()
+    local item = current_item()
+    if item then open_detail() end
+  end, "Open selected")
+
+  km({ "i", "n" }, "<Esc>", function()
+    do_close()
+    load_section()
+  end, "Cancel")
+  km("n", "q", function() do_close(); load_section() end, "Cancel")
+  km("n", "<C-d>", function() do_close(); load_section() end, "Cancel")
+
+  vim.cmd("startinsert")
+end
+
+local function dispatch_search()
+  local tab_id = current_tab_id()
+  if tab_id == "github" then
+    gh_search()
+  elseif tab_id == "jira" then
+    jira_search()
+  else
+    vim.notify("DevOps: search is available on Jira and GitHub tabs", vim.log.levels.INFO)
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -916,7 +1525,7 @@ local function gh_approve()
   gh.pr_approve(repo, n, function(ok, _, err)
     if not ok then return vim.notify("DevOps: " .. (err or "approve failed"), vim.log.levels.ERROR) end
     vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
-    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
+    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
   end)
 end
 
@@ -928,7 +1537,7 @@ local function gh_request_changes()
     gh.pr_request_changes(repo, n, body, function(ok, _, err)
       if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
       vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
-      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
+      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
     end)
   end)
 end
@@ -951,7 +1560,7 @@ local function gh_ready()
   gh.pr_ready(repo, n, function(ok, _, err)
     if not ok then return vim.notify("DevOps: " .. (err or "ready failed"), vim.log.levels.ERROR) end
     vim.notify("DevOps: #" .. n .. " marked ready for review", vim.log.levels.INFO)
-    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
+    cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
   end)
 end
 
@@ -963,7 +1572,7 @@ local function gh_merge()
     gh.pr_merge(repo, n, function(ok, _, err)
       if not ok then return vim.notify("DevOps: " .. (err or "merge failed"), vim.log.levels.ERROR) end
       vim.notify("DevOps: #" .. n .. " merged!", vim.log.levels.INFO)
-      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
+      cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); cache_invalidate("gh_review_queue"); if is_open() then load_section(true) end
     end)
   end)
 end
@@ -987,6 +1596,80 @@ local function gh_checkout()
   end)
 end
 
+local function gh_create_pr()
+  local sec_id = current_section_id()
+  if sec_id ~= "gh_prs" and sec_id ~= "gh_reviews" and sec_id ~= "gh_review_queue" then
+    vim.notify("DevOps: switch to a GitHub section first", vim.log.levels.INFO)
+    return
+  end
+  if not gh.available() then return vim.notify("DevOps: gh CLI not found", vim.log.levels.ERROR) end
+  input.open("PR Title", "", function(title)
+    if not title or title == "" then return end
+    input.open("PR Body (optional)", "", function(body)
+      gh.pr_create(title, body or "", nil, function(ok, out, err)
+        if not ok then return vim.notify("DevOps: " .. (err or "PR creation failed"), vim.log.levels.ERROR) end
+        vim.notify("DevOps: PR created", vim.log.levels.INFO)
+        cache_invalidate("gh_prs")
+        cache_invalidate("gh_reviews")
+        load_section(true)
+      end)
+    end)
+  end)
+end
+
+local function toggle_bookmark()
+  local item = current_item()
+  if not item then return end
+
+  local tab_id = current_tab_id()
+  local bm_key
+  if item.kind == "jira" then
+    bm_key = item.key
+  elseif item.kind == "pr" then
+    bm_key = (item.pr.repository and item.pr.repository.nameWithOwner or "") .. "#" .. tostring(item.pr.number)
+  else
+    return
+  end
+
+  local pins = state.bookmarks[tab_id] or {}
+  local idx
+  for i, b in ipairs(pins) do
+    local k = b.kind == "jira" and b.key or ((b.repo_full or "") .. "#" .. tostring(b.number))
+    if k == bm_key then
+      idx = i
+      break
+    end
+  end
+
+  if idx then
+    table.remove(pins, idx)
+    vim.notify("DevOps: unpinned", vim.log.levels.INFO)
+  else
+    if item.kind == "jira" then
+      pins[#pins + 1] = {
+        kind = "jira",
+        key = item.key,
+        id = item.id,
+        title = item.title or item.key,
+        type_name = item.type_name or "",
+      }
+    elseif item.kind == "pr" then
+      pins[#pins + 1] = {
+        kind = "pr",
+        number = item.pr.number,
+        title = item.pr.title,
+        url = item.pr.url,
+        repo = item.pr.repository and item.pr.repository.name or "",
+        repo_full = item.pr.repository and item.pr.repository.nameWithOwner or "",
+      }
+    end
+    vim.notify("DevOps: pinned", vim.log.levels.INFO)
+  end
+
+  state.bookmarks[tab_id] = pins
+  store.save_bookmarks(state.bookmarks)
+end
+
 ---------------------------------------------------------------------------
 -- Scope / Done toggles
 ---------------------------------------------------------------------------
@@ -1001,13 +1684,15 @@ local function toggle_scope()
     state.scope_override = "project"
   end
   render_sidebar()
-  if SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+  update_winbar()
+  if current_section_id() == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
 end
 
 local function toggle_done()
   state.include_done = not state.include_done
   render_sidebar()
-  if SECTIONS[state.section].id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+  update_winbar()
+  if current_section_id() == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
 end
 
 ---------------------------------------------------------------------------
@@ -1015,7 +1700,7 @@ end
 ---------------------------------------------------------------------------
 
 local function show_help()
-  local sec_id = SECTIONS[state.section] and SECTIONS[state.section].id or ""
+  local sec_id = current_section_id()
   local keys
   if sec_id == "jira_issues" then
     keys = {
@@ -1025,16 +1710,39 @@ local function show_help()
       { "a",     "Assign issue" },
       { "n",     "Create new issue" },
       { "y",     "Clone selected issue" },
+      { "/",     "Search Jira" },
+      { "*",     "Pin/unpin selected item" },
       { "t",     "Transition status" },
       { "u",     "Change assignee filter" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
       { "s",     "Toggle scope (sprint/project)" },
-      { "H",     "Toggle show Done issues" },
+      { "h",     "Toggle show Done issues" },
       { "r",     "Refresh" },
       { "o",     "Open in browser" },
       { "Tab",   "Next section" },
       { "S-Tab", "Prev section" },
+      { "H/L",   "Previous/next tab" },
+      { "{/}",   "Previous/next tab" },
+      { "S-←",   "Focus sidebar" },
+      { "q/Esc", "Close" },
+    }
+  elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
+    keys = {
+      { "↵",     "Open issue detail" },
+      { "c",     "Add comment" },
+      { "a",     "Assign issue" },
+      { "t",     "Transition status" },
+      { "/",     "Search Jira" },
+      { "*",     "Pin/unpin selected item" },
+      { "p",     "Switch project" },
+      { "b",     "Switch board" },
+      { "r",     "Refresh" },
+      { "o",     "Open in browser" },
+      { "Tab",   "Next section" },
+      { "S-Tab", "Prev section" },
+      { "H/L",   "Previous/next tab" },
+      { "{/}",   "Previous/next tab" },
       { "S-←",   "Focus sidebar" },
       { "q/Esc", "Close" },
     }
@@ -1048,16 +1756,20 @@ local function show_help()
       { "D",     "Mark ready for review" },
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
+      { "N",     "Create new PR" },
+      { "*",     "Pin/unpin selected item" },
       { "r",     "Refresh" },
       { "o",     "Open in browser" },
       { "Tab",   "Next section" },
       { "S-Tab", "Prev section" },
+      { "H/L",   "Previous/next tab" },
+      { "{/}",   "Previous/next tab" },
       { "S-←",   "Focus sidebar" },
       { "q/Esc", "Close" },
     }
   end
 
-  local lines = { "", "  Keybindings (" .. SECTIONS[state.section].label .. ")", "" }
+  local lines = { "", "  Keybindings (" .. current_section_label() .. ")", "" }
   for _, k in ipairs(keys) do
     lines[#lines + 1] = "   " .. render.pad(k[1], 7) .. " " .. k[2]
   end
@@ -1132,7 +1844,7 @@ local function sidebar_move(dir)
   local cur = vim.api.nvim_win_get_cursor(state.sidebar.win)[1]
   local sec = (state.sidebar_rows and state.sidebar_rows[cur]) or state.section
   sec = sec + dir
-  if sec < 1 then sec = #SECTIONS elseif sec > #SECTIONS then sec = 1 end
+  if sec < 1 then sec = section_count() elseif sec > section_count() then sec = 1 end
   local line = sidebar_line_for_section(sec)
   if line then
     vim.api.nvim_win_set_cursor(state.sidebar.win, { line, 0 })
@@ -1196,7 +1908,8 @@ local function pick_board()
   if not state.project then
     return vim.notify("DevOps: pick a project first (p)", vim.log.levels.INFO)
   end
-  resolve_board_then(function() switch_section(1) end)
+  invalidate_tab_cache("jira")
+  resolve_board_then(function() switch_section(1, tab_index_by_id("jira")) end)
 end
 
 -- Prompt for a project, resolve its board, then cb().
@@ -1216,6 +1929,7 @@ local function pick_project(cb)
     }, function(choice)
       if not choice then return cb and cb() end
       state.project = { key = choice.key, id = choice.id, name = choice.name }
+      invalidate_tab_cache("jira")
       resolve_board_then(function() if cb then cb() end end)
     end)
   end)
@@ -1377,13 +2091,21 @@ local function setup_keymaps()
   map("Q", close, "close (destroy)")
   map("<Tab>", function() switch_section(state.section + 1) end, "next section")
   map("<S-Tab>", function() switch_section(state.section - 1) end, "prev section")
-  for i = 1, #SECTIONS do map(tostring(i), function() switch_section(i) end, "section " .. i) end
+  for i = 1, 9 do
+    map(tostring(i), function()
+      if i <= section_count() then switch_section(i) end
+    end, "section " .. i)
+  end
+  map("H", function() switch_tab(-1) end, "previous tab")
+  map("L", function() switch_tab(1) end, "next tab")
+  map("{", function() switch_tab(-1) end, "previous tab")
+  map("}", function() switch_tab(1) end, "next tab")
   map("<CR>", open_detail, "open")
-  map("r", function() load_section(true) end, "refresh")
+  map("r", function() load_section(true); refresh_notifications() end, "refresh")
   map("o", open_browser, "open in browser")
   map("u", select_user, "select user")
   map("t", transition, "transition status")
-  map("p", function() pick_project(function() switch_section(1) end) end, "pick project")
+  map("p", function() pick_project(function() switch_section(1, tab_index_by_id("jira")) end) end, "pick project")
   map("b", pick_board, "pick board")
   map("<S-Left>", focus_sidebar, "focus sidebar")
   -- Write actions (dispatched by item kind for c/a)
@@ -1392,15 +2114,18 @@ local function setup_keymaps()
   map("e", jira_edit, "edit issue")
   map("n", jira_create, "new issue")
   map("y", jira_clone, "clone issue")
+  map("/", dispatch_search, "search")
+  map("*", toggle_bookmark, "bookmark")
   -- GitHub PR actions
   map("R", gh_request_changes, "request changes")
   map("D", gh_ready, "mark ready")
   map("m", gh_merge, "merge PR")
   map("d", gh_diff, "view diff")
   map("x", gh_checkout, "checkout PR")
+  map("N", gh_create_pr, "new PR")
   -- Toggles
   map("s", toggle_scope, "toggle scope")
-  map("H", toggle_done, "toggle done")
+  map("h", toggle_done, "toggle done")
   -- Help
   map("?", show_help, "help")
 end
@@ -1419,6 +2144,10 @@ local function setup_sidebar_keymaps()
   smap("l", focus_content, "focus list")
   smap("j", function() sidebar_move(1) end, "next view")
   smap("k", function() sidebar_move(-1) end, "prev view")
+  smap("H", function() switch_tab(-1) end, "previous tab")
+  smap("L", function() switch_tab(1) end, "next tab")
+  smap("{", function() switch_tab(-1) end, "previous tab")
+  smap("}", function() switch_tab(1) end, "next tab")
   smap("<Down>", function() sidebar_move(1) end, "next view")
   smap("<Up>", function() sidebar_move(-1) end, "prev view")
   smap("<CR>", function()
@@ -1483,12 +2212,15 @@ function M.open(layout)
     return
   end
   if is_hidden() then
+    state.bookmarks = store.load_bookmarks()
     restore_float_windows()
     setup_keymaps()
     setup_sidebar_keymaps()
     setup_autocmds()
     render_sidebar()
     render_footer()
+    update_winbar()
+    refresh_notifications()
     if state.sidebar_line then
       pcall(vim.api.nvim_win_set_cursor, state.sidebar.win, { state.sidebar_line, 0 })
     end
@@ -1500,8 +2232,14 @@ function M.open(layout)
 
   -- Fresh open.
   state.layout = layout
+  state.tab = 1
   state.section = 1
   state.content_cursor = nil
+  state.nav_stack = {}
+  state.in_detail = false
+  state.detail_kind = nil
+  state.gh_notif_count = 0
+  state.bookmarks = store.load_bookmarks()
 
   if layout == "tab" then open_tab_windows() else open_float_windows() end
   vim.wo[state.sidebar.win].cursorline = true
@@ -1510,6 +2248,7 @@ function M.open(layout)
   setup_autocmds()
   render_sidebar()
   render_footer()
+  update_winbar()
   -- Park the sidebar cursor on the active section so it never starts on a
   -- non-selectable (info) line.
   state.sidebar_line = sidebar_line_for_section(state.section)
@@ -1523,9 +2262,12 @@ function M.open(layout)
         if not is_open() then return end
         render_sidebar() -- now that project/board/sprint are known
         render_footer()
+        update_winbar()
+        refresh_notifications()
         load_section()
       end)
     else
+      refresh_notifications()
       load_section()
     end
   end)
