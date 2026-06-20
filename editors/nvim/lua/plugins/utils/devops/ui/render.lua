@@ -78,8 +78,13 @@ local function set_hl()
     DevOpsPrDraft        = { fg = "#565f89" },
     DevOpsLabel          = { fg = "#7aa2f7" },
     DevOpsColumn         = { fg = "#bb9af7", bold = true },
+    DevOpsColumnNew      = { fg = "#7dcfff", bold = true },
     DevOpsColumnTodo     = { fg = "#9aa5ce", bold = true },
+    DevOpsColumnHold     = { fg = "#ff9e64", bold = true },
     DevOpsColumnProgress = { fg = "#e0af68", bold = true },
+    DevOpsColumnReview   = { fg = "#bb9af7", bold = true },
+    DevOpsColumnQa       = { fg = "#f7768e", bold = true },
+    DevOpsColumnMonitor  = { fg = "#7aa2f7", bold = true },
     DevOpsColumnDone     = { fg = "#9ece6a", bold = true },
     DevOpsCount          = { fg = "#565f89" },
     DevOpsIcon           = { fg = "#7aa2f7" },
@@ -118,7 +123,18 @@ function M.status_hl(category_key)
 end
 
 -- Jira statusCategory key → column header highlight group.
-function M.column_hl(category_key)
+-- Also accepts an optional column name for finer-grained coloring.
+function M.column_hl(category_key, col_name)
+  local name = col_name and col_name:upper() or ""
+  if name:find("DONE") then return "DevOpsColumnDone" end
+  if name:find("PROGRESS") then return "DevOpsColumnProgress" end
+  if name:find("NEW") then return "DevOpsColumnNew" end
+  if name:find("TO DO") or name:find("TODO") then return "DevOpsColumnTodo" end
+  if name:find("HOLD") then return "DevOpsColumnHold" end
+  if name:find("REVIEW") then return "DevOpsColumnReview" end
+  if name:find("QA") then return "DevOpsColumnQa" end
+  if name:find("MONITOR") then return "DevOpsColumnMonitor" end
+  -- Fallback to category
   if category_key == "done" then return "DevOpsColumnDone" end
   if category_key == "indeterminate" then return "DevOpsColumnProgress" end
   return "DevOpsColumn"

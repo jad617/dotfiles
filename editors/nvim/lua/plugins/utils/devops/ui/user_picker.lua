@@ -182,6 +182,7 @@ function M.open(on_select, opts)
   end, "Select user")
 
   km({ "i", "n" }, "<Esc>", do_close, "Cancel")
+  km({ "i", "n" }, "<C-c>", do_close, "Cancel")
   km("n", "q", do_close, "Cancel")
   km("n", "<C-d>", do_close, "Cancel")
 
