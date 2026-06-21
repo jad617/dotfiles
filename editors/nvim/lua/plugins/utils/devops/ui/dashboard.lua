@@ -962,7 +962,7 @@ local function nav_push()
   }
 end
 
-local function nav_render_detail(b, make_keys)
+local function nav_render_detail(b, make_keys, preserve_cursor)
   if not is_open() then return end
   state.in_detail = true
   state.rows = {}
@@ -973,7 +973,9 @@ local function nav_render_detail(b, make_keys)
     pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
   end
   if make_keys then make_keys(state.content.buf) end
-  pcall(vim.api.nvim_win_set_cursor, state.content.win, { 1, 0 })
+  if not preserve_cursor then
+    pcall(vim.api.nvim_win_set_cursor, state.content.win, { 1, 0 })
+  end
   render_footer()
 end
 
@@ -1013,7 +1015,7 @@ local function open_detail()
       content_win = state.content.win,
       on_ready = nav_render_detail,
       on_update = function(b, make_keys)
-        if state.in_detail then nav_render_detail(b, make_keys) end
+        if state.in_detail then nav_render_detail(b, make_keys, true) end
       end,
     })
   elseif item.kind == "pr" then
@@ -1021,7 +1023,7 @@ local function open_detail()
     detail.load_pr(item.pr, {
       on_ready = nav_render_detail,
       on_update = function(b, make_keys)
-        if state.in_detail then nav_render_detail(b, make_keys) end
+        if state.in_detail then nav_render_detail(b, make_keys, true) end
       end,
     })
   end
@@ -1164,7 +1166,7 @@ local function jira_comment()
               detail.load_issue(item.key, {
                 content_win = state.content.win,
                 on_ready = function(b2, mk2)
-                  if state.in_detail then nav_render_detail(b2, mk2) end
+                  if state.in_detail then nav_render_detail(b2, mk2, true) end
                   vim.defer_fn(function()
                     local lc2 = vim.api.nvim_buf_line_count(state.content.buf)
                     pcall(vim.api.nvim_win_set_cursor, state.content.win, { lc2, 0 })
@@ -1176,7 +1178,7 @@ local function jira_comment()
         end, 50)
       end,
       on_update = function(b, make_keys)
-        if state.in_detail then nav_render_detail(b, make_keys) end
+        if state.in_detail then nav_render_detail(b, make_keys, true) end
       end,
     })
     return

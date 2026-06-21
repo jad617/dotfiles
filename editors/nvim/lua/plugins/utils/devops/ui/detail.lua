@@ -16,6 +16,7 @@ local user_picker = require("plugins.utils.devops.ui.user_picker")
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("DevOpsDetail")
+local ns_cursorline = vim.api.nvim_create_namespace("DevOpsCommentCursor")
 local state = { win = nil, buf = nil, prev_win = nil, comment_rows = {}, desc_range = nil }
 
 -- Detail cache: avoids re-fetching unchanged enrichment data after mutations.
@@ -450,6 +451,53 @@ local function build_issue(issue, prs, comments, width)
   return b, comment_rows, { desc_start, desc_end }
 end
 
+--- Set up a CursorMoved autocmd that bounds the cursorline highlight to the
+--- comment card width when the cursor is on a comment row.
+local function setup_comment_cursorline(win, buf, comment_rows_fn)
+  local augroup = vim.api.nvim_create_augroup("DevOpsCommentCursor_" .. buf, { clear = true })
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    group = augroup,
+    buffer = buf,
+    callback = function()
+      if not vim.api.nvim_win_is_valid(win) then return true end
+      local row = vim.api.nvim_win_get_cursor(win)[1]
+      local rows = comment_rows_fn()
+      vim.api.nvim_buf_clear_namespace(buf, ns_cursorline, 0, -1)
+      if rows[row] then
+        -- On a comment line: disable native cursorline, highlight inside card only
+        vim.wo[win].cursorline = false
+        local line_text = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+        -- Start highlight after: indent spaces + "│" (3 bytes) + "  " (2 spaces)
+        local indent = #(line_text:match("^(%s*)") or "")
+        local after_indent = line_text:sub(indent + 1, indent + 3)
+        local col_start
+        if after_indent == "│" then
+          -- Body line: skip indent + │(3 bytes) + "  "(2 bytes)
+          col_start = indent + 3 + 2
+        else
+          -- Border line (╭/╰): highlight from the border char
+          col_start = indent
+        end
+        if col_start > #line_text then col_start = indent end
+        vim.api.nvim_buf_set_extmark(buf, ns_cursorline, row - 1, col_start, {
+          end_col = #line_text,
+          hl_group = "CursorLine",
+          hl_eol = false,
+          priority = 10000,
+        })
+        -- Snap cursor to text start if it's in the border/padding area
+        local cur_col = vim.api.nvim_win_get_cursor(win)[2]
+        if cur_col < col_start then
+          vim.api.nvim_win_set_cursor(win, { row, col_start })
+        end
+      else
+        -- Off comment lines: restore native cursorline
+        vim.wo[win].cursorline = true
+      end
+    end,
+  })
+end
+
 local function setup_issue_keys(buf, ctx)
   local browse = client.base_url() .. "/browse/" .. ctx.key
   local keymap_opts = { buffer = buf }
@@ -601,6 +649,7 @@ function M.open_issue(key)
     state.desc_range = dr_initial
     show("Jira · " .. issue.key, b_initial, function(buf)
       setup_keys(buf)
+      setup_comment_cursorline(state.win, buf, function() return state.comment_rows end)
       -- Linked PRs and comments arrive async; rebuild as each completes.
       local async_dev_prs, async_gh_prs, async_comments
       local function rebuild()
@@ -1096,6 +1145,9 @@ function M.load_issue(key, opts)
         get_cursor_row = function() return vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())[1] end,
         nowait = true,
       })
+      if opts.content_win and vim.api.nvim_win_is_valid(opts.content_win) then
+        setup_comment_cursorline(opts.content_win, buf, function() return issue_comment_rows end)
+      end
     end
 
     local b_initial, cr_initial, dr_initial = build_issue(issue, nil, nil, content_width())
