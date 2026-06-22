@@ -958,54 +958,68 @@ local function build_pr(pr)
 
   if #timeline > 0 then
     b.divider("Activity")
+    local PAD = "  "
     for _, ev in ipairs(timeline) do
       b.add("")
       local ts = format_time(ev.time)
+
+      -- Per-kind icon, action label, action highlight, and border colour.
+      local icon, action, action_hl, border_hl
       if ev.kind == "comment" then
-        local hdr = "  💬  " .. ev.author .. "  commented"
-        local line = b.add(hdr .. "  " .. ts)
-        b.hl(line, #"  💬  ", #"  💬  " + #ev.author, "DevOpsKey")
-        b.hl(line, #hdr + 2, #hdr + 2 + #ts, "DevOpsDim")
+        icon, action, action_hl, border_hl = "💬", "commented", "DevOpsDim", "DevOpsCommentBorder"
       elseif ev.kind == "review" then
-        local state_label = (ev.state == "APPROVED" and "approved")
+        action = (ev.state == "APPROVED" and "approved")
           or (ev.state == "CHANGES_REQUESTED" and "requested changes")
-          or (ev.state == "COMMENTED" and "reviewed")
           or (ev.state == "DISMISSED" and "dismissed review")
           or "reviewed"
-        local state_hl = (ev.state == "APPROVED" and "DevOpsOk")
+        action_hl = (ev.state == "APPROVED" and "DevOpsOk")
           or (ev.state == "CHANGES_REQUESTED" and "DevOpsErr")
           or "DevOpsWarn"
-        local icon = ev.state == "APPROVED" and "✓" or (ev.state == "CHANGES_REQUESTED" and "✗" or "●")
-        local hdr = "  " .. icon .. "  " .. ev.author .. "  " .. state_label
-        local line = b.add(hdr .. "  " .. ts)
-        b.hl(line, #("  " .. icon .. "  "), #("  " .. icon .. "  ") + #ev.author, "DevOpsKey")
-        b.hl(line, #("  " .. icon .. "  " .. ev.author .. "  "), #("  " .. icon .. "  " .. ev.author .. "  ") + #state_label, state_hl)
-        b.hl(line, #hdr + 2, #hdr + 2 + #ts, "DevOpsDim")
-      elseif ev.kind == "commit" then
-        local short_oid = ev.oid:sub(1, 7)
-        local hdr = "  ⊙  " .. ev.author .. "  pushed  " .. short_oid
-        local line = b.add(hdr .. "  " .. ts)
-        b.hl(line, #"  ⊙  ", #"  ⊙  " + #ev.author, "DevOpsKey")
-        b.hl(line, #("  ⊙  " .. ev.author .. "  pushed  "), #("  ⊙  " .. ev.author .. "  pushed  ") + #short_oid, "DevOpsId")
-        b.hl(line, #hdr + 2, #hdr + 2 + #ts, "DevOpsDim")
+        border_hl = action_hl
+        icon = ev.state == "APPROVED" and "✓" or (ev.state == "CHANGES_REQUESTED" and "✗" or "●")
+      else -- commit
+        icon, action, action_hl, border_hl = "⊙", "pushed " .. ev.oid:sub(1, 7), "DevOpsId", "DevOpsBorder"
       end
-      -- Body: clean HTML/markdown noise, render, and truncate for readability.
+
+      -- ╭─ <icon> <author> <action> · <time>
+      local head = PAD .. "╭─ " .. icon .. " "
+      local author_start = #head
+      head = head .. ev.author .. " "
+      local action_start = #head
+      head = head .. action
+      local action_end = #head
+      local ts_start = action_end + #" · "
+      head = head .. " · " .. ts
+      local hline = b.add(head)
+      b.hl(hline, #PAD, author_start, border_hl)
+      b.hl(hline, author_start, author_start + #ev.author, "DevOpsKey")
+      b.hl(hline, action_start, action_end, action_hl)
+      b.hl(hline, ts_start, ts_start + #ts, "DevOpsDim")
+
+      -- │  body…  (cleaned, rendered, truncated)
+      local rail = PAD .. "│  "
       local body = markdown.clean(ev.body)
       if body ~= "" then
-        local md = markdown.render(body, "    ")
+        local md = markdown.render(body, "")
         local max_lines = 8
         for i, bl in ipairs(md.lines) do
           if i > max_lines then
-            local trunc = b.add("    ...")
-            b.hl(trunc, 0, #"    ...", "DevOpsDim")
+            local tr = b.add(rail .. "…")
+            b.hl(tr, #PAD, #PAD + #"│", border_hl)
+            b.hl(tr, #rail, #rail + #"…", "DevOpsDim")
             break
           end
-          local li = b.add(bl)
+          local li = b.add(rail .. bl)
+          b.hl(li, #PAD, #PAD + #"│", border_hl)
           for _, h in ipairs(md.highlights) do
-            if h.line == i - 1 then b.hl(li, h.col_start, h.col_end, h.hl) end
+            if h.line == i - 1 then b.hl(li, #rail + h.col_start, #rail + h.col_end, h.hl) end
           end
         end
       end
+
+      -- ╰─
+      local bot = b.add(PAD .. "╰─")
+      b.hl(bot, #PAD, #(PAD .. "╰─"), border_hl)
     end
   end
 
