@@ -873,7 +873,9 @@ local function load_section(force)
       account_id = account,
       project_key = state.project and state.project.key,
       open_sprints = use_sprints,
-      include_done = state.include_done,
+      -- In board mode the layout has a Done column, so fetch Done issues to fill
+      -- it; the flat list still respects the +Done toggle.
+      include_done = state.include_done or state.columns ~= nil,
     }, on_issues)
   elseif sec_id == "jira_sprint" then
     if not client.configured() then
@@ -1150,6 +1152,26 @@ local function transition()
   api.transitions(item.key, function(ok, trs, err)
     if not ok then return vim.notify("DevOps: " .. (err or "no transitions"), vim.log.levels.ERROR) end
     local current_status = item.status or "?"
+
+    -- Order destinations the way the board reads (To Do → In Progress → Done),
+    -- falling back to status category, then name.
+    local col_rank = {}
+    for i, col in ipairs(state.columns or {}) do
+      for _, sid in ipairs(col.statuses or {}) do col_rank[tostring(sid)] = i end
+    end
+    local cat_rank = { new = 1, indeterminate = 2, done = 3 }
+    local function rank(tr)
+      local to = tr.to or {}
+      local by_col = to.id and col_rank[tostring(to.id)]
+      if by_col then return by_col end
+      return 100 + (cat_rank[to.statusCategory and to.statusCategory.key] or 9)
+    end
+    table.sort(trs, function(a, b)
+      local ra, rb = rank(a), rank(b)
+      if ra ~= rb then return ra < rb end
+      return (a.to and a.to.name or a.name or "") < (b.to and b.to.name or b.name or "")
+    end)
+
     vim.ui.select(trs, {
       prompt = "Move " .. item.key .. ":",
       format_item = function(t) return current_status .. "  →  " .. (t.to and t.to.name or t.name) end,
@@ -1853,7 +1875,7 @@ local function show_help()
       { "y",     "Clone selected issue" },
       { "/",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
-      { "t",     "Transition status" },
+      { "m",     "Move (change status)" },
       { "u",     "Change assignee filter" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
@@ -1873,7 +1895,7 @@ local function show_help()
       { "↵",     "Open issue detail" },
       { "c",     "Add comment" },
       { "a",     "Assign issue" },
-      { "t",     "Transition status" },
+      { "m",     "Move (change status)" },
       { "/",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "p",     "Switch project" },
@@ -1958,6 +1980,12 @@ local function dispatch_action_a()
   if item.kind == "jira" then jira_assign()
   elseif item.kind == "pr" then gh_approve()
   end
+end
+
+-- 'm' = move: Jira issue → change status (transition), PR → merge.
+local function dispatch_m()
+  local item = current_item()
+  if item and item.kind == "pr" then gh_merge() else transition() end
 end
 
 ---------------------------------------------------------------------------
@@ -2246,7 +2274,6 @@ local function setup_keymaps()
   map("r", function() load_section(true); refresh_notifications() end, "refresh")
   map("o", open_browser, "open in browser")
   map("u", select_user, "select user")
-  map("t", transition, "transition status")
   map("p", function() pick_project(function() switch_section(1, tab_index_by_id("jira")) end) end, "pick project")
   map("b", pick_board, "pick board")
   map("<S-Left>", focus_sidebar, "focus sidebar")
@@ -2261,7 +2288,7 @@ local function setup_keymaps()
   -- GitHub PR actions
   map("R", gh_request_changes, "request changes")
   map("D", gh_ready, "mark ready")
-  map("m", gh_merge, "merge PR")
+  map("m", dispatch_m, "move issue / merge PR")
   map("d", gh_diff, "view diff")
   map("x", gh_checkout, "checkout PR")
   map("N", gh_create_pr, "new PR")
