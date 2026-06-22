@@ -305,14 +305,14 @@ local function render_footer()
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "t move", "n new", "y clone", "/ search", "* pin" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "/ search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "t move", "c comment", "a assign", "/ search", "* pin" } },
+      { "Actions",  { "m move", "c comment", "a assign", "/ search", "* pin" } },
       { "Jira",     { "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
@@ -1383,20 +1383,26 @@ local function jira_clone()
     if not ok then return vim.notify("DevOps: " .. (err or "fetch failed"), vim.log.levels.ERROR) end
     local f = issue.fields or {}
     local project_key = item.key:match("^(%u+)-")
-    local fields = {
-      project = { key = project_key },
-      issuetype = { name = f.issuetype and f.issuetype.name or "Task" },
-      summary = "CLONE - " .. (f.summary or ""),
-    }
-    -- Pass description ADF through directly (already ADF format)
-    if f.description then fields.description = f.description end
-    local me_id = client.account_id()
-    if me_id then fields.assignee = { accountId = me_id } end
-    api.create_issue(fields, function(ok2, data, err2)
-      if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
-      local new_key = data and data.key or "?"
-      vim.notify("DevOps: cloned " .. item.key .. " → " .. new_key, vim.log.levels.INFO)
-      refresh_current_jira_section()
+    -- Ask for the new title (prefilled), then let the description be edited.
+    vim.ui.input({ prompt = "Clone title: ", default = "CLONE - " .. (f.summary or "") }, function(new_summary)
+      if not new_summary or new_summary == "" then return end
+      local desc_text = table.concat(adf.adf_to_lines(f.description), "\n")
+      input.open("Clone description (from " .. item.key .. ")", desc_text, function(new_desc)
+        local fields = {
+          project = { key = project_key },
+          issuetype = { name = f.issuetype and f.issuetype.name or "Task" },
+          summary = new_summary,
+          description = adf.text_to_adf(new_desc),
+        }
+        local me_id = client.account_id()
+        if me_id then fields.assignee = { accountId = me_id } end
+        api.create_issue(fields, function(ok2, data, err2)
+          if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
+          local new_key = data and data.key or "?"
+          vim.notify("DevOps: cloned " .. item.key .. " → " .. new_key, vim.log.levels.INFO)
+          refresh_current_jira_section()
+        end)
+      end, input_opts_with_win())
     end)
   end)
 end
