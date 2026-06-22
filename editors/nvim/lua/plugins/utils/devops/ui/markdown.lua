@@ -81,9 +81,12 @@ local function wrap_words(text, max)
       out[#out + 1] = cur
       cur = word
     end
-    while dw(cur) > max do -- a single word longer than the line: hard-break
+    while dw(cur) > max do -- a single word longer than the line
       local cut = #cur
       while cut > 1 and dw(cur:sub(1, cut)) > max do cut = cut - 1 end
+      -- Prefer breaking after a separator (dotted identifiers, paths, URLs).
+      local brk = cur:sub(1, cut):match(".*[%./_:%-]()")
+      if brk and brk > math.floor(cut / 2) then cut = brk - 1 end
       out[#out + 1] = cur:sub(1, cut)
       cur = cur:sub(cut + 1)
     end
@@ -92,10 +95,26 @@ local function wrap_words(text, max)
   return out
 end
 
+-- Split a markdown table row "| a | b |" into trimmed cells (backticks dropped).
+local function table_cells(line)
+  local s = line:gsub("^%s*|", ""):gsub("|%s*$", "")
+  local cells = {}
+  for cell in (s .. "|"):gmatch("(.-)|") do
+    cells[#cells + 1] = (cell:gsub("`", ""):gsub("^%s+", ""):gsub("%s+$", ""))
+  end
+  return cells
+end
+
+-- A separator row like |:---|---:|:--:| (only pipes/colons/dashes/spaces).
+local function is_table_sep(line)
+  return line:match("^%s*|?[ :|%-]+|?%s*$") ~= nil and line:find("%-") ~= nil
+end
+
 --- Parse a markdown string into { lines = {}, highlights = {} }
 --- Each highlight: { line = 0-idx, col_start, col_end, hl = "group" }
 --- If `width` (display columns) is given, body text is word-wrapped to it with a
---- hanging indent under list/header markers. Table rows pass through unwrapped.
+--- hanging indent under list/header markers, and tables are aligned to columns
+--- (shrinking + wrapping the widest column) so they fit the width.
 function M.render(text, indent, width)
   indent = indent or "  "
   local lines = {}
@@ -106,8 +125,7 @@ function M.render(text, indent, width)
   -- Emit `content` after `prefix` (continuation lines use `hanging`), wrapping to
   -- `width` when set. line_hl spans the whole line; prefix_hl spans the marker.
   local function emit(prefix, hanging, content, line_hl, prefix_hl)
-    local is_table = content:match("^%s*|.+|%s*$") ~= nil
-    local segs = (width and content ~= "" and not is_table)
+    local segs = (width and content ~= "")
       and wrap_words(content, width - dw(prefix)) or { content }
     for si, seg in ipairs(segs) do
       local pfx = (si == 1) and prefix or hanging
@@ -120,8 +138,64 @@ function M.render(text, indent, width)
     end
   end
 
-  for _, raw in ipairs(vim.split(text or "", "\n", { plain = true })) do
-    local line = raw:gsub("\r", "")
+  -- Render an aligned table: shrink the widest column (then wrap its cells) until
+  -- the whole row fits `width`. A dim underline separates the header.
+  local function render_table(rows, aligns)
+    local ncol = 0
+    for _, r in ipairs(rows) do ncol = math.max(ncol, #r) end
+    if ncol == 0 then return end
+    local cw = {}
+    for c = 1, ncol do
+      local m = 3
+      for _, r in ipairs(rows) do m = math.max(m, dw(r[c] or "")) end
+      cw[c] = m
+    end
+    local gap = 2
+    local avail = (width or 80) - dw(indent)
+    local function total() local t = (ncol - 1) * gap; for c = 1, ncol do t = t + cw[c] end; return t end
+    local guard = 0
+    while total() > avail and guard < 1000 do
+      guard = guard + 1
+      local wc, wmax = 1, -1
+      for c = 1, ncol do if cw[c] > wmax then wmax, wc = cw[c], c end end
+      if cw[wc] <= 6 then break end
+      cw[wc] = cw[wc] - 1
+    end
+    local function pad(seg, w, align)
+      local extra = w - dw(seg)
+      if extra < 0 then extra = 0 end
+      if align == "right" then return string.rep(" ", extra) .. seg end
+      if align == "center" then local l = math.floor(extra / 2); return string.rep(" ", l) .. seg .. string.rep(" ", extra - l) end
+      return seg .. string.rep(" ", extra)
+    end
+    for ri, r in ipairs(rows) do
+      local wrapped, maxln = {}, 1
+      for c = 1, ncol do
+        wrapped[c] = wrap_words(r[c] or "", cw[c])
+        maxln = math.max(maxln, #wrapped[c])
+      end
+      for ln = 1, maxln do
+        local parts = {}
+        for c = 1, ncol do parts[c] = pad(wrapped[c][ln] or "", cw[c], aligns[c]) end
+        local full = indent .. table.concat(parts, string.rep(" ", gap))
+        lines[#lines + 1] = full
+        if ri == 1 then push_highlight(highlights, #lines - 1, 0, #full, "DevOpsMdHeader") end
+      end
+      if ri == 1 then
+        local sep = {}
+        for c = 1, ncol do sep[c] = string.rep("─", cw[c]) end
+        local full = indent .. table.concat(sep, string.rep(" ", gap))
+        lines[#lines + 1] = full
+        push_highlight(highlights, #lines - 1, 0, #full, "DevOpsDim")
+      end
+    end
+  end
+
+  local raw_lines = vim.split(text or "", "\n", { plain = true })
+  local i = 1
+  while i <= #raw_lines do
+    local line = raw_lines[i]:gsub("\r", "")
+    local next_line = raw_lines[i + 1] and raw_lines[i + 1]:gsub("\r", "") or nil
 
     if line:match("^%s*```") then
       if in_code_block then
@@ -131,9 +205,26 @@ function M.render(text, indent, width)
         lines[#lines + 1] = indent .. "───────────────────"
         push_highlight(highlights, #lines - 1, 0, #lines[#lines], "DevOpsMdCodeBlock")
       end
+      i = i + 1
     elseif in_code_block then
       lines[#lines + 1] = indent .. "  " .. line
       push_highlight(highlights, #lines - 1, 0, #lines[#lines], "DevOpsMdCodeBlock")
+      i = i + 1
+    elseif line:match("^%s*|.+|%s*$") and next_line and is_table_sep(next_line) then
+      -- Markdown table: collect header + all body rows, then render aligned.
+      local aligns = {}
+      for _, cell in ipairs(table_cells(next_line)) do
+        local l, rr = cell:match("^:"), cell:match(":$")
+        aligns[#aligns + 1] = (l and rr and "center") or (rr and "right") or "left"
+      end
+      local rows = { table_cells(line) }
+      local j = i + 2
+      while raw_lines[j] and raw_lines[j]:gsub("\r", ""):match("^%s*|.+|%s*$") do
+        rows[#rows + 1] = table_cells(raw_lines[j]:gsub("\r", ""))
+        j = j + 1
+      end
+      render_table(rows, aligns)
+      i = j
     else
       local hashes, header_text = line:match("^(#+)%s+(.*)")
       local bullet_indent, bullet_text = line:match("^(%s*)[%-%*%+]%s+(.*)")
@@ -151,6 +242,7 @@ function M.render(text, indent, width)
       else
         emit(indent, indent, line, nil, nil)
       end
+      i = i + 1
     end
   end
 
