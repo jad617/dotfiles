@@ -271,6 +271,12 @@ local function render_sidebar()
   set_buf_lines(state.sidebar.buf, lines)
   apply_highlights(state.sidebar.buf, hls)
   state.sidebar_rows = rows
+  -- Keep the sidebar cursor (and its green cursorline) on the active section, so
+  -- the highlight follows when switching sections with Tab.
+  if state.sidebar.win and vim.api.nvim_win_is_valid(state.sidebar.win) then
+    local ln = sidebar_line_for_section(state.section)
+    if ln then pcall(vim.api.nvim_win_set_cursor, state.sidebar.win, { ln, 0 }) end
+  end
   update_sidebar_winbar()
 end
 
@@ -2195,7 +2201,8 @@ local function open_float_windows()
   })
 
   vim.wo[state.content.win].cursorline = true
-  vim.wo[state.sidebar.win].winhighlight = winhl
+  vim.wo[state.sidebar.win].cursorline = true
+  vim.wo[state.sidebar.win].winhighlight = winhl .. ",CursorLine:DevOpsSidebarSel"
   vim.wo[state.content.win].winhighlight = winhl
   vim.wo[state.footer.win].winhighlight = winhl
 end
@@ -2232,7 +2239,7 @@ local function restore_float_windows()
 
   vim.wo[state.content.win].cursorline = true
   vim.wo[state.sidebar.win].cursorline = true
-  vim.wo[state.sidebar.win].winhighlight = winhl
+  vim.wo[state.sidebar.win].winhighlight = winhl .. ",CursorLine:DevOpsSidebarSel"
   vim.wo[state.content.win].winhighlight = winhl
   vim.wo[state.footer.win].winhighlight = winhl
   render_footer()
@@ -2250,6 +2257,8 @@ local function open_tab_windows()
   vim.api.nvim_win_set_width(state.sidebar.win, 32)
   vim.api.nvim_set_current_win(state.content.win)
   vim.wo[state.content.win].cursorline = true
+  vim.wo[state.sidebar.win].cursorline = true
+  vim.wo[state.sidebar.win].winhighlight = "CursorLine:DevOpsSidebarSel"
 end
 
 local function map(lhs, fn, desc)
