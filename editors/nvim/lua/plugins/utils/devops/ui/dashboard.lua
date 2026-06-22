@@ -305,14 +305,14 @@ local function render_footer()
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "t move", "n new", "y clone", "/ search", "* pin" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "/ search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "t move", "c comment", "a assign", "/ search", "* pin" } },
+      { "Actions",  { "m move", "c comment", "a assign", "/ search", "* pin" } },
       { "Jira",     { "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
@@ -568,6 +568,21 @@ local function render_jira(issues, assignee_name, columns, title_override)
   apply_highlights(state.content.buf, hls)
   state.rows = rows
   park_cursor_on_first_item()
+end
+
+-- Render a Jira section straight from cached issues (no network call). Shared by
+-- the cache path in load_section and the optimistic update after a transition.
+local function render_jira_from_cache(sec_id, cached)
+  if sec_id == "jira_issues" then
+    local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
+    render_jira(cached, name, state.columns)
+  elseif sec_id == "jira_sprint" then
+    render_jira(cached, "all", state.columns, "Jira  ·  Sprint Board")
+  elseif sec_id == "jira_epics" then
+    render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Epics")
+  elseif sec_id == "jira_backlog" then
+    render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Backlog")
+  end
 end
 
 local function github_check_status(rollup)
@@ -828,18 +843,11 @@ local function load_section(force)
   if not force then
     local cached = cache_get(sec_id)
     if cached then
-      if sec_id == "jira_issues" then
-        local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
-        render_jira(cached, name, state.columns)
-      elseif sec_id == "jira_sprint" then
-        render_jira(cached, "all", state.columns, "Jira  ·  Sprint Board")
-      elseif sec_id == "jira_epics" then
-        render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Epics")
-      elseif sec_id == "jira_backlog" then
-        render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Backlog")
-      else
+      if sec_id == "gh_prs" or sec_id == "gh_reviews" then
         local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
         render_github(cached, title, sec_id == "gh_reviews")
+      else
+        render_jira_from_cache(sec_id, cached)
       end
       return
     end
@@ -865,7 +873,9 @@ local function load_section(force)
       account_id = account,
       project_key = state.project and state.project.key,
       open_sprints = use_sprints,
-      include_done = state.include_done,
+      -- In board mode the layout has a Done column, so fetch Done issues to fill
+      -- it; the flat list still respects the +Done toggle.
+      include_done = state.include_done or state.columns ~= nil,
     }, on_issues)
   elseif sec_id == "jira_sprint" then
     if not client.configured() then
@@ -1047,6 +1057,46 @@ local function refresh_current_jira_section()
   end
 end
 
+-- Optimistically reflect a status change without a network refetch: patch the
+-- cached issue's status and re-render from cache, keeping the cursor on the same
+-- issue. This avoids the reload flicker on every transition, and keeps an issue
+-- visible after it's moved to Done (which the server-side query would otherwise
+-- filter out). A real refresh ('r') re-applies the server filter.
+local function apply_transition_locally(key, to)
+  local sec_id = current_section_id()
+  local entry = cache[sec_id]
+  local cached = entry and entry.data
+  if not cached then
+    refresh_current_jira_section() -- nothing cached to patch; fall back to refetch
+    return
+  end
+  for _, issue in ipairs(cached) do
+    if issue.key == key then
+      issue.fields = issue.fields or {}
+      if to then
+        issue.fields.status = { id = to.id, name = to.name, statusCategory = to.statusCategory }
+      end
+      break
+    end
+  end
+  local win = state.content and state.content.win
+  local cur = (win and vim.api.nvim_win_is_valid(win)) and vim.api.nvim_win_get_cursor(win) or nil
+  render_jira_from_cache(sec_id, cached)
+  -- Keep the cursor on the same issue (it may have moved to another column).
+  if win and vim.api.nvim_win_is_valid(win) then
+    local target
+    for line, row in pairs(state.rows) do
+      if row.key == key then target = line break end
+    end
+    if target then
+      pcall(vim.api.nvim_win_set_cursor, win, { target, 0 })
+    elseif cur then
+      cur[1] = math.min(cur[1], vim.api.nvim_buf_line_count(state.content.buf))
+      pcall(vim.api.nvim_win_set_cursor, win, cur)
+    end
+  end
+end
+
 local function switch_section(section_idx, tab_idx)
   local next_tab = wrap_index(tab_idx or state.tab, #TABS)
   local next_section = wrap_index(section_idx or state.section, section_count(next_tab))
@@ -1102,6 +1152,26 @@ local function transition()
   api.transitions(item.key, function(ok, trs, err)
     if not ok then return vim.notify("DevOps: " .. (err or "no transitions"), vim.log.levels.ERROR) end
     local current_status = item.status or "?"
+
+    -- Order destinations the way the board reads (To Do → In Progress → Done),
+    -- falling back to status category, then name.
+    local col_rank = {}
+    for i, col in ipairs(state.columns or {}) do
+      for _, sid in ipairs(col.statuses or {}) do col_rank[tostring(sid)] = i end
+    end
+    local cat_rank = { new = 1, indeterminate = 2, done = 3 }
+    local function rank(tr)
+      local to = tr.to or {}
+      local by_col = to.id and col_rank[tostring(to.id)]
+      if by_col then return by_col end
+      return 100 + (cat_rank[to.statusCategory and to.statusCategory.key] or 9)
+    end
+    table.sort(trs, function(a, b)
+      local ra, rb = rank(a), rank(b)
+      if ra ~= rb then return ra < rb end
+      return (a.to and a.to.name or a.name or "") < (b.to and b.to.name or b.name or "")
+    end)
+
     vim.ui.select(trs, {
       prompt = "Move " .. item.key .. ":",
       format_item = function(t) return current_status .. "  →  " .. (t.to and t.to.name or t.name) end,
@@ -1110,7 +1180,8 @@ local function transition()
       api.do_transition(item.key, choice.id, function(ok2, _, err2)
         if not ok2 then return vim.notify("DevOps: " .. (err2 or "transition failed"), vim.log.levels.ERROR) end
         vim.notify("DevOps: " .. item.key .. " → " .. choice.name, vim.log.levels.INFO)
-        refresh_current_jira_section()
+        -- Optimistic local update: no refetch, no flicker, issue stays visible.
+        apply_transition_locally(item.key, choice.to)
       end)
     end)
   end)
@@ -1312,20 +1383,26 @@ local function jira_clone()
     if not ok then return vim.notify("DevOps: " .. (err or "fetch failed"), vim.log.levels.ERROR) end
     local f = issue.fields or {}
     local project_key = item.key:match("^(%u+)-")
-    local fields = {
-      project = { key = project_key },
-      issuetype = { name = f.issuetype and f.issuetype.name or "Task" },
-      summary = "CLONE - " .. (f.summary or ""),
-    }
-    -- Pass description ADF through directly (already ADF format)
-    if f.description then fields.description = f.description end
-    local me_id = client.account_id()
-    if me_id then fields.assignee = { accountId = me_id } end
-    api.create_issue(fields, function(ok2, data, err2)
-      if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
-      local new_key = data and data.key or "?"
-      vim.notify("DevOps: cloned " .. item.key .. " → " .. new_key, vim.log.levels.INFO)
-      refresh_current_jira_section()
+    -- Ask for the new title (prefilled), then let the description be edited.
+    vim.ui.input({ prompt = "Clone title: ", default = "CLONE - " .. (f.summary or "") }, function(new_summary)
+      if not new_summary or new_summary == "" then return end
+      local desc_text = table.concat(adf.adf_to_lines(f.description), "\n")
+      input.open("Clone description (from " .. item.key .. ")", desc_text, function(new_desc)
+        local fields = {
+          project = { key = project_key },
+          issuetype = { name = f.issuetype and f.issuetype.name or "Task" },
+          summary = new_summary,
+          description = adf.text_to_adf(new_desc),
+        }
+        local me_id = client.account_id()
+        if me_id then fields.assignee = { accountId = me_id } end
+        api.create_issue(fields, function(ok2, data, err2)
+          if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
+          local new_key = data and data.key or "?"
+          vim.notify("DevOps: cloned " .. item.key .. " → " .. new_key, vim.log.levels.INFO)
+          refresh_current_jira_section()
+        end)
+      end, input_opts_with_win())
     end)
   end)
 end
@@ -1804,7 +1881,7 @@ local function show_help()
       { "y",     "Clone selected issue" },
       { "/",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
-      { "t",     "Transition status" },
+      { "m",     "Move (change status)" },
       { "u",     "Change assignee filter" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
@@ -1824,7 +1901,7 @@ local function show_help()
       { "↵",     "Open issue detail" },
       { "c",     "Add comment" },
       { "a",     "Assign issue" },
-      { "t",     "Transition status" },
+      { "m",     "Move (change status)" },
       { "/",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "p",     "Switch project" },
@@ -1909,6 +1986,12 @@ local function dispatch_action_a()
   if item.kind == "jira" then jira_assign()
   elseif item.kind == "pr" then gh_approve()
   end
+end
+
+-- 'm' = move: Jira issue → change status (transition), PR → merge.
+local function dispatch_m()
+  local item = current_item()
+  if item and item.kind == "pr" then gh_merge() else transition() end
 end
 
 ---------------------------------------------------------------------------
@@ -2197,7 +2280,6 @@ local function setup_keymaps()
   map("r", function() load_section(true); refresh_notifications() end, "refresh")
   map("o", open_browser, "open in browser")
   map("u", select_user, "select user")
-  map("t", transition, "transition status")
   map("p", function() pick_project(function() switch_section(1, tab_index_by_id("jira")) end) end, "pick project")
   map("b", pick_board, "pick board")
   map("<S-Left>", focus_sidebar, "focus sidebar")
@@ -2212,7 +2294,7 @@ local function setup_keymaps()
   -- GitHub PR actions
   map("R", gh_request_changes, "request changes")
   map("D", gh_ready, "mark ready")
-  map("m", gh_merge, "merge PR")
+  map("m", dispatch_m, "move issue / merge PR")
   map("d", gh_diff, "view diff")
   map("x", gh_checkout, "checkout PR")
   map("N", gh_create_pr, "new PR")
@@ -2310,12 +2392,14 @@ local function prefetch_other_sections()
     local account = client.account_id()
     local project_key = state.project and state.project.key or nil
 
-    if account and not cache_get("jira_issues") then
+    -- Skip the active section (load_section already owns its cache) so we don't
+    -- race/clobber it; mirror its board-aware include_done for the rest.
+    if account and current_section_id() ~= "jira_issues" and not cache_get("jira_issues") then
       api.search({
         account_id = account,
         project_key = project_key,
         open_sprints = state.sprint ~= nil,
-        include_done = false,
+        include_done = state.include_done or state.columns ~= nil,
       }, function(ok, issues)
         if ok and issues then cache_set("jira_issues", issues) end
       end)
