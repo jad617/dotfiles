@@ -52,9 +52,10 @@ function M.clean(text)
   local t = text:gsub("\r", "")
   t = t:gsub("<!%-%-.-%-%->", "")                                   -- HTML comments
   t = t:gsub("<[bB][rR]%s*/?>", "\n")                              -- <br> → newline
-  t = t:gsub("%[!%[[^%]]*%]%([^%)]*%)%]%([^%)]*%)", "")            -- [![alt](img)](link) badge
-  t = t:gsub("!%[[^%]]*%]%([^%)]*%)", "")                          -- ![alt](img) image
+  t = t:gsub("%[!%[([^%]]*)%]%([^%)]*%)%]%([^%)]*%)", "%1")        -- [![alt](img)](link) → alt
+  t = t:gsub("!%[([^%]]*)%]%([^%)]*%)", "%1")                      -- ![alt](img) → alt
   t = t:gsub("%[([^%]]*)%]%([^%)]*%)", "%1")                       -- [text](url) → text
+  t = t:gsub('<img[^>]-alt="([^"]*)"[^>]->', "%1")                -- <img alt="x"> → x
   t = t:gsub("<[^>]->", "")                                        -- remaining HTML tags
   t = t:gsub("%*%*([^%*]+)%*%*", "%1")                             -- **bold** → bold
   t = t:gsub("__([^_]+)__", "%1")                                  -- __bold__ → bold

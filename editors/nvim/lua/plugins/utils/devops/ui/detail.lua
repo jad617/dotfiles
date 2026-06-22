@@ -1001,14 +1001,7 @@ local function build_pr(pr)
       local body = markdown.clean(ev.body)
       if body ~= "" then
         local md = markdown.render(body, "")
-        local max_lines = 8
         for i, bl in ipairs(md.lines) do
-          if i > max_lines then
-            local tr = b.add(rail .. "…")
-            b.hl(tr, #PAD, #PAD + #"│", border_hl)
-            b.hl(tr, #rail, #rail + #"…", "DevOpsDim")
-            break
-          end
           local li = b.add(rail .. bl)
           b.hl(li, #PAD, #PAD + #"│", border_hl)
           for _, h in ipairs(md.highlights) do
