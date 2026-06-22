@@ -2386,12 +2386,14 @@ local function prefetch_other_sections()
     local account = client.account_id()
     local project_key = state.project and state.project.key or nil
 
-    if account and not cache_get("jira_issues") then
+    -- Skip the active section (load_section already owns its cache) so we don't
+    -- race/clobber it; mirror its board-aware include_done for the rest.
+    if account and current_section_id() ~= "jira_issues" and not cache_get("jira_issues") then
       api.search({
         account_id = account,
         project_key = project_key,
         open_sprints = state.sprint ~= nil,
-        include_done = false,
+        include_done = state.include_done or state.columns ~= nil,
       }, function(ok, issues)
         if ok and issues then cache_set("jira_issues", issues) end
       end)
