@@ -34,6 +34,37 @@ local function apply_inline(highlights, line, text, offset)
   apply_pattern(highlights, line, text, offset, "%f[%S]_[^_]+_%f[%W]", "DevOpsMdItalic")
 end
 
+-- Common HTML entities that show up in GitHub/bot comments.
+local ENTITIES = {
+  ["&nbsp;"] = " ", ["&amp;"] = "&", ["&lt;"] = "<", ["&gt;"] = ">",
+  ["&quot;"] = '"', ["&#39;"] = "'", ["&apos;"] = "'", ["&mdash;"] = "—",
+  ["&ndash;"] = "–", ["&hellip;"] = "…", ["&rarr;"] = "→", ["&larr;"] = "←",
+  ["&bull;"] = "•", ["&copy;"] = "©", ["&reg;"] = "®", ["&trade;"] = "™",
+  ["&check;"] = "✓", ["&times;"] = "✕",
+}
+
+--- Strip HTML/markdown noise so bot comments (swarmia, sonarqube, copilot, …)
+--- read cleanly in the TUI: drop HTML comments, convert <br> to newlines, remove
+--- images/badges, flatten links to their text, strip tags + bold markers, decode
+--- entities, and collapse blank runs.
+function M.clean(text)
+  if not text or text == "" then return "" end
+  local t = text:gsub("\r", "")
+  t = t:gsub("<!%-%-.-%-%->", "")                                   -- HTML comments
+  t = t:gsub("<[bB][rR]%s*/?>", "\n")                              -- <br> → newline
+  t = t:gsub("%[!%[[^%]]*%]%([^%)]*%)%]%([^%)]*%)", "")            -- [![alt](img)](link) badge
+  t = t:gsub("!%[[^%]]*%]%([^%)]*%)", "")                          -- ![alt](img) image
+  t = t:gsub("%[([^%]]*)%]%([^%)]*%)", "%1")                       -- [text](url) → text
+  t = t:gsub("<[^>]->", "")                                        -- remaining HTML tags
+  t = t:gsub("%*%*([^%*]+)%*%*", "%1")                             -- **bold** → bold
+  t = t:gsub("__([^_]+)__", "%1")                                  -- __bold__ → bold
+  for ent, ch in pairs(ENTITIES) do t = t:gsub(ent, ch) end
+  t = t:gsub("&#(%d+);", function(n) return vim.fn.nr2char(tonumber(n)) end)
+  t = t:gsub("[ \t]+\n", "\n")                                    -- trailing spaces
+  t = t:gsub("\n\n\n+", "\n\n")                                   -- collapse blank runs
+  return (t:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
 --- Parse a markdown string into { lines = {}, highlights = {} }
 --- Each highlight: { line = 0-idx, col_start, col_end, hl = "group" }
 function M.render(text, indent)

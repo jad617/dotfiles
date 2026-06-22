@@ -908,7 +908,8 @@ local function build_pr(pr)
   end
 
   b.divider("Description")
-  local body = (pr.body and pr.body ~= "" and pr.body or "_No description_"):gsub("\r", "")
+  local body = markdown.clean(pr.body or "")
+  if body == "" then body = "_No description_" end
   local md = markdown.render(body)
   for i, line in ipairs(md.lines) do
     local li = b.add(line)
@@ -988,17 +989,21 @@ local function build_pr(pr)
         b.hl(line, #("  ⊙  " .. ev.author .. "  pushed  "), #("  ⊙  " .. ev.author .. "  pushed  ") + #short_oid, "DevOpsId")
         b.hl(line, #hdr + 2, #hdr + 2 + #ts, "DevOpsDim")
       end
-      -- Body (truncated for readability)
-      if ev.body ~= "" then
-        local body_lines = vim.split(ev.body:gsub("\r", ""), "\n", { plain = true })
+      -- Body: clean HTML/markdown noise, render, and truncate for readability.
+      local body = markdown.clean(ev.body)
+      if body ~= "" then
+        local md = markdown.render(body, "    ")
         local max_lines = 8
-        for i, bl in ipairs(body_lines) do
+        for i, bl in ipairs(md.lines) do
           if i > max_lines then
             local trunc = b.add("    ...")
             b.hl(trunc, 0, #"    ...", "DevOpsDim")
             break
           end
-          b.add("    " .. bl)
+          local li = b.add(bl)
+          for _, h in ipairs(md.highlights) do
+            if h.line == i - 1 then b.hl(li, h.col_start, h.col_end, h.hl) end
+          end
         end
       end
     end
