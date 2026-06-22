@@ -66,13 +66,59 @@ function M.clean(text)
   return (t:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+--- Word-wrap a string to a max display width, breaking on spaces.
+local function wrap_words(text, max)
+  local dw = vim.fn.strdisplaywidth
+  if max < 8 then max = 8 end
+  if text == "" or dw(text) <= max then return { text } end
+  local out, cur = {}, ""
+  for word in text:gmatch("%S+") do
+    if cur == "" then
+      cur = word
+    elseif dw(cur .. " " .. word) <= max then
+      cur = cur .. " " .. word
+    else
+      out[#out + 1] = cur
+      cur = word
+    end
+    while dw(cur) > max do -- a single word longer than the line: hard-break
+      local cut = #cur
+      while cut > 1 and dw(cur:sub(1, cut)) > max do cut = cut - 1 end
+      out[#out + 1] = cur:sub(1, cut)
+      cur = cur:sub(cut + 1)
+    end
+  end
+  if cur ~= "" then out[#out + 1] = cur end
+  return out
+end
+
 --- Parse a markdown string into { lines = {}, highlights = {} }
 --- Each highlight: { line = 0-idx, col_start, col_end, hl = "group" }
-function M.render(text, indent)
+--- If `width` (display columns) is given, body text is word-wrapped to it with a
+--- hanging indent under list/header markers. Table rows pass through unwrapped.
+function M.render(text, indent, width)
   indent = indent or "  "
   local lines = {}
   local highlights = {}
   local in_code_block = false
+  local dw = vim.fn.strdisplaywidth
+
+  -- Emit `content` after `prefix` (continuation lines use `hanging`), wrapping to
+  -- `width` when set. line_hl spans the whole line; prefix_hl spans the marker.
+  local function emit(prefix, hanging, content, line_hl, prefix_hl)
+    local is_table = content:match("^%s*|.+|%s*$") ~= nil
+    local segs = (width and content ~= "" and not is_table)
+      and wrap_words(content, width - dw(prefix)) or { content }
+    for si, seg in ipairs(segs) do
+      local pfx = (si == 1) and prefix or hanging
+      local full = pfx .. seg
+      lines[#lines + 1] = full
+      local lidx = #lines - 1
+      if line_hl then push_highlight(highlights, lidx, 0, #full, line_hl) end
+      if prefix_hl and si == 1 then push_highlight(highlights, lidx, #indent, #prefix, prefix_hl) end
+      apply_inline(highlights, lidx, seg, #pfx)
+    end
+  end
 
   for _, raw in ipairs(vim.split(text or "", "\n", { plain = true })) do
     local line = raw:gsub("\r", "")
@@ -95,22 +141,15 @@ function M.render(text, indent)
 
       if hashes then
         local prefix = indent .. string.rep("▌", #hashes) .. " "
-        lines[#lines + 1] = prefix .. header_text
-        push_highlight(highlights, #lines - 1, 0, #lines[#lines], "DevOpsMdHeader")
-        apply_inline(highlights, #lines - 1, header_text, #prefix)
+        emit(prefix, string.rep(" ", dw(prefix)), header_text, "DevOpsMdHeader", nil)
       elseif bullet_text then
         local prefix = indent .. bullet_indent .. "• "
-        lines[#lines + 1] = prefix .. bullet_text
-        push_highlight(highlights, #lines - 1, #indent, #prefix, "DevOpsMdListBullet")
-        apply_inline(highlights, #lines - 1, bullet_text, #prefix)
+        emit(prefix, string.rep(" ", dw(prefix)), bullet_text, nil, "DevOpsMdListBullet")
       elseif ordered_text then
         local prefix = indent .. ordered_indent .. ordered_num .. ". "
-        lines[#lines + 1] = prefix .. ordered_text
-        push_highlight(highlights, #lines - 1, #indent, #prefix, "DevOpsMdListBullet")
-        apply_inline(highlights, #lines - 1, ordered_text, #prefix)
+        emit(prefix, string.rep(" ", dw(prefix)), ordered_text, nil, "DevOpsMdListBullet")
       else
-        lines[#lines + 1] = indent .. line
-        apply_inline(highlights, #lines - 1, line, #indent)
+        emit(indent, indent, line, nil, nil)
       end
     end
   end

@@ -804,8 +804,9 @@ local function check_display(ctx)
   return "○", "DevOpsDim", tostring(state):lower()
 end
 
-local function build_pr(pr)
+local function build_pr(pr, width)
   local b = builder()
+  local W = width or math.max(60, math.floor(vim.o.columns * 0.75))
   local draft = pr.isDraft
   local icon = draft and "" or ""
 
@@ -910,7 +911,7 @@ local function build_pr(pr)
   b.divider("Description")
   local body = markdown.clean(pr.body or "")
   if body == "" then body = "_No description_" end
-  local md = markdown.render(body)
+  local md = markdown.render(body, "  ", W - 4)
   for i, line in ipairs(md.lines) do
     local li = b.add(line)
     for _, h in ipairs(md.highlights) do
@@ -1000,7 +1001,8 @@ local function build_pr(pr)
       local rail = PAD .. "│  "
       local body = markdown.clean(ev.body)
       if body ~= "" then
-        local md = markdown.render(body, "")
+        -- card content width = window − rail ("  │  " = 5) − right margin
+        local md = markdown.render(body, "", W - 7)
         for i, bl in ipairs(md.lines) do
           local li = b.add(rail .. bl)
           b.hl(li, #PAD, #PAD + #"│", border_hl)
@@ -1217,6 +1219,8 @@ function M.load_pr(pr, opts)
   opts = opts or {}
   local on_ready = opts.on_ready or function() end
   local on_update = opts.on_update or on_ready
+  local pr_w = (opts.content_win and vim.api.nvim_win_is_valid(opts.content_win))
+    and vim.api.nvim_win_get_width(opts.content_win) or nil
 
   local repo = pr.repository and pr.repository.nameWithOwner
   local n = pr.number
@@ -1279,7 +1283,7 @@ function M.load_pr(pr, opts)
     end, { buffer = buf, nowait = true, desc = "Checkout" })
   end
 
-  on_ready(build_pr(pr), make_keys)
+  on_ready(build_pr(pr, pr_w), make_keys)
 
   -- Enrich with full PR data
   if repo and n then
@@ -1287,7 +1291,7 @@ function M.load_pr(pr, opts)
       if not ok or not full then return end
       full.repository = pr.repository
       full.url = pr.url
-      on_update(build_pr(full), make_keys)
+      on_update(build_pr(full, pr_w), make_keys)
     end)
   end
 end
