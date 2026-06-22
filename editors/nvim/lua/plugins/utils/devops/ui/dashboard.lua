@@ -570,6 +570,21 @@ local function render_jira(issues, assignee_name, columns, title_override)
   park_cursor_on_first_item()
 end
 
+-- Render a Jira section straight from cached issues (no network call). Shared by
+-- the cache path in load_section and the optimistic update after a transition.
+local function render_jira_from_cache(sec_id, cached)
+  if sec_id == "jira_issues" then
+    local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
+    render_jira(cached, name, state.columns)
+  elseif sec_id == "jira_sprint" then
+    render_jira(cached, "all", state.columns, "Jira  ·  Sprint Board")
+  elseif sec_id == "jira_epics" then
+    render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Epics")
+  elseif sec_id == "jira_backlog" then
+    render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Backlog")
+  end
+end
+
 local function github_check_status(rollup)
   if not rollup then return "", nil end
   local state_val = type(rollup) == "table" and rollup.state or rollup
@@ -828,18 +843,11 @@ local function load_section(force)
   if not force then
     local cached = cache_get(sec_id)
     if cached then
-      if sec_id == "jira_issues" then
-        local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
-        render_jira(cached, name, state.columns)
-      elseif sec_id == "jira_sprint" then
-        render_jira(cached, "all", state.columns, "Jira  ·  Sprint Board")
-      elseif sec_id == "jira_epics" then
-        render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Epics")
-      elseif sec_id == "jira_backlog" then
-        render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Backlog")
-      else
+      if sec_id == "gh_prs" or sec_id == "gh_reviews" then
         local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
         render_github(cached, title, sec_id == "gh_reviews")
+      else
+        render_jira_from_cache(sec_id, cached)
       end
       return
     end
@@ -1047,6 +1055,46 @@ local function refresh_current_jira_section()
   end
 end
 
+-- Optimistically reflect a status change without a network refetch: patch the
+-- cached issue's status and re-render from cache, keeping the cursor on the same
+-- issue. This avoids the reload flicker on every transition, and keeps an issue
+-- visible after it's moved to Done (which the server-side query would otherwise
+-- filter out). A real refresh ('r') re-applies the server filter.
+local function apply_transition_locally(key, to)
+  local sec_id = current_section_id()
+  local entry = cache[sec_id]
+  local cached = entry and entry.data
+  if not cached then
+    refresh_current_jira_section() -- nothing cached to patch; fall back to refetch
+    return
+  end
+  for _, issue in ipairs(cached) do
+    if issue.key == key then
+      issue.fields = issue.fields or {}
+      if to then
+        issue.fields.status = { id = to.id, name = to.name, statusCategory = to.statusCategory }
+      end
+      break
+    end
+  end
+  local win = state.content and state.content.win
+  local cur = (win and vim.api.nvim_win_is_valid(win)) and vim.api.nvim_win_get_cursor(win) or nil
+  render_jira_from_cache(sec_id, cached)
+  -- Keep the cursor on the same issue (it may have moved to another column).
+  if win and vim.api.nvim_win_is_valid(win) then
+    local target
+    for line, row in pairs(state.rows) do
+      if row.key == key then target = line break end
+    end
+    if target then
+      pcall(vim.api.nvim_win_set_cursor, win, { target, 0 })
+    elseif cur then
+      cur[1] = math.min(cur[1], vim.api.nvim_buf_line_count(state.content.buf))
+      pcall(vim.api.nvim_win_set_cursor, win, cur)
+    end
+  end
+end
+
 local function switch_section(section_idx, tab_idx)
   local next_tab = wrap_index(tab_idx or state.tab, #TABS)
   local next_section = wrap_index(section_idx or state.section, section_count(next_tab))
@@ -1110,7 +1158,8 @@ local function transition()
       api.do_transition(item.key, choice.id, function(ok2, _, err2)
         if not ok2 then return vim.notify("DevOps: " .. (err2 or "transition failed"), vim.log.levels.ERROR) end
         vim.notify("DevOps: " .. item.key .. " → " .. choice.name, vim.log.levels.INFO)
-        refresh_current_jira_section()
+        -- Optimistic local update: no refetch, no flicker, issue stays visible.
+        apply_transition_locally(item.key, choice.to)
       end)
     end)
   end)
