@@ -157,4 +157,9 @@ function M.pad(s, w)
   return diff > 0 and (s .. string.rep(" ", diff)) or s
 end
 
+-- Truncate then pad to exactly `w` display columns (for aligned columns).
+function M.fit(s, w)
+  return M.pad(M.truncate(s, w), w)
+end
+
 return M

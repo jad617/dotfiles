@@ -271,6 +271,12 @@ local function render_sidebar()
   set_buf_lines(state.sidebar.buf, lines)
   apply_highlights(state.sidebar.buf, hls)
   state.sidebar_rows = rows
+  -- Keep the sidebar cursor (and its green cursorline) on the active section, so
+  -- the highlight follows when switching sections with Tab.
+  if state.sidebar.win and vim.api.nvim_win_is_valid(state.sidebar.win) then
+    local ln = sidebar_line_for_section(state.section)
+    if ln then pcall(vim.api.nvim_win_set_cursor, state.sidebar.win, { ln, 0 }) end
+  end
   update_sidebar_winbar()
 end
 
@@ -338,6 +344,12 @@ local function render_footer()
     }
   end
 
+  -- Footers are a 2×2 grid; pad short ones (e.g. bookmarks has 3 groups) so the
+  -- second row always has two slots and we never index a missing group.
+  groups[3] = groups[3] or { "", {} }
+  groups[4] = groups[4] or { "", {} }
+  local function is_empty(grp) return not grp or not grp[2] or #grp[2] == 0 end
+
   local sep = " │ "
 
   -- Compute the max display width of any single key-desc pair across all groups.
@@ -354,8 +366,8 @@ local function render_footer()
   local row2_groups = { groups[3], groups[4] }
   local label_widths = {}
   for i = 1, 2 do
-    local lw1 = #row1_groups[i][1]
-    local lw2 = #row2_groups[i][1]
+    local lw1 = is_empty(row1_groups[i]) and 0 or #row1_groups[i][1]
+    local lw2 = is_empty(row2_groups[i]) and 0 or #row2_groups[i][1]
     label_widths[i] = math.max(lw1, lw2)
   end
 
@@ -392,8 +404,8 @@ local function render_footer()
   -- Compute max display width per column so separators align visually.
   local col_widths = {}
   for i = 1, 2 do
-    local w1 = select(3, render_group(row1_groups[i], i))
-    local w2 = select(3, render_group(row2_groups[i], i))
+    local w1 = is_empty(row1_groups[i]) and 0 or select(3, render_group(row1_groups[i], i))
+    local w2 = is_empty(row2_groups[i]) and 0 or select(3, render_group(row2_groups[i], i))
     col_widths[i] = math.max(w1, w2)
   end
 
@@ -401,19 +413,23 @@ local function render_footer()
     local text = " "
     local highlights = {}
     local col = 1
+    local first = true
     for gi, grp in ipairs(grp_list) do
-      local segment, hls, dw = render_group(grp, gi)
-      -- Pad with spaces to reach the column's display width
-      local padded = segment .. string.rep(" ", col_widths[gi] - dw)
-      for _, h in ipairs(hls) do
-        highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
-      end
-      text = text .. padded
-      col = col + #padded
-      if gi < #grp_list then
-        highlights[#highlights + 1] = { col_start = col + 1, col_end = col + 1 + #"│", hl = "DevOpsBorder" }
-        text = text .. sep
-        col = col + #sep
+      if not is_empty(grp) then
+        if not first then
+          highlights[#highlights + 1] = { col_start = col + 1, col_end = col + 1 + #"│", hl = "DevOpsBorder" }
+          text = text .. sep
+          col = col + #sep
+        end
+        local segment, hls, dw = render_group(grp, gi)
+        -- Pad with spaces to reach the column's display width
+        local padded = segment .. string.rep(" ", math.max(0, col_widths[gi] - dw))
+        for _, h in ipairs(hls) do
+          highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
+        end
+        text = text .. padded
+        col = col + #padded
+        first = false
       end
     end
     return text, highlights
@@ -588,9 +604,9 @@ end
 local function github_check_status(rollup)
   if not rollup then return "", nil end
   local state_val = type(rollup) == "table" and rollup.state or rollup
-  if state_val == "SUCCESS" then return " ✓", "DevOpsOk" end
-  if state_val == "FAILURE" or state_val == "ERROR" then return " ✗", "DevOpsErr" end
-  if state_val == "PENDING" or state_val == "IN_PROGRESS" then return " ⏳", "DevOpsWarn" end
+  if state_val == "SUCCESS" then return "✓", "DevOpsOk" end
+  if state_val == "FAILURE" or state_val == "ERROR" then return "✗", "DevOpsErr" end
+  if state_val == "PENDING" or state_val == "IN_PROGRESS" then return "⏳", "DevOpsWarn" end
   return "", nil
 end
 
@@ -633,12 +649,13 @@ local function render_github(prs, title, show_meta)
     local num = "#" .. tostring(pr.number or "?")
     local numpad = render.pad(num, 6)
     local check_icon, check_hl = github_check_status(pr.statusCheckRollup)
+    local check_cell = render.pad(check_icon, 2) -- fixed 2 display cols (or "  " when none)
     local repo = (pr.repository and pr.repository.name) or ""
     local tag = (not show_meta) and repo or ""
-    local summary = render.truncate(pr.title or "", math.max(10, w - 14 - #tag - #check_icon))
+    local summary = render.truncate(pr.title or "", math.max(10, w - 15 - vim.fn.strdisplaywidth(tag)))
 
     local prefix = "  " .. icon .. "  "
-    local text = prefix .. numpad .. check_icon .. "  " .. summary
+    local text = prefix .. numpad .. check_cell .. " " .. summary
     if tag ~= "" then text = text .. "  " .. tag end
     lines[#lines + 1] = text
     local lidx = #lines - 1
@@ -2195,6 +2212,7 @@ local function open_float_windows()
   })
 
   vim.wo[state.content.win].cursorline = true
+  vim.wo[state.sidebar.win].cursorline = true
   vim.wo[state.sidebar.win].winhighlight = winhl
   vim.wo[state.content.win].winhighlight = winhl
   vim.wo[state.footer.win].winhighlight = winhl
@@ -2250,6 +2268,7 @@ local function open_tab_windows()
   vim.api.nvim_win_set_width(state.sidebar.win, 32)
   vim.api.nvim_set_current_win(state.content.win)
   vim.wo[state.content.win].cursorline = true
+  vim.wo[state.sidebar.win].cursorline = true
 end
 
 local function map(lhs, fn, desc)
