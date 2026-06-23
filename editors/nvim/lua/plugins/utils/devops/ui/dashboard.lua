@@ -919,6 +919,7 @@ local function load_section(force)
       project_key = state.project and state.project.key,
       sprint_id = picked and state.sprint.id or nil,
       open_sprints = not picked,
+      scope_project = true, -- sprint board follows the selected project
       include_done = true,
     }, function(ok, issues, err)
       if not is_open() or current_section_id() ~= sec_id then return end

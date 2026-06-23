@@ -21,9 +21,11 @@ function M.build_jql(opts)
   if opts.account_id and opts.account_id ~= "" then
     parts[#parts + 1] = 'assignee = "' .. opts.account_id .. '"'
   end
-  -- Always scope to the selected project (sprints can span projects/teams, so the
-  -- sprint board must still follow the project the user picked).
-  if opts.project_key and opts.project_key ~= "" then
+  local in_sprint = opts.sprint_id ~= nil or opts.open_sprints
+  -- Project scope: always for a plain project list; in sprint mode only when asked
+  -- (scope_project), so the sprint board follows the project while "My Issues" can
+  -- still span projects.
+  if opts.project_key and opts.project_key ~= "" and (not in_sprint or opts.scope_project) then
     parts[#parts + 1] = 'project = "' .. opts.project_key .. '"'
   end
   if opts.sprint_id then
