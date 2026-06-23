@@ -911,7 +911,7 @@ local function load_section(force)
       return
     end
     api.search({
-      account_id = state.jira_user and state.jira_user.account_id or nil,
+      account_id = nil, -- sprint board is team-wide; the 'u' user filter doesn't apply here
       project_key = state.project and state.project.key,
       sprint_id = state.sprint and state.sprint.id or nil,
       open_sprints = not (state.sprint and state.sprint.id),
@@ -920,9 +920,8 @@ local function load_section(force)
       if not is_open() or current_section_id() ~= sec_id then return end
       if not ok then return set_message("⚠ " .. (err or "sprint fetch failed")) end
       cache_set(sec_id, issues)
-      local who = state.jira_user and state.jira_user.name or "all"
       local title = (state.sprint and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
-      render_jira(issues, who, state.columns, title)
+      render_jira(issues, "all", state.columns, title)
     end)
   elseif sec_id == "jira_epics" then
     if not client.configured() then
