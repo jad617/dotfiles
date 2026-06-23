@@ -888,9 +888,12 @@ local function build_pr(pr, width)
     else
       for _, reviewer in ipairs(reviewers) do
         local verdict = reviewer.verdict
-        local line = b.add(("  %-22s %s"):format(reviewer.name, verdict))
-        b.hl(line, 2, 2 + #reviewer.name, "DevOpsDetailTitle")
-        b.hl(line, #b.lines()[line] - #verdict, #b.lines()[line], reviewer.hl)
+        local trunc = render.truncate(reviewer.name, 24)
+        local name = render.pad(trunc, 24) -- exactly 24 display cols
+        local line = b.add("  " .. name .. "  " .. verdict)
+        b.hl(line, 2, 2 + #trunc, "DevOpsDetailTitle")
+        local vstart = 2 + #name + 2
+        b.hl(line, vstart, vstart + #verdict, reviewer.hl)
       end
     end
   end
@@ -901,9 +904,12 @@ local function build_pr(pr, width)
     for _, ctx in ipairs(contexts) do
       local icon, hl_group, label = check_display(ctx)
       local name = ctx.name or ctx.context or ctx.__typename or "check"
-      local line = b.add(("  %s %-14s %s"):format(icon, render.truncate(name, 14), label))
+      local icon_cell = render.pad(icon, 2) -- normalize ⏳ (2 cells) vs ✓/✗/○ (1 cell)
+      local trunc = render.truncate(name, 28)
+      local prefix = "  " .. icon_cell .. " "
+      local line = b.add(prefix .. render.pad(trunc, 28) .. " " .. label)
       b.hl(line, 2, 2 + #icon, hl_group)
-      b.hl(line, 4, 4 + #render.truncate(name, 14), "DevOpsDetailTitle")
+      b.hl(line, #prefix, #prefix + #trunc, "DevOpsDetailTitle")
       b.hl(line, #b.lines()[line] - #label, #b.lines()[line], hl_group)
     end
   end

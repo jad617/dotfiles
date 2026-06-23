@@ -604,9 +604,9 @@ end
 local function github_check_status(rollup)
   if not rollup then return "", nil end
   local state_val = type(rollup) == "table" and rollup.state or rollup
-  if state_val == "SUCCESS" then return " ✓", "DevOpsOk" end
-  if state_val == "FAILURE" or state_val == "ERROR" then return " ✗", "DevOpsErr" end
-  if state_val == "PENDING" or state_val == "IN_PROGRESS" then return " ⏳", "DevOpsWarn" end
+  if state_val == "SUCCESS" then return "✓", "DevOpsOk" end
+  if state_val == "FAILURE" or state_val == "ERROR" then return "✗", "DevOpsErr" end
+  if state_val == "PENDING" or state_val == "IN_PROGRESS" then return "⏳", "DevOpsWarn" end
   return "", nil
 end
 
@@ -649,12 +649,13 @@ local function render_github(prs, title, show_meta)
     local num = "#" .. tostring(pr.number or "?")
     local numpad = render.pad(num, 6)
     local check_icon, check_hl = github_check_status(pr.statusCheckRollup)
+    local check_cell = render.pad(check_icon, 2) -- fixed 2 display cols (or "  " when none)
     local repo = (pr.repository and pr.repository.name) or ""
     local tag = (not show_meta) and repo or ""
-    local summary = render.truncate(pr.title or "", math.max(10, w - 14 - #tag - #check_icon))
+    local summary = render.truncate(pr.title or "", math.max(10, w - 15 - vim.fn.strdisplaywidth(tag)))
 
     local prefix = "  " .. icon .. "  "
-    local text = prefix .. numpad .. check_icon .. "  " .. summary
+    local text = prefix .. numpad .. check_cell .. " " .. summary
     if tag ~= "" then text = text .. "  " .. tag end
     lines[#lines + 1] = text
     local lidx = #lines - 1
