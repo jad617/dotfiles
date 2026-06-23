@@ -1170,12 +1170,12 @@ local function select_user()
     vim.notify("DevOps: pick a project first with 'p' (users are project-scoped)", vim.log.levels.INFO)
     return
   end
-  api.assignable_users(state.project.key, function(ok, users, err)
+  api.project_assignees(state.project.key, function(ok, users, err)
     if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
     local me_id = client.account_id()
     local choices = { { label = "● Me" .. (client.display_name() and (" (" .. client.display_name() .. ")") or ""), account_id = me_id, me = true } }
     for _, u in ipairs(users) do
-      if u.accountId and u.accountType ~= "app" then
+      if u.accountId and u.accountType ~= "app" and u.accountId ~= me_id then
         choices[#choices + 1] = { label = u.displayName or u.accountId, account_id = u.accountId }
       end
     end

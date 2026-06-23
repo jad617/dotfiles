@@ -223,6 +223,30 @@ function M.assignable_users(project_key, cb)
   client.get(path, function(ok, data, err) cb(ok, data or {}, err) end)
 end
 
+-- The actual people on a project = the distinct assignees of its recent issues.
+-- This is the real ~15-20 teammates (assignable/search returns org-wide perm holders).
+-- cb(ok, users[] {accountId, displayName, accountType}, err)
+function M.project_assignees(project_key, cb)
+  local body = {
+    jql = 'project = "' .. project_key .. '" AND assignee is not EMPTY ORDER BY updated DESC',
+    fields = { "assignee" },
+    maxResults = 200,
+  }
+  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    local seen, users = {}, {}
+    for _, issue in ipairs((data and data.issues) or {}) do
+      local a = issue.fields and issue.fields.assignee
+      if a and a.accountId and not seen[a.accountId] then
+        seen[a.accountId] = true
+        users[#users + 1] = { accountId = a.accountId, displayName = a.displayName, accountType = a.accountType }
+      end
+    end
+    table.sort(users, function(x, y) return (x.displayName or "") < (y.displayName or "") end)
+    cb(true, users, nil)
+  end)
+end
+
 -- Search all users by name/email (for mentions). cb(ok, users[], err)
 function M.search_users(query, cb, opts)
   opts = opts or {}
