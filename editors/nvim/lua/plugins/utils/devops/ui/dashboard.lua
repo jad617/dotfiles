@@ -1537,8 +1537,7 @@ local function jira_search()
   end, "Open selected")
 
   km({ "i", "n" }, "<Esc>", function()
-    do_close()
-    load_section() -- restore normal list
+    do_close() -- just close the search bar; keep the current view (don't navigate)
   end, "Cancel")
   km("n", "q", function()
     do_close()
@@ -1663,8 +1662,7 @@ local function gh_search()
   end, "Open selected")
 
   km({ "i", "n" }, "<Esc>", function()
-    do_close()
-    load_section()
+    do_close() -- just close the search bar; keep the current view (don't navigate)
   end, "Cancel")
   km("n", "q", function() do_close(); load_section() end, "Cancel")
   km("n", "<C-d>", function() do_close(); load_section() end, "Cancel")
@@ -1907,7 +1905,7 @@ local function show_help()
       { "a",     "Assign issue" },
       { "n",     "Create new issue" },
       { "y",     "Clone selected issue" },
-      { "/",     "Search Jira" },
+      { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "m",     "Move (change status)" },
       { "u",     "Change assignee filter" },
@@ -1930,7 +1928,7 @@ local function show_help()
       { "c",     "Add comment" },
       { "a",     "Assign issue" },
       { "m",     "Move (change status)" },
-      { "/",     "Search Jira" },
+      { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
@@ -1954,6 +1952,7 @@ local function show_help()
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
       { "N",     "Create new PR" },
+      { "S",     "Search GitHub" },
       { "*",     "Pin/unpin selected item" },
       { "r",     "Refresh" },
       { "o",     "Open in browser" },
