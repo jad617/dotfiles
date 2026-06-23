@@ -23,7 +23,12 @@ function M.build_jql(opts)
   if opts.account_id and opts.account_id ~= "" then
     parts[#parts + 1] = 'assignee = "' .. opts.account_id .. '"'
   end
-  if opts.open_sprints then
+  if opts.sprint_id then
+    parts[#parts + 1] = "sprint = " .. tostring(opts.sprint_id)
+    if not opts.include_done then
+      parts[#parts + 1] = "statusCategory != Done"
+    end
+  elseif opts.open_sprints then
     parts[#parts + 1] = "sprint in openSprints()"
     if not opts.include_done then
       parts[#parts + 1] = "statusCategory != Done"
@@ -52,10 +57,11 @@ function M.search(opts, cb)
   end)
 end
 
-function M.epics(project_key, cb)
-  local jql = 'project = "' .. project_key .. '" AND issuetype = Epic AND statusCategory != Done ORDER BY updated DESC'
+function M.epics(project_key, account_id, cb)
+  local jql = 'project = "' .. project_key .. '" AND issuetype = Epic AND statusCategory != Done'
+  if account_id and account_id ~= "" then jql = jql .. ' AND assignee = "' .. account_id .. '"' end
   local body = {
-    jql = jql,
+    jql = jql .. " ORDER BY updated DESC",
     fields = LIST_FIELDS,
     maxResults = config.options.jira.page_size or 50,
   }
@@ -65,16 +71,36 @@ function M.epics(project_key, cb)
   end)
 end
 
-function M.backlog(project_key, cb)
-  local jql = 'project = "' .. project_key .. '" AND sprint is EMPTY AND statusCategory != Done ORDER BY updated DESC'
+-- JQL backlog fallback (when no Agile board). cb(ok, issues[], err)
+function M.backlog(project_key, account_id, cb)
+  local jql = 'project = "' .. project_key .. '" AND sprint is EMPTY AND statusCategory != Done'
+  if account_id and account_id ~= "" then jql = jql .. ' AND assignee = "' .. account_id .. '"' end
   local body = {
-    jql = jql,
+    jql = jql .. " ORDER BY updated DESC",
     fields = LIST_FIELDS,
-    maxResults = config.options.jira.page_size or 50,
+    maxResults = 100,
   }
   client.post("/rest/api/3/search/jql", body, function(ok, data, err)
     if not ok then return cb(false, nil, err) end
     cb(true, (data and data.issues) or {}, nil)
+  end)
+end
+
+-- Agile board backlog — matches Jira's Backlog view (unscheduled + future-sprint
+-- issues), so it shows everything, not just sprint-empty. cb(ok, issues[], err)
+function M.board_backlog(board_id, cb)
+  client.get("/rest/agile/1.0/board/" .. board_id .. "/backlog?maxResults=100", function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.issues) or {}, nil)
+  end)
+end
+
+-- Active + closed + future sprints for a board (for the sprint picker).
+-- cb(ok, sprints[] {id,name,state}, err)
+function M.list_sprints(board_id, cb)
+  client.get("/rest/agile/1.0/board/" .. board_id .. "/sprint?state=active,closed,future&maxResults=50", function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.values) or {}, nil)
   end)
 end
 
