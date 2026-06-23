@@ -108,6 +108,7 @@ local function set_hl()
     DevOpsMdCode         = { fg = "#9ece6a", bg = "#1f2335" },
     DevOpsMdCodeBlock    = { fg = "#9ece6a", bg = "#1f2335" },
     DevOpsMdListBullet   = { fg = "#e0af68", bold = true },
+    DevOpsMdQuote        = { fg = "#787c99", italic = true },
   }
   for name, val in pairs(hls) do vim.api.nvim_set_hl(0, name, val) end
   M.apply_diff_theme()
@@ -148,7 +149,17 @@ function M.issue_icon(type_name) return TYPE_ICON[type_name] or "" end
 function M.truncate(s, w)
   s = s or ""
   if vim.fn.strdisplaywidth(s) <= w then return s end
-  return s:sub(1, math.max(0, w - 1)) .. "…"
+  -- Truncate on character boundaries by display width (reserve 1 col for …),
+  -- so multibyte text isn't cut mid-character and the result fits exactly.
+  local budget = math.max(0, w - 1)
+  local out, width = {}, 0
+  for _, ch in ipairs(vim.fn.split(s, "\\zs")) do
+    local cw = vim.fn.strdisplaywidth(ch)
+    if width + cw > budget then break end
+    out[#out + 1] = ch
+    width = width + cw
+  end
+  return table.concat(out) .. "…"
 end
 
 function M.pad(s, w)

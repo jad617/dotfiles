@@ -311,14 +311,14 @@ local function render_footer()
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "/ search", "* pin" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "S search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "m move", "c comment", "a assign", "/ search", "* pin" } },
+      { "Actions",  { "m move", "c comment", "a assign", "S search", "* pin" } },
       { "Jira",     { "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
@@ -331,14 +331,14 @@ local function render_footer()
   elseif sec_id == "gh_reviews" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "/ search", "* pin" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "S search", "* pin" } },
       { "PR",       { "s sort", "D ready", "x checkout", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   else
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "/ search", "* pin" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "S search", "* pin" } },
       { "PR",       { "D ready", "x checkout", "N new", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
@@ -628,9 +628,9 @@ end
 
 local function render_github(prs, title, show_meta)
   stop_spinner()
-  -- Sort reviews by user preference
+  -- Sort reviews by user preference (shallow copy — we only reorder references).
   if show_meta then
-    prs = vim.deepcopy(prs or {})
+    prs = vim.list_extend({}, prs or {})
     if state.reviews_sort == "oldest" then
       table.sort(prs, function(a, b) return (a.createdAt or "") < (b.createdAt or "") end)
     else
@@ -828,10 +828,14 @@ local function cache_get(sec_id)
   return nil
 end
 
+local cache_save_timer = vim.uv.new_timer()
 local function cache_set(sec_id, data)
   cache[sec_id] = { data = data, ts = os.time() }
-  -- Persist async to avoid blocking UI
-  vim.schedule(function() store.save_section_cache(cache) end)
+  -- Persist off the UI thread, coalescing rapid sets (e.g. prefetch) into one write.
+  cache_save_timer:stop()
+  cache_save_timer:start(500, 0, vim.schedule_wrap(function()
+    store.save_section_cache(cache)
+  end))
 end
 
 local function cache_invalidate(sec_id)
@@ -1533,8 +1537,7 @@ local function jira_search()
   end, "Open selected")
 
   km({ "i", "n" }, "<Esc>", function()
-    do_close()
-    load_section() -- restore normal list
+    do_close() -- just close the search bar; keep the current view (don't navigate)
   end, "Cancel")
   km("n", "q", function()
     do_close()
@@ -1560,11 +1563,18 @@ local function gh_search()
   local content_cfg = vim.api.nvim_win_get_config(state.content.win)
   local w = content_cfg.width - 2
 
-  -- Detect current repo from cwd for local scope
-  local cwd_repo = nil
-  local git_remote = vim.fn.systemlist("git -C " .. vim.fn.getcwd() .. " remote get-url origin 2>/dev/null")[1] or ""
-  local owner_repo = git_remote:match("[:/]([%w%.%-]+/[%w%.%-]+)%.?g?i?t?$")
-  if owner_repo then cwd_repo = owner_repo:gsub("%.git$", "") end
+  -- Detect current repo from cwd for local scope. The git call blocks, so cache
+  -- the result per cwd (and quote the path so spaces don't break it).
+  local cwd = vim.fn.getcwd()
+  state._cwd_repo = state._cwd_repo or {}
+  local cwd_repo = state._cwd_repo[cwd]
+  if cwd_repo == nil then
+    local remote = vim.fn.systemlist("git -C " .. vim.fn.shellescape(cwd) .. " remote get-url origin 2>/dev/null")[1] or ""
+    local owner_repo = remote:match("[:/]([%w%.%-]+/[%w%.%-]+)%.?g?i?t?$")
+    state._cwd_repo[cwd] = owner_repo and owner_repo:gsub("%.git$", "") or false
+    cwd_repo = state._cwd_repo[cwd]
+  end
+  if cwd_repo == false then cwd_repo = nil end
 
   local scope_local = false -- default: global
 
@@ -1652,8 +1662,7 @@ local function gh_search()
   end, "Open selected")
 
   km({ "i", "n" }, "<Esc>", function()
-    do_close()
-    load_section()
+    do_close() -- just close the search bar; keep the current view (don't navigate)
   end, "Cancel")
   km("n", "q", function() do_close(); load_section() end, "Cancel")
   km("n", "<C-d>", function() do_close(); load_section() end, "Cancel")
@@ -1896,7 +1905,7 @@ local function show_help()
       { "a",     "Assign issue" },
       { "n",     "Create new issue" },
       { "y",     "Clone selected issue" },
-      { "/",     "Search Jira" },
+      { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "m",     "Move (change status)" },
       { "u",     "Change assignee filter" },
@@ -1919,7 +1928,7 @@ local function show_help()
       { "c",     "Add comment" },
       { "a",     "Assign issue" },
       { "m",     "Move (change status)" },
-      { "/",     "Search Jira" },
+      { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
@@ -1943,6 +1952,7 @@ local function show_help()
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
       { "N",     "Create new PR" },
+      { "S",     "Search GitHub" },
       { "*",     "Pin/unpin selected item" },
       { "r",     "Refresh" },
       { "o",     "Open in browser" },
@@ -2308,7 +2318,8 @@ local function setup_keymaps()
   map("e", jira_edit, "edit issue")
   map("n", jira_create, "new issue")
   map("y", jira_clone, "clone issue")
-  map("/", dispatch_search, "search")
+  -- '/' stays native Vim search in the buffer; 'S' runs the DevOps Jira/GitHub search.
+  map("S", dispatch_search, "search")
   map("*", toggle_bookmark, "bookmark")
   -- GitHub PR actions
   map("R", gh_request_changes, "request changes")

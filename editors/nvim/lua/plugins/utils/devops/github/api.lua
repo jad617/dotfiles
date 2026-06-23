@@ -114,6 +114,11 @@ function M.pr_view(repo, number, cb)
   gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_FIELDS }, cb)
 end
 
+-- Inline review (code-thread) comments. cb(ok, comments[], err)
+function M.pr_review_comments(repo, number, cb)
+  gh_json({ "api", "repos/" .. repo .. "/pulls/" .. tostring(number) .. "/comments?per_page=100" }, cb)
+end
+
 function M.prs_for_issue(issue_key, cb)
   gh_json({
     "search", "prs",
