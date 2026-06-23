@@ -344,6 +344,12 @@ local function render_footer()
     }
   end
 
+  -- Footers are a 2×2 grid; pad short ones (e.g. bookmarks has 3 groups) so the
+  -- second row always has two slots and we never index a missing group.
+  groups[3] = groups[3] or { "", {} }
+  groups[4] = groups[4] or { "", {} }
+  local function is_empty(grp) return not grp or not grp[2] or #grp[2] == 0 end
+
   local sep = " │ "
 
   -- Compute the max display width of any single key-desc pair across all groups.
@@ -360,8 +366,8 @@ local function render_footer()
   local row2_groups = { groups[3], groups[4] }
   local label_widths = {}
   for i = 1, 2 do
-    local lw1 = #row1_groups[i][1]
-    local lw2 = #row2_groups[i][1]
+    local lw1 = is_empty(row1_groups[i]) and 0 or #row1_groups[i][1]
+    local lw2 = is_empty(row2_groups[i]) and 0 or #row2_groups[i][1]
     label_widths[i] = math.max(lw1, lw2)
   end
 
@@ -398,8 +404,8 @@ local function render_footer()
   -- Compute max display width per column so separators align visually.
   local col_widths = {}
   for i = 1, 2 do
-    local w1 = select(3, render_group(row1_groups[i], i))
-    local w2 = select(3, render_group(row2_groups[i], i))
+    local w1 = is_empty(row1_groups[i]) and 0 or select(3, render_group(row1_groups[i], i))
+    local w2 = is_empty(row2_groups[i]) and 0 or select(3, render_group(row2_groups[i], i))
     col_widths[i] = math.max(w1, w2)
   end
 
@@ -407,19 +413,23 @@ local function render_footer()
     local text = " "
     local highlights = {}
     local col = 1
+    local first = true
     for gi, grp in ipairs(grp_list) do
-      local segment, hls, dw = render_group(grp, gi)
-      -- Pad with spaces to reach the column's display width
-      local padded = segment .. string.rep(" ", col_widths[gi] - dw)
-      for _, h in ipairs(hls) do
-        highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
-      end
-      text = text .. padded
-      col = col + #padded
-      if gi < #grp_list then
-        highlights[#highlights + 1] = { col_start = col + 1, col_end = col + 1 + #"│", hl = "DevOpsBorder" }
-        text = text .. sep
-        col = col + #sep
+      if not is_empty(grp) then
+        if not first then
+          highlights[#highlights + 1] = { col_start = col + 1, col_end = col + 1 + #"│", hl = "DevOpsBorder" }
+          text = text .. sep
+          col = col + #sep
+        end
+        local segment, hls, dw = render_group(grp, gi)
+        -- Pad with spaces to reach the column's display width
+        local padded = segment .. string.rep(" ", math.max(0, col_widths[gi] - dw))
+        for _, h in ipairs(hls) do
+          highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
+        end
+        text = text .. padded
+        col = col + #padded
+        first = false
       end
     end
     return text, highlights
