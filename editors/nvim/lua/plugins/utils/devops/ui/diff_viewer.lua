@@ -139,8 +139,9 @@ local function show_pending_virt(buf)
   for _, c in ipairs(state.pending_comments) do
     for lnum, info in pairs(state.line_map) do
       if info.path == c.path and info.line == c.line then
+        local preview = require("plugins.utils.devops.ui.render").truncate((c.body or ""):gsub("\n", " "), 60)
         pcall(vim.api.nvim_buf_set_extmark, buf, ns_comments, lnum - 1, 0, {
-          virt_text = { { "  💬 " .. c.body:sub(1, 60), "DevOpsWarn" } },
+          virt_text = { { "  💬 " .. preview, "DevOpsWarn" } },
           virt_text_pos = "eol",
         })
         break

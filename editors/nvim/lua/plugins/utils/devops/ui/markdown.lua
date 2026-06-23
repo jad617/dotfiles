@@ -226,11 +226,21 @@ function M.render(text, indent, width)
       render_table(rows, aligns)
       i = j
     else
+      local stripped = line:gsub("%s", "")
+      local hr = #stripped >= 3
+        and (stripped:match("^%-+$") or stripped:match("^%*+$") or stripped:match("^_+$")) ~= nil
+      local quote = line:match("^%s*>+%s?(.*)")
       local hashes, header_text = line:match("^(#+)%s+(.*)")
       local bullet_indent, bullet_text = line:match("^(%s*)[%-%*%+]%s+(.*)")
       local ordered_indent, ordered_num, ordered_text = line:match("^(%s*)(%d+)[%.%)]%s+(.*)")
 
-      if hashes then
+      if hr then
+        local rule = indent .. string.rep("─", width and math.max(8, width - dw(indent)) or 40)
+        lines[#lines + 1] = rule
+        push_highlight(highlights, #lines - 1, 0, #rule, "DevOpsDim")
+      elseif quote then
+        emit(indent .. "▏ ", indent .. "▏ ", quote, "DevOpsMdQuote", "DevOpsBorder")
+      elseif hashes then
         local prefix = indent .. string.rep("▌", #hashes) .. " "
         emit(prefix, string.rep(" ", dw(prefix)), header_text, "DevOpsMdHeader", nil)
       elseif bullet_text then
