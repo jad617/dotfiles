@@ -10,9 +10,7 @@ local M = {}
 -- Fields requested for the issue list (keep it lean).
 local LIST_FIELDS = { "summary", "status", "issuetype", "assignee", "updated", "parent", "priority" }
 
--- Build the JQL for the list view. opts = { account_id, project_key, open_sprints, include_done }.
--- open_sprints => scope to issues in any active sprint (spans projects); we then
--- skip the project filter and don't drop Done (the sprint board shows all columns).
+-- Build the JQL for the list view. opts = { account_id, project_key, sprint_id, open_sprints, include_done }.
 function M.build_jql(opts)
   opts = opts or {}
   if config.options.jira.jql and config.options.jira.jql ~= "" then
@@ -23,23 +21,18 @@ function M.build_jql(opts)
   if opts.account_id and opts.account_id ~= "" then
     parts[#parts + 1] = 'assignee = "' .. opts.account_id .. '"'
   end
+  -- Always scope to the selected project (sprints can span projects/teams, so the
+  -- sprint board must still follow the project the user picked).
+  if opts.project_key and opts.project_key ~= "" then
+    parts[#parts + 1] = 'project = "' .. opts.project_key .. '"'
+  end
   if opts.sprint_id then
     parts[#parts + 1] = "sprint = " .. tostring(opts.sprint_id)
-    if not opts.include_done then
-      parts[#parts + 1] = "statusCategory != Done"
-    end
   elseif opts.open_sprints then
     parts[#parts + 1] = "sprint in openSprints()"
-    if not opts.include_done then
-      parts[#parts + 1] = "statusCategory != Done"
-    end
-  else
-    if opts.project_key and opts.project_key ~= "" then
-      parts[#parts + 1] = 'project = "' .. opts.project_key .. '"'
-    end
-    if not opts.include_done then
-      parts[#parts + 1] = "statusCategory != Done"
-    end
+  end
+  if not opts.include_done then
+    parts[#parts + 1] = "statusCategory != Done"
   end
   return table.concat(parts, " AND ") .. " ORDER BY updated DESC"
 end

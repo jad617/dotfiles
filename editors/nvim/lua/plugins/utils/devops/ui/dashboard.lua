@@ -906,21 +906,25 @@ local function load_section(force)
       set_message("⚠ Jira not configured — run :JiraAuth. Missing: " .. table.concat(client.missing(), ", "))
       return
     end
-    if not state.sprint then
-      set_message("⚠ No active sprint — select a Scrum board with 'b'")
+    if not state.board then
+      set_message("⚠ Select a Scrum board with 'b' to see the sprint board")
       return
     end
+    -- Default: this project's issues in any active sprint (follows the project, not
+    -- whatever team owns the board's sprint). A specific sprint is used only when
+    -- explicitly picked with 'v'.
+    local picked = state.sprint and state.sprint.picked
     api.search({
       account_id = nil, -- sprint board is team-wide; the 'u' user filter doesn't apply here
       project_key = state.project and state.project.key,
-      sprint_id = state.sprint and state.sprint.id or nil,
-      open_sprints = not (state.sprint and state.sprint.id),
+      sprint_id = picked and state.sprint.id or nil,
+      open_sprints = not picked,
       include_done = true,
     }, function(ok, issues, err)
       if not is_open() or current_section_id() ~= sec_id then return end
       if not ok then return set_message("⚠ " .. (err or "sprint fetch failed")) end
       cache_set(sec_id, issues)
-      local title = (state.sprint and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
+      local title = (picked and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
       render_jira(issues, "all", state.columns, title)
     end)
   elseif sec_id == "jira_epics" then
@@ -2178,7 +2182,7 @@ local function pick_sprint()
       format_item = function(s) return (s.name or "?") .. "   [" .. (s.state or "?") .. "]" end,
     }, function(choice)
       if not choice then return end
-      state.sprint = { id = choice.id, name = choice.name, state = choice.state }
+      state.sprint = { id = choice.id, name = choice.name, state = choice.state, picked = true }
       cache_invalidate("jira_sprint")
       render_sidebar()
       local jt = tab_index_by_id("jira")
