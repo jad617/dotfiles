@@ -108,6 +108,7 @@ local function set_hl()
     DevOpsMdCode         = { fg = "#9ece6a", bg = "#1f2335" },
     DevOpsMdCodeBlock    = { fg = "#9ece6a", bg = "#1f2335" },
     DevOpsMdListBullet   = { fg = "#e0af68", bold = true },
+    DevOpsMdQuote        = { fg = "#787c99", italic = true },
   }
   for name, val in pairs(hls) do vim.api.nvim_set_hl(0, name, val) end
   M.apply_diff_theme()
