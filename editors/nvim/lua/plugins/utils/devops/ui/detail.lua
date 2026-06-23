@@ -842,7 +842,6 @@ local function build_pr(pr, width)
   if pr.additions or pr.deletions then
     b.field("Diff", ("+%d  -%d"):format(pr.additions or 0, pr.deletions or 0), "DevOpsWarn")
   end
-  if pr.files ~= nil then b.field("Files", tostring(count_items(pr.files))) end
   if pr.comments ~= nil then b.field("Comments", tostring(count_items(pr.comments))) end
   local mergeable = mergeable_text(pr)
   local mergeable_hl = nil
@@ -911,6 +910,57 @@ local function build_pr(pr, width)
       b.hl(line, 2, 2 + #icon, hl_group)
       b.hl(line, #prefix, #prefix + #trunc, "DevOpsDetailTitle")
       b.hl(line, #b.lines()[line] - #label, #b.lines()[line], hl_group)
+    end
+  end
+
+  if type(pr.files) == "table" and #pr.files > 0 then
+    b.divider("Files (" .. #pr.files .. ")")
+    local max_show = 20
+    local pathw = math.max(20, W - 16) -- reserve ~16 cols for the +N -N counts
+    for i, f in ipairs(pr.files) do
+      if i > max_show then
+        local more = ("   … %d more"):format(#pr.files - max_show)
+        b.hl(b.add(more), 0, #more, "DevOpsDim")
+        break
+      end
+      local path = render.truncate(f.path or "", pathw)
+      local plus, minus = "+" .. (f.additions or 0), "-" .. (f.deletions or 0)
+      local prefix = "  " .. render.pad(path, pathw) .. "  "
+      local line = b.add(prefix .. plus .. " " .. minus)
+      b.hl(line, 2, 2 + #path, "DevOpsId")
+      b.hl(line, #prefix, #prefix + #plus, "DevOpsOk")
+      b.hl(line, #prefix + #plus + 1, #prefix + #plus + 1 + #minus, "DevOpsErr")
+    end
+  end
+
+  if type(pr.reviewComments) == "table" and #pr.reviewComments > 0 then
+    b.divider("Review Comments (" .. #pr.reviewComments .. ")")
+    local groups, order = {}, {}
+    for _, c in ipairs(pr.reviewComments) do
+      local p = c.path or "?"
+      if not groups[p] then groups[p] = {} order[#order + 1] = p end
+      table.insert(groups[p], c)
+    end
+    for _, p in ipairs(order) do
+      local pl = b.add("  " .. render.truncate(p, W - 4))
+      b.hl(pl, 2, #b.lines()[pl], "DevOpsId")
+      for _, c in ipairs(groups[p]) do
+        local author = (c.user and c.user.login) or "?"
+        local ln = c.line or c.original_line
+        local hdr = "    " .. (ln and ("L" .. ln .. "  ") or "") .. "@" .. author
+        local hline = b.add(hdr)
+        b.hl(hline, #hdr - #author - 1, #hdr, "DevOpsKey")
+        local cbody = markdown.clean(c.body or "")
+        if cbody ~= "" then
+          local mdc = markdown.render(cbody, "      ", W - 8)
+          for i, l in ipairs(mdc.lines) do
+            local li = b.add(l)
+            for _, h in ipairs(mdc.highlights) do
+              if h.line == i - 1 then b.hl(li, h.col_start, h.col_end, h.hl) end
+            end
+          end
+        end
+      end
     end
   end
 
@@ -1114,7 +1164,11 @@ function M.open_pr(pr)
         if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
         full.repository = pr.repository
         full.url = pr.url
-        show(title, build_pr(full), setup_keys)
+        gh.pr_review_comments(repo, n, function(ok2, rc)
+          full.reviewComments = (ok2 and type(rc) == "table") and rc or {}
+          if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
+          show(title, build_pr(full), setup_keys)
+        end)
       end)
     end
   end)
@@ -1297,7 +1351,10 @@ function M.load_pr(pr, opts)
       if not ok or not full then return end
       full.repository = pr.repository
       full.url = pr.url
-      on_update(build_pr(full, pr_w), make_keys)
+      gh.pr_review_comments(repo, n, function(ok2, rc)
+        full.reviewComments = (ok2 and type(rc) == "table") and rc or {}
+        on_update(build_pr(full, pr_w), make_keys)
+      end)
     end)
   end
 end
