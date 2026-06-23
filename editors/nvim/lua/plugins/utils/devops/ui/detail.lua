@@ -804,8 +804,9 @@ local function check_display(ctx)
   return "○", "DevOpsDim", tostring(state):lower()
 end
 
-local function build_pr(pr)
+local function build_pr(pr, width)
   local b = builder()
+  local W = width or math.max(60, math.floor(vim.o.columns * 0.75))
   local draft = pr.isDraft
   local icon = draft and "" or ""
 
@@ -887,9 +888,12 @@ local function build_pr(pr)
     else
       for _, reviewer in ipairs(reviewers) do
         local verdict = reviewer.verdict
-        local line = b.add(("  %-22s %s"):format(reviewer.name, verdict))
-        b.hl(line, 2, 2 + #reviewer.name, "DevOpsDetailTitle")
-        b.hl(line, #b.lines()[line] - #verdict, #b.lines()[line], reviewer.hl)
+        local trunc = render.truncate(reviewer.name, 24)
+        local name = render.pad(trunc, 24) -- exactly 24 display cols
+        local line = b.add("  " .. name .. "  " .. verdict)
+        b.hl(line, 2, 2 + #trunc, "DevOpsDetailTitle")
+        local vstart = 2 + #name + 2
+        b.hl(line, vstart, vstart + #verdict, reviewer.hl)
       end
     end
   end
@@ -900,16 +904,20 @@ local function build_pr(pr)
     for _, ctx in ipairs(contexts) do
       local icon, hl_group, label = check_display(ctx)
       local name = ctx.name or ctx.context or ctx.__typename or "check"
-      local line = b.add(("  %s %-14s %s"):format(icon, render.truncate(name, 14), label))
+      local icon_cell = render.pad(icon, 2) -- normalize ⏳ (2 cells) vs ✓/✗/○ (1 cell)
+      local trunc = render.truncate(name, 28)
+      local prefix = "  " .. icon_cell .. " "
+      local line = b.add(prefix .. render.pad(trunc, 28) .. " " .. label)
       b.hl(line, 2, 2 + #icon, hl_group)
-      b.hl(line, 4, 4 + #render.truncate(name, 14), "DevOpsDetailTitle")
+      b.hl(line, #prefix, #prefix + #trunc, "DevOpsDetailTitle")
       b.hl(line, #b.lines()[line] - #label, #b.lines()[line], hl_group)
     end
   end
 
   b.divider("Description")
-  local body = (pr.body and pr.body ~= "" and pr.body or "_No description_"):gsub("\r", "")
-  local md = markdown.render(body)
+  local body = markdown.clean(pr.body or "")
+  if body == "" then body = "_No description_" end
+  local md = markdown.render(body, "  ", W - 4)
   for i, line in ipairs(md.lines) do
     local li = b.add(line)
     for _, h in ipairs(md.highlights) do
@@ -957,50 +965,62 @@ local function build_pr(pr)
 
   if #timeline > 0 then
     b.divider("Activity")
+    local PAD = "  "
     for _, ev in ipairs(timeline) do
       b.add("")
       local ts = format_time(ev.time)
+
+      -- Per-kind icon, action label, action highlight, and border colour.
+      local icon, action, action_hl, border_hl
       if ev.kind == "comment" then
-        local hdr = "  💬  " .. ev.author .. "  commented"
-        local line = b.add(hdr .. "  " .. ts)
-        b.hl(line, #"  💬  ", #"  💬  " + #ev.author, "DevOpsKey")
-        b.hl(line, #hdr + 2, #hdr + 2 + #ts, "DevOpsDim")
+        icon, action, action_hl, border_hl = "💬", "commented", "DevOpsDim", "DevOpsCommentBorder"
       elseif ev.kind == "review" then
-        local state_label = (ev.state == "APPROVED" and "approved")
+        action = (ev.state == "APPROVED" and "approved")
           or (ev.state == "CHANGES_REQUESTED" and "requested changes")
-          or (ev.state == "COMMENTED" and "reviewed")
           or (ev.state == "DISMISSED" and "dismissed review")
           or "reviewed"
-        local state_hl = (ev.state == "APPROVED" and "DevOpsOk")
+        action_hl = (ev.state == "APPROVED" and "DevOpsOk")
           or (ev.state == "CHANGES_REQUESTED" and "DevOpsErr")
           or "DevOpsWarn"
-        local icon = ev.state == "APPROVED" and "✓" or (ev.state == "CHANGES_REQUESTED" and "✗" or "●")
-        local hdr = "  " .. icon .. "  " .. ev.author .. "  " .. state_label
-        local line = b.add(hdr .. "  " .. ts)
-        b.hl(line, #("  " .. icon .. "  "), #("  " .. icon .. "  ") + #ev.author, "DevOpsKey")
-        b.hl(line, #("  " .. icon .. "  " .. ev.author .. "  "), #("  " .. icon .. "  " .. ev.author .. "  ") + #state_label, state_hl)
-        b.hl(line, #hdr + 2, #hdr + 2 + #ts, "DevOpsDim")
-      elseif ev.kind == "commit" then
-        local short_oid = ev.oid:sub(1, 7)
-        local hdr = "  ⊙  " .. ev.author .. "  pushed  " .. short_oid
-        local line = b.add(hdr .. "  " .. ts)
-        b.hl(line, #"  ⊙  ", #"  ⊙  " + #ev.author, "DevOpsKey")
-        b.hl(line, #("  ⊙  " .. ev.author .. "  pushed  "), #("  ⊙  " .. ev.author .. "  pushed  ") + #short_oid, "DevOpsId")
-        b.hl(line, #hdr + 2, #hdr + 2 + #ts, "DevOpsDim")
+        border_hl = action_hl
+        icon = ev.state == "APPROVED" and "✓" or (ev.state == "CHANGES_REQUESTED" and "✗" or "●")
+      else -- commit
+        icon, action, action_hl, border_hl = "⊙", "pushed " .. ev.oid:sub(1, 7), "DevOpsId", "DevOpsBorder"
       end
-      -- Body (truncated for readability)
-      if ev.body ~= "" then
-        local body_lines = vim.split(ev.body:gsub("\r", ""), "\n", { plain = true })
-        local max_lines = 8
-        for i, bl in ipairs(body_lines) do
-          if i > max_lines then
-            local trunc = b.add("    ...")
-            b.hl(trunc, 0, #"    ...", "DevOpsDim")
-            break
+
+      -- ╭─ <icon> <author> <action> · <time>
+      local head = PAD .. "╭─ " .. icon .. " "
+      local author_start = #head
+      head = head .. ev.author .. " "
+      local action_start = #head
+      head = head .. action
+      local action_end = #head
+      local ts_start = action_end + #" · "
+      head = head .. " · " .. ts
+      local hline = b.add(head)
+      b.hl(hline, #PAD, author_start, border_hl)
+      b.hl(hline, author_start, author_start + #ev.author, "DevOpsKey")
+      b.hl(hline, action_start, action_end, action_hl)
+      b.hl(hline, ts_start, ts_start + #ts, "DevOpsDim")
+
+      -- │  body…  (cleaned, rendered, truncated)
+      local rail = PAD .. "│  "
+      local body = markdown.clean(ev.body)
+      if body ~= "" then
+        -- card content width = window − rail ("  │  " = 5) − right margin
+        local md = markdown.render(body, "", W - 7)
+        for i, bl in ipairs(md.lines) do
+          local li = b.add(rail .. bl)
+          b.hl(li, #PAD, #PAD + #"│", border_hl)
+          for _, h in ipairs(md.highlights) do
+            if h.line == i - 1 then b.hl(li, #rail + h.col_start, #rail + h.col_end, h.hl) end
           end
-          b.add("    " .. bl)
         end
       end
+
+      -- ╰─
+      local bot = b.add(PAD .. "╰─")
+      b.hl(bot, #PAD, #(PAD .. "╰─"), border_hl)
     end
   end
 
@@ -1205,6 +1225,8 @@ function M.load_pr(pr, opts)
   opts = opts or {}
   local on_ready = opts.on_ready or function() end
   local on_update = opts.on_update or on_ready
+  local pr_w = (opts.content_win and vim.api.nvim_win_is_valid(opts.content_win))
+    and vim.api.nvim_win_get_width(opts.content_win) or nil
 
   local repo = pr.repository and pr.repository.nameWithOwner
   local n = pr.number
@@ -1267,7 +1289,7 @@ function M.load_pr(pr, opts)
     end, { buffer = buf, nowait = true, desc = "Checkout" })
   end
 
-  on_ready(build_pr(pr), make_keys)
+  on_ready(build_pr(pr, pr_w), make_keys)
 
   -- Enrich with full PR data
   if repo and n then
@@ -1275,7 +1297,7 @@ function M.load_pr(pr, opts)
       if not ok or not full then return end
       full.repository = pr.repository
       full.url = pr.url
-      on_update(build_pr(full), make_keys)
+      on_update(build_pr(full, pr_w), make_keys)
     end)
   end
 end
