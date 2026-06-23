@@ -148,7 +148,17 @@ function M.issue_icon(type_name) return TYPE_ICON[type_name] or "" end
 function M.truncate(s, w)
   s = s or ""
   if vim.fn.strdisplaywidth(s) <= w then return s end
-  return s:sub(1, math.max(0, w - 1)) .. "…"
+  -- Truncate on character boundaries by display width (reserve 1 col for …),
+  -- so multibyte text isn't cut mid-character and the result fits exactly.
+  local budget = math.max(0, w - 1)
+  local out, width = {}, 0
+  for _, ch in ipairs(vim.fn.split(s, "\\zs")) do
+    local cw = vim.fn.strdisplaywidth(ch)
+    if width + cw > budget then break end
+    out[#out + 1] = ch
+    width = width + cw
+  end
+  return table.concat(out) .. "…"
 end
 
 function M.pad(s, w)
