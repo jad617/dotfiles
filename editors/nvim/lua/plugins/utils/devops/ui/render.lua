@@ -67,7 +67,6 @@ local function set_hl()
     DevOpsSection        = { fg = "#7aa2f7", bold = true },
     DevOpsSectionActive  = { fg = "#99bc80", bold = true },
     DevOpsSectionBar     = { fg = "#99bc80", bold = true },
-    DevOpsSidebarSel     = { bg = "#2c3a2c" }, -- green cursorline for the active section
     DevOpsGroup          = { fg = "#565f89", bold = true },
     DevOpsKey            = { fg = "#e0af68" },
     DevOpsDim            = { fg = "#565f89" },

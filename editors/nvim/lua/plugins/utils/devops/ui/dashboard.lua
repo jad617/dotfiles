@@ -2212,7 +2212,7 @@ local function open_float_windows()
 
   vim.wo[state.content.win].cursorline = true
   vim.wo[state.sidebar.win].cursorline = true
-  vim.wo[state.sidebar.win].winhighlight = winhl .. ",CursorLine:DevOpsSidebarSel"
+  vim.wo[state.sidebar.win].winhighlight = winhl
   vim.wo[state.content.win].winhighlight = winhl
   vim.wo[state.footer.win].winhighlight = winhl
 end
@@ -2249,7 +2249,7 @@ local function restore_float_windows()
 
   vim.wo[state.content.win].cursorline = true
   vim.wo[state.sidebar.win].cursorline = true
-  vim.wo[state.sidebar.win].winhighlight = winhl .. ",CursorLine:DevOpsSidebarSel"
+  vim.wo[state.sidebar.win].winhighlight = winhl
   vim.wo[state.content.win].winhighlight = winhl
   vim.wo[state.footer.win].winhighlight = winhl
   render_footer()
@@ -2268,7 +2268,6 @@ local function open_tab_windows()
   vim.api.nvim_set_current_win(state.content.win)
   vim.wo[state.content.win].cursorline = true
   vim.wo[state.sidebar.win].cursorline = true
-  vim.wo[state.sidebar.win].winhighlight = "CursorLine:DevOpsSidebarSel"
 end
 
 local function map(lhs, fn, desc)
