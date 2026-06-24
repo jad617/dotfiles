@@ -355,15 +355,6 @@ local function render_footer()
 
   local sep = " │ "
 
-  -- Compute the max display width of any single key-desc pair across all groups.
-  local max_pair_dw = 0
-  for _, grp in ipairs(groups) do
-    for _, k in ipairs(grp[2]) do
-      local dw = vim.fn.strdisplaywidth(k)
-      if dw > max_pair_dw then max_pair_dw = dw end
-    end
-  end
-
   -- Compute max label width per column (row pairs share columns).
   local row1_groups = { groups[1], groups[2] }
   local row2_groups = { groups[3], groups[4] }
@@ -394,22 +385,12 @@ local function render_footer()
       else
         segment = segment .. k
       end
-      -- Pad this pair to fixed width
-      local pair_dw = vim.fn.strdisplaywidth(k)
-      local pair_pad = max_pair_dw - pair_dw
+      -- Separate pairs with a small gap (natural width) so the footer stays compact.
       if ki < #keys then
-        segment = segment .. string.rep(" ", pair_pad + 2)
+        segment = segment .. "   "
       end
     end
     return segment, highlights, vim.fn.strdisplaywidth(segment)
-  end
-
-  -- Compute max display width per column so separators align visually.
-  local col_widths = {}
-  for i = 1, 2 do
-    local w1 = is_empty(row1_groups[i]) and 0 or select(3, render_group(row1_groups[i], i))
-    local w2 = is_empty(row2_groups[i]) and 0 or select(3, render_group(row2_groups[i], i))
-    col_widths[i] = math.max(w1, w2)
   end
 
   local function build_line(grp_list)
@@ -424,14 +405,13 @@ local function render_footer()
           text = text .. sep
           col = col + #sep
         end
-        local segment, hls, dw = render_group(grp, gi)
-        -- Pad with spaces to reach the column's display width
-        local padded = segment .. string.rep(" ", math.max(0, col_widths[gi] - dw))
+        local segment, hls = render_group(grp, gi)
+        -- Natural width — don't pad columns to align rows (keeps the footer narrow).
         for _, h in ipairs(hls) do
           highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
         end
-        text = text .. padded
-        col = col + #padded
+        text = text .. segment
+        col = col + #segment
         first = false
       end
     end
