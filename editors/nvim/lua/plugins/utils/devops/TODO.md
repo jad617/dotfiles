@@ -13,18 +13,17 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
       `project.style`: team-managed (next-gen) drops the `/c/` segment.
 
 ## 🟠 Jira UX
-- [ ] **`👤` filter indicator shows on the Sprint Board** where the filter doesn't apply.
-      Scope the indicator to the sections it affects.
-- [ ] **No quick "back to active sprint"** after picking a past sprint with `v`.
-      Add an "● Active sprint" entry at the top of the sprint picker.
-- [ ] **`u` misses teammates with no recent assignments** (`project_assignees` scans the
-      recent ~200 issues). Add a "type a name" fallback for anyone not listed.
-- [ ] **My Issues scope is inconsistent** — cross-project with an active sprint,
-      project-scoped without. Make it predictable (always cross-project, or a clear toggle).
-- [ ] **`O` always scopes to a user** — add a way to open the full team board (no
-      `?assignee`).
-- [ ] **User filter on Backlog/Epics can silently go empty** — clearer "no issues for
-      <user>" message.
+- [x] **`👤` filter indicator** now only shows on the sections it affects (My Issues /
+      Backlog / Epics), not the team Sprint Board.
+- [x] **"Back to active sprint"** — the sprint picker now has a "● Active sprint(s)" reset
+      at the top.
+- [x] **`u` "Search by name…" fallback** — picker has a live, project-scoped search for
+      anyone assignable, not just recent assignees.
+- [x] **My Issues scope predictable** — always spans projects; only scopes to the project
+      on the `s` toggle.
+- [x] **`O` opens the full team board on the Sprint Board** (no `?assignee`); personal /
+      filtered view on the other sections.
+- [x] **Empty filtered list** now reads "(no issues for <user>)".
 
 ## 🟡 GitHub
 - [ ] **Verify inline review comments live** — `gh api …/pulls/N/comments` field shapes

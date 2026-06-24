@@ -242,7 +242,9 @@ local function render_sidebar()
     if #parts > 0 then
       push("   " .. table.concat(parts, " · "), "DevOpsDim")
     end
-    if state.jira_user then
+    -- Only show the user filter where it actually applies (not the team Sprint Board).
+    local fsec = current_section_id()
+    if state.jira_user and (fsec == "jira_issues" or fsec == "jira_backlog" or fsec == "jira_epics") then
       push("   👤 " .. render.truncate(state.jira_user.name or "user", 24), "DevOpsKey")
     end
   end
@@ -566,7 +568,11 @@ local function render_jira(issues, assignee_name, columns, title_override)
       for _, issue in ipairs(other) do add_issue(issue, "    ", false) end
     end
   else
-    if #issues == 0 then lines[#lines + 1] = "  (no issues)" end
+    if #issues == 0 then
+      lines[#lines + 1] = state.jira_user
+        and ("  (no issues for " .. (state.jira_user.name or "user") .. ")")
+        or "  (no issues)"
+    end
     for _, issue in ipairs(issues) do add_issue(issue, "  ", true) end
   end
 
@@ -882,7 +888,8 @@ local function load_section(force)
     local use_sprints = state.sprint ~= nil and state.scope_override ~= "project"
     api.search({
       account_id = account,
-      project_key = state.project and state.project.key,
+      -- My Issues spans projects by default; only scope to the project on 's' toggle.
+      project_key = (state.scope_override == "project") and state.project and state.project.key or nil,
       open_sprints = use_sprints,
       -- In board mode the layout has a Done column, so fetch Done issues to fill
       -- it; the flat list still respects the +Done toggle.
@@ -1097,7 +1104,11 @@ local function open_board_in_browser()
   local seg = (state.project.style == "next-gen") and "/jira/software/projects/"
     or "/jira/software/c/projects/"
   local url = client.base_url() .. seg .. state.project.key .. "/boards/" .. tostring(state.board.id)
-  local assignee = (state.jira_user and state.jira_user.account_id) or client.account_id()
+  -- Sprint Board is team-wide → open the full board; elsewhere scope to you / the filter.
+  local assignee
+  if current_section_id() ~= "jira_sprint" then
+    assignee = (state.jira_user and state.jira_user.account_id) or client.account_id()
+  end
   if assignee and assignee ~= "" then
     url = url .. "?assignee=" .. (assignee:gsub(":", "%%3A"))
   end
@@ -1190,20 +1201,26 @@ local function select_user()
         choices[#choices + 1] = { label = u.displayName or u.accountId, account_id = u.accountId }
       end
     end
+    choices[#choices + 1] = { label = "🔍 Search by name…", search = true }
     vim.ui.select(choices, {
       prompt = "Show issues assigned to (persists across sections):",
       format_item = function(c) return c.label end,
     }, function(choice)
       if not choice then return end
-      state.jira_user = choice.me and nil or { account_id = choice.account_id, name = choice.label }
-      invalidate_tab_cache("jira")
-      -- Re-render the current Jira section with the new filter (persist across sections).
-      render_sidebar()
-      if is_jira_section(current_section_id()) then
-        load_section(true)
+      local function apply(user) -- user = nil (me / no filter) or { account_id, name }
+        state.jira_user = user
+        invalidate_tab_cache("jira")
+        render_sidebar()
+        if is_jira_section(current_section_id()) then load_section(true)
+        else switch_section(1, tab_index_by_id("jira")) end
+      end
+      if choice.search then -- live, project-scoped search for anyone (not just recent)
+        user_picker.open(function(picked)
+          apply({ account_id = picked.id, name = picked.name })
+        end, { title = "Filter by user", project_key = state.project.key })
         return
       end
-      switch_section(1, tab_index_by_id("jira"))
+      apply(choice.me and nil or { account_id = choice.account_id, name = choice.label })
     end)
   end)
 end
@@ -2190,16 +2207,28 @@ local function pick_sprint()
       if ra ~= rb then return ra < rb end
       return (a.id or 0) > (b.id or 0) -- most recent first
     end)
+    -- Offer a reset to the live active sprint(s) at the top.
+    table.insert(sprints, 1, { name = "● Active sprint(s)", state = "active", reset = true })
     vim.ui.select(sprints, {
       prompt = "Select sprint:",
-      format_item = function(s) return (s.name or "?") .. "   [" .. (s.state or "?") .. "]" end,
+      format_item = function(s) return (s.name or "?") .. (s.reset and "" or ("   [" .. (s.state or "?") .. "]")) end,
     }, function(choice)
       if not choice then return end
+      local function show_sprint_board()
+        cache_invalidate("jira_sprint")
+        render_sidebar()
+        local jt = tab_index_by_id("jira")
+        switch_section(section_index_by_id(jt, "jira_sprint"), jt)
+      end
+      if choice.reset then -- back to the live active sprint (openSprints default)
+        api.active_sprint(state.board.id, function(ok2, sprint)
+          state.sprint = (ok2 and sprint) and { id = sprint.id, name = sprint.name } or nil
+          show_sprint_board()
+        end)
+        return
+      end
       state.sprint = { id = choice.id, name = choice.name, state = choice.state, picked = true }
-      cache_invalidate("jira_sprint")
-      render_sidebar()
-      local jt = tab_index_by_id("jira")
-      switch_section(section_index_by_id(jt, "jira_sprint"), jt)
+      show_sprint_board()
     end)
   end)
 end
