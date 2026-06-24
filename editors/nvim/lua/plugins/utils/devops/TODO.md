@@ -4,15 +4,13 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
 🟡 GitHub · 🟢 perf · ⚪ polish.
 
 ## 🔴 Bugs / correctness
-- [ ] **Assign picker (`a`) is org-wide + flat** — `jira_assign` uses `assignable_users`
-      (everyone with assign permission), hard to find a teammate. Add type-to-search,
-      or `project_assignees` + a "search more…" fallback.
-- [ ] **No pagination — large lists silently truncate.** Everything caps at `maxResults`
-      (now 100). Paginate (`startAt` / `nextPageToken`) and fetch until complete for
-      sprint/backlog/My Issues.
-- [ ] **`O` board URL assumes a company-managed project** (`/jira/software/c/projects/…`).
-      Team-managed (next-gen) projects use a different path. Detect project type or fall
-      back to `/secure/RapidBoard.jspa?rapidView=<id>`.
+- [x] **Assign picker (`a`) is org-wide + flat** — now uses `project_assignees` (the
+      project's teammates) + Me/Unassigned, like the `u` filter.
+- [x] **No pagination — large lists silently truncate.** `search` follows `nextPageToken`
+      and `board_backlog` follows `startAt`, fetching up to MAX_ISSUES (1000).
+      (Epics / JQL backlog fallback still single-page — low impact.)
+- [x] **`O` board URL assumes a company-managed project.** Now branches on
+      `project.style`: team-managed (next-gen) drops the `/c/` segment.
 
 ## 🟠 Jira UX
 - [ ] **`👤` filter indicator shows on the Sprint Board** where the filter doesn't apply.

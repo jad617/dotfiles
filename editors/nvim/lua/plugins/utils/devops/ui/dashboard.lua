@@ -1093,8 +1093,10 @@ local function open_board_in_browser()
   if not (state.board and state.board.id) then
     return vim.notify("DevOps: pick a board first ('b')", vim.log.levels.INFO)
   end
-  local url = client.base_url() .. "/jira/software/c/projects/" .. state.project.key
-    .. "/boards/" .. tostring(state.board.id)
+  -- Team-managed (next-gen) projects omit the "/c/" segment; company-managed keep it.
+  local seg = (state.project.style == "next-gen") and "/jira/software/projects/"
+    or "/jira/software/c/projects/"
+  local url = client.base_url() .. seg .. state.project.key .. "/boards/" .. tostring(state.board.id)
   local assignee = (state.jira_user and state.jira_user.account_id) or client.account_id()
   if assignee and assignee ~= "" then
     url = url .. "?assignee=" .. (assignee:gsub(":", "%%3A"))
@@ -1362,7 +1364,9 @@ local function jira_assign()
     return vim.notify("DevOps: select a Jira issue first", vim.log.levels.INFO)
   end
   local project_key = state.project and state.project.key or item.key:match("^(%u+)-")
-  api.assignable_users(project_key, function(ok, users, err)
+  -- Use the project's teammates (distinct assignees), not the org-wide assignable
+  -- list — short and findable. Me + Unassigned are always offered.
+  api.project_assignees(project_key, function(ok, users, err)
     if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
     local choices = {}
     local me_id = client.account_id()
@@ -1371,7 +1375,7 @@ local function jira_assign()
     end
     choices[#choices + 1] = { label = "✗ Unassigned", account_id = nil }
     for _, u in ipairs(users) do
-      if u.accountId and u.accountType ~= "app" then
+      if u.accountId and u.accountType ~= "app" and u.accountId ~= me_id then
         choices[#choices + 1] = { label = u.displayName or u.accountId, account_id = u.accountId }
       end
     end
@@ -2108,6 +2112,7 @@ local function persist_prefs()
   store.save({
     project_key = state.project and state.project.key,
     project_name = state.project and state.project.name,
+    project_style = state.project and state.project.style,
     board_id = state.board and state.board.id,
     board_name = state.board and state.board.name,
   })
@@ -2215,7 +2220,7 @@ local function pick_project(cb)
       format_item = function(p) return p.key .. "  —  " .. (p.name or "") end,
     }, function(choice)
       if not choice then return cb and cb() end
-      state.project = { key = choice.key, id = choice.id, name = choice.name }
+      state.project = { key = choice.key, id = choice.id, name = choice.name, style = choice.style }
       invalidate_tab_cache("jira")
       resolve_board_then(function() if cb then cb() end end)
     end)
@@ -2228,7 +2233,7 @@ local function ensure_project(cb)
 
   local prefs = store.load()
   if prefs and prefs.project_key then
-    state.project = { key = prefs.project_key, name = prefs.project_name }
+    state.project = { key = prefs.project_key, name = prefs.project_name, style = prefs.project_style }
     state.board = prefs.board_id and { id = prefs.board_id, name = prefs.board_name } or nil
     return load_board_columns(cb)
   end
