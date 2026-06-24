@@ -316,14 +316,14 @@ local function render_footer()
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
       { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "S search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "r refresh" } },
-      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
+      { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
       { "Actions",  { "m move", "c comment", "a assign", "S search", "* pin" } },
       { "Jira",     { "u user", "v sprint", "p project", "b board", "r refresh" } },
-      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
+      { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
     groups = {
@@ -1095,6 +1095,24 @@ local function open_browser()
   elseif item.kind == "pr" then
     vim.ui.open(item.pr.url)
   end
+end
+
+-- Open the project's Scrum board in the browser, scoped to the active user filter
+-- (or you), e.g. .../jira/software/c/projects/DEVOPS/boards/174?assignee=<id>.
+local function open_board_in_browser()
+  if not (state.project and state.project.key) then
+    return vim.notify("DevOps: pick a project first ('p')", vim.log.levels.INFO)
+  end
+  if not (state.board and state.board.id) then
+    return vim.notify("DevOps: pick a board first ('b')", vim.log.levels.INFO)
+  end
+  local url = client.base_url() .. "/jira/software/c/projects/" .. state.project.key
+    .. "/boards/" .. tostring(state.board.id)
+  local assignee = (state.jira_user and state.jira_user.account_id) or client.account_id()
+  if assignee and assignee ~= "" then
+    url = url .. "?assignee=" .. (assignee:gsub(":", "%%3A"))
+  end
+  vim.ui.open(url)
 end
 
 local function refresh_current_jira_section()
@@ -1952,7 +1970,8 @@ local function show_help()
       { "s",     "Toggle scope (sprint/project)" },
       { "h",     "Toggle show Done issues" },
       { "r",     "Refresh" },
-      { "o",     "Open in browser" },
+      { "o",     "Open issue in browser" },
+      { "O",     "Open board in browser" },
       { "Tab",   "Next section" },
       { "S-Tab", "Prev section" },
       { "H/L",   "Previous/next tab" },
@@ -1973,7 +1992,8 @@ local function show_help()
       { "p",     "Switch project" },
       { "b",     "Switch board" },
       { "r",     "Refresh" },
-      { "o",     "Open in browser" },
+      { "o",     "Open issue in browser" },
+      { "O",     "Open board in browser" },
       { "Tab",   "Next section" },
       { "S-Tab", "Prev section" },
       { "H/L",   "Previous/next tab" },
@@ -2386,6 +2406,7 @@ local function setup_keymaps()
   map("<CR>", open_detail, "open")
   map("r", function() load_section(true); refresh_notifications() end, "refresh")
   map("o", open_browser, "open in browser")
+  map("O", open_board_in_browser, "open board in browser")
   map("u", select_user, "select user")
   map("p", function() pick_project(function() switch_section(1, tab_index_by_id("jira")) end) end, "pick project")
   map("b", pick_board, "pick board")
