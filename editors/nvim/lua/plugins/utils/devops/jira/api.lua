@@ -10,9 +10,7 @@ local M = {}
 -- Fields requested for the issue list (keep it lean).
 local LIST_FIELDS = { "summary", "status", "issuetype", "assignee", "updated", "parent", "priority" }
 
--- Build the JQL for the list view. opts = { account_id, project_key, open_sprints, include_done }.
--- open_sprints => scope to issues in any active sprint (spans projects); we then
--- skip the project filter and don't drop Done (the sprint board shows all columns).
+-- Build the JQL for the list view. opts = { account_id, project_key, sprint_id, open_sprints, include_done }.
 function M.build_jql(opts)
   opts = opts or {}
   if config.options.jira.jql and config.options.jira.jql ~= "" then
@@ -23,18 +21,20 @@ function M.build_jql(opts)
   if opts.account_id and opts.account_id ~= "" then
     parts[#parts + 1] = 'assignee = "' .. opts.account_id .. '"'
   end
-  if opts.open_sprints then
+  local in_sprint = opts.sprint_id ~= nil or opts.open_sprints
+  -- Project scope: always for a plain project list; in sprint mode only when asked
+  -- (scope_project), so the sprint board follows the project while "My Issues" can
+  -- still span projects.
+  if opts.project_key and opts.project_key ~= "" and (not in_sprint or opts.scope_project) then
+    parts[#parts + 1] = 'project = "' .. opts.project_key .. '"'
+  end
+  if opts.sprint_id then
+    parts[#parts + 1] = "sprint = " .. tostring(opts.sprint_id)
+  elseif opts.open_sprints then
     parts[#parts + 1] = "sprint in openSprints()"
-    if not opts.include_done then
-      parts[#parts + 1] = "statusCategory != Done"
-    end
-  else
-    if opts.project_key and opts.project_key ~= "" then
-      parts[#parts + 1] = 'project = "' .. opts.project_key .. '"'
-    end
-    if not opts.include_done then
-      parts[#parts + 1] = "statusCategory != Done"
-    end
+  end
+  if not opts.include_done then
+    parts[#parts + 1] = "statusCategory != Done"
   end
   return table.concat(parts, " AND ") .. " ORDER BY updated DESC"
 end
@@ -52,10 +52,11 @@ function M.search(opts, cb)
   end)
 end
 
-function M.epics(project_key, cb)
-  local jql = 'project = "' .. project_key .. '" AND issuetype = Epic AND statusCategory != Done ORDER BY updated DESC'
+function M.epics(project_key, account_id, cb)
+  local jql = 'project = "' .. project_key .. '" AND issuetype = Epic AND statusCategory != Done'
+  if account_id and account_id ~= "" then jql = jql .. ' AND assignee = "' .. account_id .. '"' end
   local body = {
-    jql = jql,
+    jql = jql .. " ORDER BY updated DESC",
     fields = LIST_FIELDS,
     maxResults = config.options.jira.page_size or 50,
   }
@@ -65,16 +66,36 @@ function M.epics(project_key, cb)
   end)
 end
 
-function M.backlog(project_key, cb)
-  local jql = 'project = "' .. project_key .. '" AND sprint is EMPTY AND statusCategory != Done ORDER BY updated DESC'
+-- JQL backlog fallback (when no Agile board). cb(ok, issues[], err)
+function M.backlog(project_key, account_id, cb)
+  local jql = 'project = "' .. project_key .. '" AND sprint is EMPTY AND statusCategory != Done'
+  if account_id and account_id ~= "" then jql = jql .. ' AND assignee = "' .. account_id .. '"' end
   local body = {
-    jql = jql,
+    jql = jql .. " ORDER BY updated DESC",
     fields = LIST_FIELDS,
-    maxResults = config.options.jira.page_size or 50,
+    maxResults = 100,
   }
   client.post("/rest/api/3/search/jql", body, function(ok, data, err)
     if not ok then return cb(false, nil, err) end
     cb(true, (data and data.issues) or {}, nil)
+  end)
+end
+
+-- Agile board backlog — matches Jira's Backlog view (unscheduled + future-sprint
+-- issues), so it shows everything, not just sprint-empty. cb(ok, issues[], err)
+function M.board_backlog(board_id, cb)
+  client.get("/rest/agile/1.0/board/" .. board_id .. "/backlog?maxResults=100", function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.issues) or {}, nil)
+  end)
+end
+
+-- Active + closed + future sprints for a board (for the sprint picker).
+-- cb(ok, sprints[] {id,name,state}, err)
+function M.list_sprints(board_id, cb)
+  client.get("/rest/agile/1.0/board/" .. board_id .. "/sprint?state=active,closed,future&maxResults=50", function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.values) or {}, nil)
   end)
 end
 
@@ -195,6 +216,30 @@ function M.assignable_users(project_key, cb)
     path = "/rest/api/3/users/search?maxResults=200"
   end
   client.get(path, function(ok, data, err) cb(ok, data or {}, err) end)
+end
+
+-- The actual people on a project = the distinct assignees of its recent issues.
+-- This is the real ~15-20 teammates (assignable/search returns org-wide perm holders).
+-- cb(ok, users[] {accountId, displayName, accountType}, err)
+function M.project_assignees(project_key, cb)
+  local body = {
+    jql = 'project = "' .. project_key .. '" AND assignee is not EMPTY ORDER BY updated DESC',
+    fields = { "assignee" },
+    maxResults = 200,
+  }
+  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    local seen, users = {}, {}
+    for _, issue in ipairs((data and data.issues) or {}) do
+      local a = issue.fields and issue.fields.assignee
+      if a and a.accountId and not seen[a.accountId] then
+        seen[a.accountId] = true
+        users[#users + 1] = { accountId = a.accountId, displayName = a.displayName, accountType = a.accountType }
+      end
+    end
+    table.sort(users, function(x, y) return (x.displayName or "") < (y.displayName or "") end)
+    cb(true, users, nil)
+  end)
 end
 
 -- Search all users by name/email (for mentions). cb(ok, users[], err)

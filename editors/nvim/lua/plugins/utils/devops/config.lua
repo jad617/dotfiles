@@ -16,7 +16,8 @@ M.defaults = {
   jira = {
     project = nil, -- e.g. "DEVOPS"; nil => rely on `jql` or just assignee filter
     jql = nil,     -- raw JQL override; when set it fully replaces the default query
-    page_size = 50,
+    page_size = 100, -- board/sprint views include Done; 50 dropped older Done tickets
+
   },
   github = {
     enabled = true,

@@ -242,6 +242,9 @@ local function render_sidebar()
     if #parts > 0 then
       push("   " .. table.concat(parts, " · "), "DevOpsDim")
     end
+    if state.jira_user then
+      push("   👤 " .. render.truncate(state.jira_user.name or "user", 24), "DevOpsKey")
+    end
   end
   push("")
 
@@ -312,15 +315,15 @@ local function render_footer()
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
       { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "S search", "* pin" } },
-      { "Toggles",  { "s scope", "h done", "p project", "b board", "r refresh" } },
-      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
+      { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "r refresh" } },
+      { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
       { "Actions",  { "m move", "c comment", "a assign", "S search", "* pin" } },
-      { "Jira",     { "p project", "b board", "r refresh" } },
-      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
+      { "Jira",     { "u user", "v sprint", "p project", "b board", "r refresh" } },
+      { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
     groups = {
@@ -352,15 +355,6 @@ local function render_footer()
 
   local sep = " │ "
 
-  -- Compute the max display width of any single key-desc pair across all groups.
-  local max_pair_dw = 0
-  for _, grp in ipairs(groups) do
-    for _, k in ipairs(grp[2]) do
-      local dw = vim.fn.strdisplaywidth(k)
-      if dw > max_pair_dw then max_pair_dw = dw end
-    end
-  end
-
   -- Compute max label width per column (row pairs share columns).
   local row1_groups = { groups[1], groups[2] }
   local row2_groups = { groups[3], groups[4] }
@@ -391,23 +385,20 @@ local function render_footer()
       else
         segment = segment .. k
       end
-      -- Pad this pair to fixed width
-      local pair_dw = vim.fn.strdisplaywidth(k)
-      local pair_pad = max_pair_dw - pair_dw
+      -- Separate pairs with a small gap (natural width) so the footer stays compact.
       if ki < #keys then
-        segment = segment .. string.rep(" ", pair_pad + 2)
+        segment = segment .. "   "
       end
     end
     return segment, highlights, vim.fn.strdisplaywidth(segment)
   end
 
-  -- Compute max display width per column so separators align visually.
-  local col_widths = {}
-  for i = 1, 2 do
-    local w1 = is_empty(row1_groups[i]) and 0 or select(3, render_group(row1_groups[i], i))
-    local w2 = is_empty(row2_groups[i]) and 0 or select(3, render_group(row2_groups[i], i))
-    col_widths[i] = math.max(w1, w2)
-  end
+  -- Pad column 1 to a shared width so column 2 (Actions / Window) lines up across the
+  -- two rows; the last column stays natural-width so the footer doesn't overflow.
+  local col1_w = math.max(
+    is_empty(row1_groups[1]) and 0 or select(3, render_group(row1_groups[1], 1)),
+    is_empty(row2_groups[1]) and 0 or select(3, render_group(row2_groups[1], 1))
+  )
 
   local function build_line(grp_list)
     local text = " "
@@ -422,13 +413,12 @@ local function render_footer()
           col = col + #sep
         end
         local segment, hls, dw = render_group(grp, gi)
-        -- Pad with spaces to reach the column's display width
-        local padded = segment .. string.rep(" ", math.max(0, col_widths[gi] - dw))
+        if gi == 1 then segment = segment .. string.rep(" ", math.max(0, col1_w - dw)) end
         for _, h in ipairs(hls) do
           highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
         end
-        text = text .. padded
-        col = col + #padded
+        text = text .. segment
+        col = col + #segment
         first = false
       end
     end
@@ -903,20 +893,27 @@ local function load_section(force)
       set_message("⚠ Jira not configured — run :JiraAuth. Missing: " .. table.concat(client.missing(), ", "))
       return
     end
-    if not state.sprint then
-      set_message("⚠ No active sprint — select a Scrum board with 'b'")
+    if not state.board then
+      set_message("⚠ Select a Scrum board with 'b' to see the sprint board")
       return
     end
+    -- Default: this project's issues in any active sprint (follows the project, not
+    -- whatever team owns the board's sprint). A specific sprint is used only when
+    -- explicitly picked with 'v'.
+    local picked = state.sprint and state.sprint.picked
     api.search({
-      account_id = nil,
+      account_id = nil, -- sprint board is team-wide; the 'u' user filter doesn't apply here
       project_key = state.project and state.project.key,
-      open_sprints = true,
+      sprint_id = picked and state.sprint.id or nil,
+      open_sprints = not picked,
+      scope_project = true, -- sprint board follows the selected project
       include_done = true,
     }, function(ok, issues, err)
       if not is_open() or current_section_id() ~= sec_id then return end
       if not ok then return set_message("⚠ " .. (err or "sprint fetch failed")) end
       cache_set(sec_id, issues)
-      render_jira(issues, "all", state.columns, "Jira  ·  Sprint Board")
+      local title = (picked and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
+      render_jira(issues, "all", state.columns, title)
     end)
   elseif sec_id == "jira_epics" then
     if not client.configured() then
@@ -927,11 +924,11 @@ local function load_section(force)
       set_message("⚠ Pick a Jira project with 'p'")
       return
     end
-    api.epics(state.project.key, function(ok, issues, err)
+    api.epics(state.project.key, state.jira_user and state.jira_user.account_id or nil, function(ok, issues, err)
       if not is_open() or current_section_id() ~= sec_id then return end
       if not ok then return set_message("⚠ " .. (err or "epics fetch failed")) end
       cache_set(sec_id, issues)
-      render_jira(issues, state.project.key, nil, "Jira  ·  Epics")
+      render_jira(issues, state.jira_user and state.jira_user.name or state.project.key, nil, "Jira  ·  Epics")
     end)
   elseif sec_id == "jira_backlog" then
     if not client.configured() then
@@ -942,12 +939,29 @@ local function load_section(force)
       set_message("⚠ Pick a Jira project with 'p'")
       return
     end
-    api.backlog(state.project.key, function(ok, issues, err)
+    local acct = state.jira_user and state.jira_user.account_id or nil
+    local function render_backlog(issues)
+      if acct then -- board backlog isn't assignee-filtered server-side; do it here
+        local filtered = {}
+        for _, it in ipairs(issues) do
+          local a = it.fields and it.fields.assignee
+          if a and a.accountId == acct then filtered[#filtered + 1] = it end
+        end
+        issues = filtered
+      end
+      cache_set(sec_id, issues)
+      render_jira(issues, state.jira_user and state.jira_user.name or state.project.key, nil, "Jira  ·  Backlog")
+    end
+    local on_bl = function(ok, issues, err)
       if not is_open() or current_section_id() ~= sec_id then return end
       if not ok then return set_message("⚠ " .. (err or "backlog fetch failed")) end
-      cache_set(sec_id, issues)
-      render_jira(issues, state.project.key, nil, "Jira  ·  Backlog")
-    end)
+      render_backlog(issues)
+    end
+    if state.board then
+      api.board_backlog(state.board.id, on_bl) -- matches Jira's full Backlog view
+    else
+      api.backlog(state.project.key, acct, on_bl)
+    end
   else -- gh_prs / gh_reviews
     if not gh.available() then return set_message("⚠ gh CLI not found") end
     local fn = sec_id == "gh_prs" and gh.my_prs or gh.my_reviews
@@ -1070,6 +1084,24 @@ local function open_browser()
   end
 end
 
+-- Open the project's Scrum board in the browser, scoped to the active user filter
+-- (or you), e.g. .../jira/software/c/projects/DEVOPS/boards/174?assignee=<id>.
+local function open_board_in_browser()
+  if not (state.project and state.project.key) then
+    return vim.notify("DevOps: pick a project first ('p')", vim.log.levels.INFO)
+  end
+  if not (state.board and state.board.id) then
+    return vim.notify("DevOps: pick a board first ('b')", vim.log.levels.INFO)
+  end
+  local url = client.base_url() .. "/jira/software/c/projects/" .. state.project.key
+    .. "/boards/" .. tostring(state.board.id)
+  local assignee = (state.jira_user and state.jira_user.account_id) or client.account_id()
+  if assignee and assignee ~= "" then
+    url = url .. "?assignee=" .. (assignee:gsub(":", "%%3A"))
+  end
+  vim.ui.open(url)
+end
+
 local function refresh_current_jira_section()
   local sec_id = current_section_id()
   if is_open() and is_jira_section(sec_id) then
@@ -1139,26 +1171,36 @@ local function switch_tab(delta)
 end
 
 local function select_user()
-  if current_section_id() ~= "jira_issues" then
-    vim.notify("DevOps: user filter applies to the Jira section", vim.log.levels.INFO)
+  if not is_jira_section(current_section_id()) then
+    vim.notify("DevOps: user filter applies to the Jira tab", vim.log.levels.INFO)
     return
   end
-  api.assignable_users(state.project and state.project.key, function(ok, users, err)
+  if not (state.project and state.project.key) then
+    vim.notify("DevOps: pick a project first with 'p' (users are project-scoped)", vim.log.levels.INFO)
+    return
+  end
+  api.project_assignees(state.project.key, function(ok, users, err)
     if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
     local me_id = client.account_id()
     local choices = { { label = "● Me" .. (client.display_name() and (" (" .. client.display_name() .. ")") or ""), account_id = me_id, me = true } }
     for _, u in ipairs(users) do
-      if u.accountId and u.accountType ~= "app" then
+      if u.accountId and u.accountType ~= "app" and u.accountId ~= me_id then
         choices[#choices + 1] = { label = u.displayName or u.accountId, account_id = u.accountId }
       end
     end
     vim.ui.select(choices, {
-      prompt = "Show issues assigned to:",
+      prompt = "Show issues assigned to (persists across sections):",
       format_item = function(c) return c.label end,
     }, function(choice)
       if not choice then return end
       state.jira_user = choice.me and nil or { account_id = choice.account_id, name = choice.label }
       invalidate_tab_cache("jira")
+      -- Re-render the current Jira section with the new filter (persist across sections).
+      render_sidebar()
+      if is_jira_section(current_section_id()) then
+        load_section(true)
+        return
+      end
       switch_section(1, tab_index_by_id("jira"))
     end)
   end)
@@ -1908,13 +1950,15 @@ local function show_help()
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "m",     "Move (change status)" },
-      { "u",     "Change assignee filter" },
+      { "u",     "Filter by user (colleague)" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
+      { "v",     "Pick sprint (incl. past)" },
       { "s",     "Toggle scope (sprint/project)" },
       { "h",     "Toggle show Done issues" },
       { "r",     "Refresh" },
-      { "o",     "Open in browser" },
+      { "o",     "Open issue in browser" },
+      { "O",     "Open board in browser" },
       { "Tab",   "Next section" },
       { "S-Tab", "Prev section" },
       { "H/L",   "Previous/next tab" },
@@ -1930,10 +1974,13 @@ local function show_help()
       { "m",     "Move (change status)" },
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
+      { "u",     "Filter by user (colleague)" },
+      { "v",     "Pick sprint (incl. past)" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
       { "r",     "Refresh" },
-      { "o",     "Open in browser" },
+      { "o",     "Open issue in browser" },
+      { "O",     "Open board in browser" },
       { "Tab",   "Next section" },
       { "S-Tab", "Prev section" },
       { "H/L",   "Previous/next tab" },
@@ -2075,7 +2122,8 @@ local function load_board_columns(cb)
   api.board_config(state.board.id, function(ok, cols)
     state.columns = (ok and cols and #cols > 0) and cols or nil
     api.active_sprint(state.board.id, function(ok2, sprint)
-      state.sprint = (ok2 and sprint) and { open = true } or nil
+      -- Keep the real sprint {id,name} so the sprint picker can swap to a past one.
+      state.sprint = (ok2 and sprint) and { id = sprint.id, name = sprint.name } or nil
       cb()
     end)
   end)
@@ -2112,6 +2160,43 @@ local function pick_board()
   end
   invalidate_tab_cache("jira")
   resolve_board_then(function() switch_section(1, tab_index_by_id("jira")) end)
+end
+
+-- Index of a section within a tab (for switch_section).
+local function section_index_by_id(tab_idx, sec_id)
+  local tab = TABS[tab_idx]
+  for i, sec in ipairs(tab and tab.sections or {}) do
+    if sec.id == sec_id then return i end
+  end
+  return 1
+end
+
+-- Pick a sprint (active / future / past-closed) for the board and show its board.
+local function pick_sprint()
+  if not state.board then
+    return vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
+  end
+  api.list_sprints(state.board.id, function(ok, sprints, err)
+    if not ok then return vim.notify("DevOps: " .. (err or "sprint list failed"), vim.log.levels.ERROR) end
+    if #sprints == 0 then return vim.notify("DevOps: no sprints on this board", vim.log.levels.INFO) end
+    local rank = { active = 0, future = 1, closed = 2 }
+    table.sort(sprints, function(a, b)
+      local ra, rb = rank[a.state] or 3, rank[b.state] or 3
+      if ra ~= rb then return ra < rb end
+      return (a.id or 0) > (b.id or 0) -- most recent first
+    end)
+    vim.ui.select(sprints, {
+      prompt = "Select sprint:",
+      format_item = function(s) return (s.name or "?") .. "   [" .. (s.state or "?") .. "]" end,
+    }, function(choice)
+      if not choice then return end
+      state.sprint = { id = choice.id, name = choice.name, state = choice.state, picked = true }
+      cache_invalidate("jira_sprint")
+      render_sidebar()
+      local jt = tab_index_by_id("jira")
+      switch_section(section_index_by_id(jt, "jira_sprint"), jt)
+    end)
+  end)
 end
 
 -- Prompt for a project, resolve its board, then cb().
@@ -2308,9 +2393,11 @@ local function setup_keymaps()
   map("<CR>", open_detail, "open")
   map("r", function() load_section(true); refresh_notifications() end, "refresh")
   map("o", open_browser, "open in browser")
+  map("O", open_board_in_browser, "open board in browser")
   map("u", select_user, "select user")
   map("p", function() pick_project(function() switch_section(1, tab_index_by_id("jira")) end) end, "pick project")
   map("b", pick_board, "pick board")
+  map("v", pick_sprint, "pick sprint")
   map("<S-Left>", focus_sidebar, "focus sidebar")
   -- Write actions (dispatched by item kind for c/a)
   map("c", dispatch_comment, "comment")
@@ -2435,28 +2522,9 @@ local function prefetch_other_sections()
       end)
     end
 
-    if state.sprint and not cache_get("jira_sprint") then
-      api.search({
-        account_id = nil,
-        project_key = project_key,
-        open_sprints = true,
-        include_done = true,
-      }, function(ok, issues)
-        if ok and issues then cache_set("jira_sprint", issues) end
-      end)
-    end
-
-    if project_key and not cache_get("jira_epics") then
-      api.epics(project_key, function(ok, issues)
-        if ok and issues then cache_set("jira_epics", issues) end
-      end)
-    end
-
-    if project_key and not cache_get("jira_backlog") then
-      api.backlog(project_key, function(ok, issues)
-        if ok and issues then cache_set("jira_backlog", issues) end
-      end)
-    end
+    -- Sprint/Epics/Backlog depend on the active user filter and selected sprint, so
+    -- they're loaded fresh on first switch (load_section) rather than prefetched,
+    -- to avoid caching a version inconsistent with the current filter.
   end
 
   -- GitHub sections
@@ -2505,6 +2573,7 @@ function M.open(layout)
   state.layout = layout
   state.tab = 1
   state.section = 1
+  state.jira_user = nil -- reset the user filter back to "me" on each open
   state.content_cursor = nil
   state.nav_stack = {}
   state.in_detail = false
