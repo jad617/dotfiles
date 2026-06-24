@@ -26,10 +26,13 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
 - [x] **Empty filtered list** now reads "(no issues for <user>)".
 
 ## 🟡 GitHub
-- [ ] **Verify inline review comments live** — `gh api …/pulls/N/comments` field shapes
-      (`line` / `original_line`) weren't exercised.
-- [ ] **Openable link URLs** — collect URLs from a PR/comment, bind a key to pick-and-open.
-- [ ] **Actionable PR file paths** — jump to that file's diff from the Files list.
+- [~] **Inline review comments hardened** — line fallback (`line`/`original_line`/
+      `position`/`original_position`) and author fallback. Still needs a live check of
+      the `gh api …/pulls/N/comments` shape.
+- [x] **Openable link URLs** — `gx` on a PR collects URLs from body/comments/reviews and
+      opens (single) or picks (many).
+- [ ] **Actionable PR file paths** — jump to a specific file's diff. Deferred: `d` already
+      shows all file diffs; per-file jump needs diff-viewer support + line→path mapping.
 
 ## 🟢 Performance
 - [ ] **Synchronous section-cache read on first open** (`store.lua`) — defer so first

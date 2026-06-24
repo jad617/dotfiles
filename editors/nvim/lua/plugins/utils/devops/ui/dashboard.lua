@@ -309,7 +309,7 @@ local function render_footer()
       groups = {
         { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
         { "Actions",  { "a approve", "R changes", "c comment", "d diff" } },
-        { "PR",       { "D ready", "x checkout", "m merge", "o browser" } },
+        { "PR",       { "D ready", "x checkout", "m merge", "o browser", "gx links" } },
         { "Window",   { "? help", "Q close" } },
       }
     end
