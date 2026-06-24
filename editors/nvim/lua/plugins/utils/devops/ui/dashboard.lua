@@ -393,6 +393,13 @@ local function render_footer()
     return segment, highlights, vim.fn.strdisplaywidth(segment)
   end
 
+  -- Pad column 1 to a shared width so column 2 (Actions / Window) lines up across the
+  -- two rows; the last column stays natural-width so the footer doesn't overflow.
+  local col1_w = math.max(
+    is_empty(row1_groups[1]) and 0 or select(3, render_group(row1_groups[1], 1)),
+    is_empty(row2_groups[1]) and 0 or select(3, render_group(row2_groups[1], 1))
+  )
+
   local function build_line(grp_list)
     local text = " "
     local highlights = {}
@@ -405,8 +412,8 @@ local function render_footer()
           text = text .. sep
           col = col + #sep
         end
-        local segment, hls = render_group(grp, gi)
-        -- Natural width — don't pad columns to align rows (keeps the footer narrow).
+        local segment, hls, dw = render_group(grp, gi)
+        if gi == 1 then segment = segment .. string.rep(" ", math.max(0, col1_w - dw)) end
         for _, h in ipairs(hls) do
           highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
         end
