@@ -668,7 +668,10 @@ local function render_github(prs, title, show_meta)
     rows[#lines] = { kind = "pr", pr = pr }
 
     if show_meta then
-      local indent = string.rep(" ", #prefix + #numpad + 2)
+      -- Indent the meta block to the *display* column where the title text starts
+      -- (icon/check are multi-byte glyphs but 1 column wide, so byte width over-
+      -- shoots and the lines wouldn't align under the title).
+      local indent = string.rep(" ", vim.fn.strdisplaywidth(prefix .. numpad .. check_cell .. " "))
       local full_repo = (pr.repository and pr.repository.nameWithOwner) or repo
       local author = pr.author and pr.author.login or "?"
       local reviewers = pr.reviewReason or "?"

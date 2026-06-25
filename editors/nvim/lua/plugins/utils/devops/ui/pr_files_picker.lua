@@ -13,7 +13,7 @@ local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
 
 local M = {}
 
--- Build a flattened, pre-expanded directory tree from a list of { path, idx }.
+-- Build a flattened, pre-expanded directory tree from a list of { path, file_idx }.
 local function build_tree_items(files)
   local root = { children = {}, order = {} }
   for _, f in ipairs(files) do
@@ -28,7 +28,9 @@ local function build_tree_items(files)
       node = node.children[seg]
     end
     local fname = parts[#parts]
-    node.children[fname] = { name = fname, dir = false, idx = f.idx, path = f.path }
+    -- NB: snacks reserves `item.idx` (it overwrites it with the picker list
+    -- position), so the diff file index is carried as `file_idx`.
+    node.children[fname] = { name = fname, dir = false, file_idx = f.file_idx, path = f.path }
     node.order[#node.order + 1] = fname
   end
 
@@ -46,7 +48,7 @@ local function build_tree_items(files)
       walk(d, depth + 1)
     end
     for _, fl in ipairs(fnodes) do
-      items[#items + 1] = { dir = false, depth = depth, name = fl.name, idx = fl.idx, path = fl.path, text = fl.path }
+      items[#items + 1] = { dir = false, depth = depth, name = fl.name, file_idx = fl.file_idx, path = fl.path, text = fl.path }
     end
   end
   walk(root, 0)
@@ -72,7 +74,7 @@ function M.open(repo, n, diff_text)
 
   local files = {}
   for i, f in ipairs(diff_viewer.parse_files(diff_text)) do
-    files[#files + 1] = { path = f.path, idx = i }
+    files[#files + 1] = { path = f.path, file_idx = i }
   end
   if #files == 0 then
     return vim.notify("DevOps: no changed files in #" .. n, vim.log.levels.INFO)
@@ -104,7 +106,7 @@ function M.open(repo, n, diff_text)
       picker:close()
       diff_viewer.open(diff_text, "Diff #" .. n, {
         pr = { repo = repo, number = n },
-        focus_file = item.idx,
+        focus_file = item.file_idx,
       })
     end,
   })
