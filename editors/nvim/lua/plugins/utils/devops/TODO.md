@@ -4,41 +4,41 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
 🟡 GitHub · 🟢 perf · ⚪ polish.
 
 ## 🔴 Bugs / correctness
-- [ ] **Assign picker (`a`) is org-wide + flat** — `jira_assign` uses `assignable_users`
-      (everyone with assign permission), hard to find a teammate. Add type-to-search,
-      or `project_assignees` + a "search more…" fallback.
-- [ ] **No pagination — large lists silently truncate.** Everything caps at `maxResults`
-      (now 100). Paginate (`startAt` / `nextPageToken`) and fetch until complete for
-      sprint/backlog/My Issues.
-- [ ] **`O` board URL assumes a company-managed project** (`/jira/software/c/projects/…`).
-      Team-managed (next-gen) projects use a different path. Detect project type or fall
-      back to `/secure/RapidBoard.jspa?rapidView=<id>`.
+- [x] **Assign picker (`a`) is org-wide + flat** — now uses `project_assignees` (the
+      project's teammates) + Me/Unassigned, like the `u` filter.
+- [x] **No pagination — large lists silently truncate.** `search` follows `nextPageToken`
+      and `board_backlog` follows `startAt`, fetching up to MAX_ISSUES (1000).
+      (Epics / JQL backlog fallback still single-page — low impact.)
+- [x] **`O` board URL assumes a company-managed project.** Now branches on
+      `project.style`: team-managed (next-gen) drops the `/c/` segment.
 
 ## 🟠 Jira UX
-- [ ] **`👤` filter indicator shows on the Sprint Board** where the filter doesn't apply.
-      Scope the indicator to the sections it affects.
-- [ ] **No quick "back to active sprint"** after picking a past sprint with `v`.
-      Add an "● Active sprint" entry at the top of the sprint picker.
-- [ ] **`u` misses teammates with no recent assignments** (`project_assignees` scans the
-      recent ~200 issues). Add a "type a name" fallback for anyone not listed.
-- [ ] **My Issues scope is inconsistent** — cross-project with an active sprint,
-      project-scoped without. Make it predictable (always cross-project, or a clear toggle).
-- [ ] **`O` always scopes to a user** — add a way to open the full team board (no
-      `?assignee`).
-- [ ] **User filter on Backlog/Epics can silently go empty** — clearer "no issues for
-      <user>" message.
+- [x] **`👤` filter indicator** now only shows on the sections it affects (My Issues /
+      Backlog / Epics), not the team Sprint Board.
+- [x] **"Back to active sprint"** — the sprint picker now has a "● Active sprint(s)" reset
+      at the top.
+- [x] **`u` "Search by name…" fallback** — picker has a live, project-scoped search for
+      anyone assignable, not just recent assignees.
+- [x] **My Issues scope predictable** — always spans projects; only scopes to the project
+      on the `s` toggle.
+- [x] **`O` opens the full team board on the Sprint Board** (no `?assignee`); personal /
+      filtered view on the other sections.
+- [x] **Empty filtered list** now reads "(no issues for <user>)".
 
 ## 🟡 GitHub
-- [ ] **Verify inline review comments live** — `gh api …/pulls/N/comments` field shapes
-      (`line` / `original_line`) weren't exercised.
-- [ ] **Openable link URLs** — collect URLs from a PR/comment, bind a key to pick-and-open.
-- [ ] **Actionable PR file paths** — jump to that file's diff from the Files list.
+- [~] **Inline review comments hardened** — line fallback (`line`/`original_line`/
+      `position`/`original_position`) and author fallback. Still needs a live check of
+      the `gh api …/pulls/N/comments` shape.
+- [x] **Openable link URLs** — `gx` on a PR collects URLs from body/comments/reviews and
+      opens (single) or picks (many).
+- [ ] **Actionable PR file paths** — jump to a specific file's diff. Deferred: `d` already
+      shows all file diffs; per-file jump needs diff-viewer support + line→path mapping.
 
 ## 🟢 Performance
-- [ ] **Synchronous section-cache read on first open** (`store.lua`) — defer so first
-      paint isn't blocked.
-- [ ] **No in-flight request de-dup** — fast section switching fires overlapping API
-      calls; cancel or coalesce.
+- [x] **Section-cache read warmed at idle** — `dashboard.preload_cache` is scheduled from
+      init so the file read happens off the first-open path.
+- [x] **Request de-dup / race guard** — `load_section` stamps a generation token; stale or
+      superseded callbacks (rapid switches, re-loads) are dropped, so no double-render.
 
 ## ⚪ Polish / robustness
 - [ ] **No automated tests.** Pure helpers (`render.truncate`, markdown `wrap_words` /
