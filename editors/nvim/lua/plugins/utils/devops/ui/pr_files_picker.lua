@@ -69,6 +69,9 @@ function M.open(repo, n, diff_text)
     title = "PR #" .. n .. " · " .. #items .. " files",
     items = items,
     format = format_item,
+    -- Dock as a left split (file-tree style), not a centered float — same preset
+    -- the file explorer uses; the diff preview renders in the main window.
+    layout = { preset = "sidebar" },
     -- Render the file's diff directly (the file may not be checked out, so the
     -- default file previewer can't read it from disk).
     preview = function(ctx)
