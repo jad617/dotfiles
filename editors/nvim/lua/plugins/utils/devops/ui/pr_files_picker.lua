@@ -69,9 +69,30 @@ function M.open(repo, n, diff_text)
     title = "PR #" .. n .. " · " .. #items .. " files",
     items = items,
     format = format_item,
-    -- Dock as a left split (file-tree style), not a centered float — same preset
-    -- the file explorer uses; the diff preview renders in the main window.
-    layout = { preset = "sidebar" },
+    -- The DevOps dashboard/detail are themselves floating windows, and a real
+    -- split (e.g. the "sidebar" preset) opens *behind* floats — invisible. So lay
+    -- the picker out as a full-height float styled like a tree: a narrow file
+    -- list on the left, the diff preview filling the rest.
+    layout = {
+      preview = true,
+      layout = {
+        backdrop = false,
+        width = 0,
+        height = 0,
+        border = "none",
+        box = "horizontal",
+        {
+          box = "vertical",
+          width = 40,
+          border = "rounded",
+          title = "{title}",
+          title_pos = "center",
+          { win = "input", height = 1, border = "bottom" },
+          { win = "list", border = "none" },
+        },
+        { win = "preview", border = "rounded", title = "{preview}", title_pos = "center" },
+      },
+    },
     -- Render the file's diff directly (the file may not be checked out, so the
     -- default file previewer can't read it from disk).
     preview = function(ctx)
