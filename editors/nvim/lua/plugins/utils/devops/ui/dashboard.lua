@@ -668,7 +668,10 @@ local function render_github(prs, title, show_meta)
     rows[#lines] = { kind = "pr", pr = pr }
 
     if show_meta then
-      local indent = string.rep(" ", #prefix + #numpad + 2)
+      -- Indent the meta block to the *display* column where the title text starts
+      -- (icon/check are multi-byte glyphs but 1 column wide, so byte width over-
+      -- shoots and the lines wouldn't align under the title).
+      local indent = string.rep(" ", vim.fn.strdisplaywidth(prefix .. numpad .. check_cell .. " "))
       local full_repo = (pr.repository and pr.repository.nameWithOwner) or repo
       local author = pr.author and pr.author.login or "?"
       local reviewers = pr.reviewReason or "?"
@@ -997,6 +1000,21 @@ local function refresh_notifications()
     if not is_open() then return end
     state.gh_notif_count = count
     render_sidebar()
+  end)
+end
+
+-- Resolve cwd → "owner/repo" asynchronously and cache it, so the PR-search
+-- local-scope label never blocks the UI thread (was a synchronous git call).
+local function warm_cwd_repo(cwd)
+  cwd = cwd or vim.fn.getcwd()
+  state._cwd_repo = state._cwd_repo or {}
+  if state._cwd_repo[cwd] ~= nil then return end
+  vim.system({ "git", "-C", cwd, "remote", "get-url", "origin" }, { text = true }, function(res)
+    vim.schedule(function()
+      local remote = (res.code == 0 and res.stdout or ""):gsub("%s+", "")
+      local owner_repo = remote:match("[:/]([%w%.%-]+/[%w%.%-]+)%.?g?i?t?$")
+      state._cwd_repo[cwd] = (owner_repo and owner_repo:gsub("%.git$", "")) or false
+    end)
   end)
 end
 
@@ -1634,17 +1652,12 @@ local function gh_search()
   local content_cfg = vim.api.nvim_win_get_config(state.content.win)
   local w = content_cfg.width - 2
 
-  -- Detect current repo from cwd for local scope. The git call blocks, so cache
-  -- the result per cwd (and quote the path so spaces don't break it).
+  -- Current repo for local scope — resolved asynchronously (warm_cwd_repo) and
+  -- cached per cwd, so this never blocks. If not warmed yet, fall back to global.
   local cwd = vim.fn.getcwd()
   state._cwd_repo = state._cwd_repo or {}
   local cwd_repo = state._cwd_repo[cwd]
-  if cwd_repo == nil then
-    local remote = vim.fn.systemlist("git -C " .. vim.fn.shellescape(cwd) .. " remote get-url origin 2>/dev/null")[1] or ""
-    local owner_repo = remote:match("[:/]([%w%.%-]+/[%w%.%-]+)%.?g?i?t?$")
-    state._cwd_repo[cwd] = owner_repo and owner_repo:gsub("%.git$", "") or false
-    cwd_repo = state._cwd_repo[cwd]
-  end
+  if cwd_repo == nil then warm_cwd_repo(cwd) end
   if cwd_repo == false then cwd_repo = nil end
 
   local scope_local = false -- default: global
@@ -2442,7 +2455,7 @@ local function setup_keymaps()
   map("{", function() switch_tab(-1) end, "previous tab")
   map("}", function() switch_tab(1) end, "next tab")
   map("<CR>", open_detail, "open")
-  map("r", function() load_section(true); refresh_notifications() end, "refresh")
+  map("r", function() gh.clear_diff_cache(); load_section(true); refresh_notifications() end, "refresh")
   map("o", open_browser, "open in browser")
   map("O", open_board_in_browser, "open board in browser")
   map("u", select_user, "select user")
@@ -2632,6 +2645,7 @@ function M.open(layout)
   state.detail_kind = nil
   state.gh_notif_count = 0
   state.bookmarks = store.load_bookmarks()
+  warm_cwd_repo() -- async-resolve cwd→repo so PR search never blocks on it
 
   if layout == "tab" then open_tab_windows() else open_float_windows() end
   vim.wo[state.sidebar.win].cursorline = true
