@@ -337,9 +337,42 @@ local function toggle_blame()
   end
 end
 
+-- Diff scrolling. The user's scroll keys (<C-o>/<C-p> are comfortable-motion,
+-- which just feed j/k to the focused pane; <C-d> is the global :q!, <C-u> a yank)
+-- would otherwise move the cursor in whatever pane has focus — or quit. Bind them
+-- here so they scroll the diff *content* no matter which pane is focused, and the
+-- tree never moves. In split mode scrollbind carries the other pane along.
+local CE = vim.api.nvim_replace_termcodes("<C-e>", true, false, true)
+local CY = vim.api.nvim_replace_termcodes("<C-y>", true, false, true)
+
+local function half_page()
+  local w = state.main_win
+  if w and vim.api.nvim_win_is_valid(w) then
+    return math.max(1, math.floor(vim.api.nvim_win_get_height(w) / 2))
+  end
+  return 10
+end
+
+local function scroll_diff(lines)
+  local w = state.main_win
+  if not (w and vim.api.nvim_win_is_valid(w)) then return end
+  local n = math.abs(lines)
+  if n == 0 then return end
+  pcall(vim.api.nvim_win_call, w, function()
+    vim.cmd("normal! " .. n .. (lines > 0 and CE or CY))
+  end)
+end
+
 local function setup_keymaps(buf)
   map_buf(buf, "q", close, "Close diff")
-  map_buf(buf, "<Esc>", close, "Close diff") -- <C-d> is left free for half-page scroll
+  map_buf(buf, "<Esc>", close, "Close diff")
+  -- Scroll the diff content (works from any pane; leaves the tree fixed).
+  map_buf(buf, "<C-p>", function() scroll_diff(10) end, "Scroll diff down")
+  map_buf(buf, "<C-o>", function() scroll_diff(-10) end, "Scroll diff up")
+  map_buf(buf, "<C-d>", function() scroll_diff(half_page()) end, "Scroll diff ½ down")
+  map_buf(buf, "<C-u>", function() scroll_diff(-half_page()) end, "Scroll diff ½ up")
+  map_buf(buf, "<C-f>", function() scroll_diff(half_page() * 2) end, "Scroll diff page down")
+  map_buf(buf, "<C-b>", function() scroll_diff(-half_page() * 2) end, "Scroll diff page up")
   map_buf(buf, "<Tab>", function()
     state.mode = state.mode == "unified" and "split" or "unified"
     M.open(state.diff_text, state.title)
@@ -511,6 +544,8 @@ local function render_footer(total_width, footer_row)
     { "B ", "DevOpsKey" }, { "blame", "DevOpsAction" },
     { "  ", nil },
     { "f ", "DevOpsKey" }, { "tree", "DevOpsAction" },
+    { "  ", nil },
+    { "S-←→ ", "DevOpsKey" }, { "pane", "DevOpsAction" },
     { sep, nil },
     { "q ", "DevOpsKey" }, { "close", "DevOpsAction" },
   })
@@ -605,7 +640,33 @@ render_tree_pane = function(total_h)
       end
     end
   end
+  -- Step between file rows (skips dir headers/blanks) and preview the diff.
+  -- Explicit so it works even if arrow keys are remapped globally, and so the
+  -- cursor always lands on an actual file.
+  local file_rows = {}
+  for line in pairs(rows) do file_rows[#file_rows + 1] = line end
+  table.sort(file_rows)
+  local function step(dir)
+    local cur = vim.api.nvim_win_get_cursor(win)[1]
+    local target
+    if dir > 0 then
+      for _, l in ipairs(file_rows) do if l > cur then target = l break end end
+    else
+      for i = #file_rows, 1, -1 do if file_rows[i] < cur then target = file_rows[i] break end end
+    end
+    if target then
+      pcall(vim.api.nvim_win_set_cursor, win, { target, 0 })
+      jump()
+    end
+  end
+
   setup_keymaps(buf) -- q/f/T/B/]f… also work from the tree
+  for _, k in ipairs({ "j", "<Down>" }) do
+    vim.keymap.set("n", k, function() step(1) end, { buffer = buf, nowait = true })
+  end
+  for _, k in ipairs({ "k", "<Up>" }) do
+    vim.keymap.set("n", k, function() step(-1) end, { buffer = buf, nowait = true })
+  end
   vim.keymap.set("n", "<CR>", function()
     jump()
     if state.main_win and vim.api.nvim_win_is_valid(state.main_win) then
