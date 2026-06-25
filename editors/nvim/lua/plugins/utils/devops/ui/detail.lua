@@ -1110,40 +1110,61 @@ end
 -- paints full content instantly while a fresh copy loads in the background.
 local pr_full_cache = {}
 
--- Fetch the full PR view and inline review comments in PARALLEL, then call
--- render(full) once both return. Previously these ran sequentially (the comments
--- call nested in pr_view's callback), so the wall-clock was pr_view (~1s) +
--- comments (~0.5s); in parallel it's ~max of the two. Paints from cache first.
--- still_valid() guards against the view having been closed/replaced.
+-- Two-phase, parallel PR enrichment:
+--   1. pr_view (core: description + status) renders the moment it returns;
+--   2. pr_view_extra (CI checks + files/commits/reviews/comments) and the inline
+--      review comments fill in afterwards.
+-- The description thus appears fast instead of waiting on the paginating heavy
+-- fields. show() reuses the buffer and keeps the cursor, so the appended sections
+-- don't yank you. Re-opens paint the full cached copy first (no core-only flash)
+-- and skip the rebuild when nothing changed. still_valid() guards a closed view.
 local function enrich_pr(repo, n, base, render, still_valid)
   if not (repo and n) then return end
   local key = repo .. "#" .. n
   local cached = pr_full_cache[key]
   if cached and still_valid() then render(cached) end
 
-  local full_data, rc_data, pending = nil, {}, 2
-  local function done()
-    pending = pending - 1
-    if pending > 0 then return end
-    if not full_data then return end -- pr_view failed; keep what's shown
-    full_data.repository = base.repository
-    full_data.url = base.url
-    full_data.reviewComments = rc_data
-    -- If we already painted identical cached data, skip the second (expensive)
-    -- rebuild — re-opening an unchanged PR shouldn't re-render the whole buffer.
-    local same = cached and cached.updatedAt and cached.updatedAt == full_data.updatedAt
-      and #(cached.reviewComments or {}) == #rc_data
-    pr_full_cache[key] = full_data
-    if same then return end
-    if still_valid() then render(full_data) end
+  local core, extra, rc = nil, nil, nil
+  local pending_extra = 2 -- pr_view_extra + review comments
+  local painted_core = cached ~= nil -- cached already shows everything
+
+  local function paint(full)
+    local data = vim.tbl_extend("force", {}, core)
+    data.repository, data.url = base.repository, base.url
+    if extra then
+      data.statusCheckRollup = extra.statusCheckRollup
+      data.files, data.commits = extra.files, extra.commits
+      data.reviews, data.comments = extra.reviews, extra.comments
+    end
+    data.reviewComments = rc or {}
+    if full then
+      local same = cached and cached.updatedAt and cached.updatedAt == data.updatedAt
+        and #(cached.reviewComments or {}) == #(rc or {})
+      pr_full_cache[key] = data
+      if same then return end -- identical to the cached paint; don't rebuild
+    end
+    if still_valid() then render(data) end
   end
-  gh.pr_view(repo, n, function(ok, full)
-    if ok and full then full_data = full end
-    done()
+
+  local function maybe_paint()
+    if not core then return end -- core failed → keep skeleton
+    if not painted_core then painted_core = true; paint(false) end
+    if pending_extra == 0 then paint(true) end
+  end
+
+  gh.pr_view(repo, n, function(ok, d)
+    if ok and d then core = d end
+    maybe_paint()
   end)
-  gh.pr_review_comments(repo, n, function(ok2, rc)
-    rc_data = (ok2 and type(rc) == "table") and rc or {}
-    done()
+  gh.pr_view_extra(repo, n, function(ok, d)
+    if ok and d then extra = d end
+    pending_extra = pending_extra - 1
+    maybe_paint()
+  end)
+  gh.pr_review_comments(repo, n, function(ok, d)
+    rc = (ok and type(d) == "table") and d or {}
+    pending_extra = pending_extra - 1
+    maybe_paint()
   end)
 end
 

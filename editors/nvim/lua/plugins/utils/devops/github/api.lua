@@ -104,14 +104,24 @@ query($n: Int!) {
   end)
 end
 
-local PR_VIEW_FIELDS =
+-- Split the detail fetch: the "core" fields are light and render fast (the PR
+-- description + status), while the heavy ones — CI checks and the paginating
+-- files/commits/reviews/comments — load separately and fill in afterwards.
+local PR_VIEW_CORE =
   "number,title,body,state,isDraft,url,headRefName,baseRefName,author," ..
-  "additions,deletions,reviewDecision,statusCheckRollup,labels,assignees,updatedAt," ..
-  "reviewRequests,reviews,comments,files,mergeStateStatus,mergeable,commits"
+  "additions,deletions,reviewDecision,labels,assignees,updatedAt," ..
+  "reviewRequests,mergeStateStatus,mergeable"
+local PR_VIEW_EXTRA = "statusCheckRollup,files,commits,reviews,comments"
 
--- Full PR details for the detail view. cb(ok, pr, err)
+-- Core PR details (fast). cb(ok, pr, err)
 function M.pr_view(repo, number, cb)
-  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_FIELDS }, cb)
+  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_CORE }, cb)
+end
+
+-- Heavy PR details, loaded after core. cb(ok, { statusCheckRollup, files,
+-- commits, reviews, comments }, err)
+function M.pr_view_extra(repo, number, cb)
+  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_EXTRA }, cb)
 end
 
 -- Inline review (code-thread) comments. cb(ok, comments[], err)
