@@ -1106,6 +1106,42 @@ local function build_pr(pr, width)
   return b
 end
 
+-- Cache of enriched PR data, keyed "repo#n", so re-opening a PR (nav back/forth)
+-- paints full content instantly while a fresh copy loads in the background.
+local pr_full_cache = {}
+
+-- Fetch the full PR view and inline review comments in PARALLEL, then call
+-- render(full) once both return. Previously these ran sequentially (the comments
+-- call nested in pr_view's callback), so the wall-clock was pr_view (~1s) +
+-- comments (~0.5s); in parallel it's ~max of the two. Paints from cache first.
+-- still_valid() guards against the view having been closed/replaced.
+local function enrich_pr(repo, n, base, render, still_valid)
+  if not (repo and n) then return end
+  local key = repo .. "#" .. n
+  local cached = pr_full_cache[key]
+  if cached and still_valid() then render(cached) end
+
+  local full_data, rc_data, pending = nil, {}, 2
+  local function done()
+    pending = pending - 1
+    if pending > 0 then return end
+    if not full_data then return end -- pr_view failed; keep what's shown
+    full_data.repository = base.repository
+    full_data.url = base.url
+    full_data.reviewComments = rc_data
+    pr_full_cache[key] = full_data
+    if still_valid() then render(full_data) end
+  end
+  gh.pr_view(repo, n, function(ok, full)
+    if ok and full then full_data = full end
+    done()
+  end)
+  gh.pr_review_comments(repo, n, function(ok2, rc)
+    rc_data = (ok2 and type(rc) == "table") and rc or {}
+    done()
+  end)
+end
+
 function M.open_pr(pr)
   local repo = pr.repository and pr.repository.nameWithOwner
   local n = pr.number
@@ -1196,19 +1232,9 @@ function M.open_pr(pr)
   -- Show a quick card immediately, then enrich with a full `gh pr view`.
   show(title, build_pr(pr), function(buf)
     setup_keys(buf)
-    if repo and n then
-      gh.pr_view(repo, n, function(ok, full)
-        if not ok or not full then return end
-        if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
-        full.repository = pr.repository
-        full.url = pr.url
-        gh.pr_review_comments(repo, n, function(ok2, rc)
-          full.reviewComments = (ok2 and type(rc) == "table") and rc or {}
-          if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
-          show(title, build_pr(full), setup_keys)
-        end)
-      end)
-    end
+    enrich_pr(repo, n, pr,
+      function(full) show(title, build_pr(full), setup_keys) end,
+      function() return state.buf and vim.api.nvim_buf_is_valid(state.buf) end)
   end)
 end
 
@@ -1390,18 +1416,10 @@ function M.load_pr(pr, opts)
 
   on_ready(build_pr(pr, pr_w), make_keys)
 
-  -- Enrich with full PR data
-  if repo and n then
-    gh.pr_view(repo, n, function(ok, full)
-      if not ok or not full then return end
-      full.repository = pr.repository
-      full.url = pr.url
-      gh.pr_review_comments(repo, n, function(ok2, rc)
-        full.reviewComments = (ok2 and type(rc) == "table") and rc or {}
-        on_update(build_pr(full, pr_w), make_keys)
-      end)
-    end)
-  end
+  -- Enrich with full PR data (parallel + cached; see enrich_pr).
+  enrich_pr(repo, n, pr,
+    function(full) on_update(build_pr(full, pr_w), make_keys) end,
+    function() return true end)
 end
 
 return M
