@@ -9,6 +9,7 @@ local adf = require("plugins.utils.devops.jira.adf")
 local gh = require("plugins.utils.devops.github.api")
 local input = require("plugins.utils.devops.ui.input")
 local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
+local pr_files_picker = require("plugins.utils.devops.ui.pr_files_picker")
 local markdown = require("plugins.utils.devops.ui.markdown")
 local render = require("plugins.utils.devops.ui.render")
 local user_picker = require("plugins.utils.devops.ui.user_picker")
@@ -1155,6 +1156,14 @@ function M.open_pr(pr)
       end)
     end, { buffer = buf, desc = "Diff" })
 
+    -- Changed-files picker (snacks): list + diff preview, ↵ opens the diff viewer
+    vim.keymap.set("n", "F", function()
+      gh.pr_diff(repo, n, function(ok, diff_text, err)
+        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+        pr_files_picker.open(repo, n, diff_text)
+      end)
+    end, { buffer = buf, desc = "Changed files" })
+
     -- Mark ready
     vim.keymap.set("n", "D", function()
       gh.pr_ready(repo, n, function(ok, _, err)
@@ -1349,6 +1358,12 @@ function M.load_pr(pr, opts)
         diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
       end)
     end, { buffer = buf, nowait = true, desc = "Diff" })
+    vim.keymap.set("n", "F", function()
+      gh.pr_diff(repo, n, function(ok, diff_text, err)
+        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+        pr_files_picker.open(repo, n, diff_text)
+      end)
+    end, { buffer = buf, nowait = true, desc = "Changed files" })
     vim.keymap.set("n", "D", function()
       gh.pr_ready(repo, n, function(ok, _, err)
         if not ok then return vim.notify("DevOps: " .. (err or "ready failed"), vim.log.levels.ERROR) end

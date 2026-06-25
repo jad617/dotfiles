@@ -23,7 +23,7 @@ local state = {
   pending_comments = {}, -- { { path, line, body }, ... }
   blame_visible = false,
   blame_data = {}, -- [filepath] = { [line_num] = "author date" }
-  tree_visible = true, -- file tree pane shown by default; 'f' toggles
+  tree_visible = false, -- homemade tree off by default (snacks 'F' picker preferred); 'f' toggles it back
   main_win = nil,      -- the diff window the tree jumps/scrolls
 }
 
@@ -974,7 +974,7 @@ end
 --- Open diff viewer.
 --- @param diff_text string  Raw diff output
 --- @param title string|nil  Window title
---- @param opts table|nil    { pr = { repo = "owner/repo", number = N } }
+--- @param opts table|nil    { pr = { repo = "owner/repo", number = N }, focus_file = idx }
 function M.open(diff_text, title, opts)
   opts = opts or {}
   local reapply_blame = state.blame_visible
@@ -997,6 +997,33 @@ function M.open(diff_text, title, opts)
     state.blame_visible = false
     toggle_blame()
   end
+  -- Position on a specific file (1-based index into the parsed file list).
+  if opts.focus_file then
+    local pos = state.file_positions[opts.focus_file]
+    if pos then
+      for _, key in ipairs({ "unified", "left", "right" }) do
+        local w = state.wins[key]
+        if w and vim.api.nvim_win_is_valid(w) then
+          pcall(vim.api.nvim_win_set_cursor, w, { pos + 1, 0 })
+          pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zt") end)
+        end
+      end
+    end
+  end
+end
+
+--- Parse a raw diff into a list of files (path-only), for external callers
+--- (e.g. the snacks file picker). Returns { { path, old_path, new_path }, … }.
+function M.parse_files(diff_text)
+  local out = {}
+  for _, f in ipairs(parse_diff(diff_text or "")) do
+    out[#out + 1] = {
+      path = f.new_path or f.old_path or "?",
+      old_path = f.old_path,
+      new_path = f.new_path,
+    }
+  end
+  return out
 end
 
 return M

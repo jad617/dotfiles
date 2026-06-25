@@ -308,7 +308,7 @@ local function render_footer()
     else
       groups = {
         { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
-        { "Actions",  { "a approve", "R changes", "c comment", "d diff" } },
+        { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files" } },
         { "PR",       { "D ready", "x checkout", "m merge", "o browser", "gx links" } },
         { "Window",   { "? help", "Q close" } },
       }
@@ -336,14 +336,14 @@ local function render_footer()
   elseif sec_id == "gh_reviews" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "S search", "* pin" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
       { "PR",       { "s sort", "D ready", "x checkout", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   else
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "m merge", "S search", "* pin" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
       { "PR",       { "D ready", "x checkout", "N new", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
@@ -1839,6 +1839,15 @@ local function gh_diff()
   end)
 end
 
+local function gh_files()
+  local item, repo, n = pr_item()
+  if not item then return end
+  gh.pr_diff(repo, n, function(ok, diff_text, err)
+    if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+    require("plugins.utils.devops.ui.pr_files_picker").open(repo, n, diff_text)
+  end)
+end
+
 local function gh_checkout()
   local item, repo, n = pr_item()
   if not item then return end
@@ -2024,6 +2033,7 @@ local function show_help()
       { "R",     "Request changes" },
       { "c",     "Comment on PR" },
       { "d",     "View diff" },
+      { "F",     "Changed files (picker)" },
       { "D",     "Mark ready for review" },
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
@@ -2455,6 +2465,7 @@ local function setup_keymaps()
   map("D", gh_ready, "mark ready")
   map("m", dispatch_m, "move issue / merge PR")
   map("d", gh_diff, "view diff")
+  map("F", gh_files, "changed files")
   map("x", gh_checkout, "checkout PR")
   map("N", gh_create_pr, "new PR")
   -- Toggles
