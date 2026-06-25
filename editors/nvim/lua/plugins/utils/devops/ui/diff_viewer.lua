@@ -452,6 +452,8 @@ local function apply_marks(buf, marks)
       vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffCtx" })
     elseif m.type == "sep" then
       vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffSep" })
+    elseif m.type == "filegap" then
+      vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffFileGap" })
     end
     -- Line number gutter highlight
     if m.gutter_end then
@@ -549,9 +551,12 @@ local function render_unified()
 
   for fi, file in ipairs(files) do
     if fi > 1 then
+      -- 3 dark blank lines, then the rule, to separate files before the header.
+      for _ = 1, 3 do
+        lines[#lines + 1] = ""
+        marks[#marks + 1] = { line = #lines - 1, type = "filegap" }
+      end
       local rule = sep_rule(total_w)
-      lines[#lines + 1] = rule
-      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
       lines[#lines + 1] = rule
       marks[#marks + 1] = { line = #lines - 1, type = "sep" }
     end
@@ -653,8 +658,11 @@ local function build_split_data(files, pane_width)
 
   for fi, file in ipairs(files) do
     if fi > 1 then
+      -- 3 dark blank lines, then the rule, to separate files before the header.
+      add(nil, "", "", "filegap", "filegap")
+      add(nil, "", "", "filegap", "filegap")
+      add(nil, "", "", "filegap", "filegap")
       local rule = sep_rule(pane_width)
-      add(nil, rule, rule, "sep", "sep")
       add(nil, rule, rule, "sep", "sep")
     end
     local title = file.new_path or file.old_path or "unknown"
@@ -978,13 +986,25 @@ render_tree_pane = function(total_h)
   vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = jump })
 
   rebuild()
-  -- Park on the first file and focus the tree so you can navigate it right away
-  -- (moving onto a file jumps the diff). <S-Right> jumps into the diff to scroll.
-  local first
-  for line, r in pairs(rows) do
-    if not r.dir and (not first or line < first) then first = line end
+  -- Park on the requested file (e.g. from the 'F' picker via state.pending_focus)
+  -- or the first file, and focus the tree. Jump the diff there now so the deferred
+  -- CursorMoved can't clobber it back to file 1.
+  local park
+  if state.pending_focus then
+    for line, r in pairs(rows) do
+      if not r.dir and r.idx == state.pending_focus then park = line break end
+    end
+    state.pending_focus = nil -- consumed
   end
-  if first then pcall(vim.api.nvim_win_set_cursor, win, { first, 0 }) end
+  if not park then
+    for line, r in pairs(rows) do
+      if not r.dir and (not park or line < park) then park = line end
+    end
+  end
+  if park then
+    pcall(vim.api.nvim_win_set_cursor, win, { park, 0 })
+    jump()
+  end
   vim.api.nvim_set_current_win(win)
 end
 
@@ -1010,6 +1030,9 @@ function M.open(diff_text, title, opts)
   state.diff_text = diff_text or ""
   state.title = title or "Diff"
   state.parsed = parse_diff(state.diff_text)
+  -- Requested file to land on (e.g. from the 'F' picker). When the tree is shown,
+  -- render_tree_pane consumes this (parks + jumps); otherwise we position below.
+  state.pending_focus = opts.focus_file
   if opts.pr then
     state.pr = opts.pr
     state.pending_comments = {}
@@ -1023,10 +1046,10 @@ function M.open(diff_text, title, opts)
     state.blame_visible = false
     toggle_blame()
   end
-  -- Position on a specific file (1-based index into the parsed file list).
-  -- Additive: behaviour is unchanged when focus_file is not passed.
-  if opts.focus_file then
-    local pos = state.file_positions[opts.focus_file]
+  -- Tree hidden → position the diff on the requested file here (the tree path
+  -- handles it when visible, and clears state.pending_focus).
+  if state.pending_focus then
+    local pos = state.file_positions[state.pending_focus]
     if pos then
       for _, key in ipairs({ "unified", "left", "right" }) do
         local w = state.wins[key]
@@ -1036,6 +1059,7 @@ function M.open(diff_text, title, opts)
         end
       end
     end
+    state.pending_focus = nil
   end
 end
 

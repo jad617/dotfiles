@@ -104,14 +104,24 @@ query($n: Int!) {
   end)
 end
 
-local PR_VIEW_FIELDS =
+-- Split the detail fetch: the "core" fields are light and render fast (the PR
+-- description + status), while the heavy ones — CI checks and the paginating
+-- files/commits/reviews/comments — load separately and fill in afterwards.
+local PR_VIEW_CORE =
   "number,title,body,state,isDraft,url,headRefName,baseRefName,author," ..
-  "additions,deletions,reviewDecision,statusCheckRollup,labels,assignees,updatedAt," ..
-  "reviewRequests,reviews,comments,files,mergeStateStatus,mergeable,commits"
+  "additions,deletions,reviewDecision,labels,assignees,updatedAt," ..
+  "reviewRequests,mergeStateStatus,mergeable"
+local PR_VIEW_EXTRA = "statusCheckRollup,files,commits,reviews,comments"
 
--- Full PR details for the detail view. cb(ok, pr, err)
+-- Core PR details (fast). cb(ok, pr, err)
 function M.pr_view(repo, number, cb)
-  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_FIELDS }, cb)
+  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_CORE }, cb)
+end
+
+-- Heavy PR details, loaded after core. cb(ok, { statusCheckRollup, files,
+-- commits, reviews, comments }, err)
+function M.pr_view_extra(repo, number, cb)
+  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_EXTRA }, cb)
 end
 
 -- Inline review (code-thread) comments. cb(ok, comments[], err)
@@ -170,8 +180,30 @@ function M.pr_merge(repo, n, cb)
   gh_run({ "pr", "merge", tostring(n), "--repo", repo, "--squash" }, cb)
 end
 
+-- `gh pr diff` is re-fetched on every 'd' / 'F' / reopen and is ~0.6s+ (scales
+-- with PR size). Cache it per repo#n with a short TTL so repeats are instant.
+local diff_cache = {} -- [repo#n] = { text = ..., ts = os.time() }
+local DIFF_TTL = 90   -- seconds
+
 function M.pr_diff(repo, n, cb)
-  gh_run({ "pr", "diff", tostring(n), "--repo", repo }, cb)
+  local key = repo .. "#" .. tostring(n)
+  local e = diff_cache[key]
+  if e and (os.time() - e.ts) < DIFF_TTL then
+    return vim.schedule(function() cb(true, e.text, "") end)
+  end
+  gh_run({ "pr", "diff", tostring(n), "--repo", repo }, function(ok, text, err)
+    if ok then diff_cache[key] = { text = text, ts = os.time() } end
+    cb(ok, text, err)
+  end)
+end
+
+-- Drop cached diffs (all, or one repo#n) — e.g. on manual refresh.
+function M.clear_diff_cache(repo, n)
+  if repo and n then
+    diff_cache[repo .. "#" .. tostring(n)] = nil
+  else
+    for k in pairs(diff_cache) do diff_cache[k] = nil end
+  end
 end
 
 function M.pr_checkout(repo, n, cb)
