@@ -31,8 +31,9 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
       the `gh api …/pulls/N/comments` shape.
 - [x] **Openable link URLs** — `gx` on a PR collects URLs from body/comments/reviews and
       opens (single) or picks (many).
-- [ ] **Actionable PR file paths** — jump to a specific file's diff. Deferred: `d` already
-      shows all file diffs; per-file jump needs diff-viewer support + line→path mapping.
+- [x] **PR changed-files tree in the diff viewer** — a left tree pane (grouped by dir) is
+      shown by default inside `d`; j/k live-jumps the diff to that file, ↵ focuses the
+      diff, `f` toggles the pane. Works in both unified and split modes.
 
 ## 🟢 Performance
 - [x] **Section-cache read warmed at idle** — `dashboard.preload_cache` is scheduled from
@@ -41,11 +42,13 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
       superseded callbacks (rapid switches, re-loads) are dropped, so no double-render.
 
 ## ⚪ Polish / robustness
-- [ ] **No automated tests.** Pure helpers (`render.truncate`, markdown `wrap_words` /
-      table / `clean`, footer layout) are very testable — several regressions this
-      cycle would've been caught.
-- [ ] **`:DevOpsHealth`** — extend to check board/sprint access and surface misconfigs.
-- [ ] **Inconsistent error surfacing** — standardize `set_message` vs transient `notify`.
+- [x] **Test harness** — `tests/run.lua` (run with `luajit tests/run.lua`) stubs `vim`
+      and covers `render.truncate`/`pad`/`fit` and `markdown.clean`/`render`
+      (headers, bullets, blockquotes, rules, word-wrap, table fit). 23 assertions.
+- [x] **`:DevOpsHealth`** now shows the remembered project/board and flags "no board"
+      (the cause of an empty Sprint Board).
+- [~] **Error surfacing** — kept as-is: `set_message` for section-load errors (shown in
+      the content pane) vs `notify` for action results (toasts) is a deliberate split.
 
 ## ✅ Done (recent)
 - Jira: user filter (`u`, project-scoped) across sections; sprint picker (`v`, incl. past);
