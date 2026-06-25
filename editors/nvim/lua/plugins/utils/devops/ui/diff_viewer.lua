@@ -856,6 +856,11 @@ render_tree_pane = function(total_h)
   state.wins.tree = win
   set_win_opts(win)
   vim.wo[win].cursorline = true
+  -- New windows inherit window-local options from the window they're opened in,
+  -- and the split panes set these — which would bind the tree to the diff
+  -- (scrolls off-screen, cursor yoked). Unbind so the tree is independent.
+  vim.wo[win].scrollbind = false
+  vim.wo[win].cursorbind = false
 
   -- rows[line] = { dir=true, path=… } | { dir=false, idx=…, path=… }
   local rows = {}
@@ -970,13 +975,14 @@ render_tree_pane = function(total_h)
   vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = jump })
 
   rebuild()
-  -- Park on the first file (cursorline marks it). Focus stays on the diff so your
-  -- scroll keys scroll the diff; <S-Left> jumps into the tree.
+  -- Park on the first file and focus the tree so you can navigate it right away
+  -- (moving onto a file jumps the diff). <S-Right> jumps into the diff to scroll.
   local first
   for line, r in pairs(rows) do
     if not r.dir and (not first or line < first) then first = line end
   end
   if first then pcall(vim.api.nvim_win_set_cursor, win, { first, 0 }) end
+  vim.api.nvim_set_current_win(win)
 end
 
 toggle_tree = function()
