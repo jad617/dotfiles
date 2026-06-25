@@ -23,6 +23,7 @@ local diff_themes = {
     DevOpsDiffLineNr   = { fg = "#3b4261" },
     DevOpsDiffBar      = { fg = "#a9b1d6", bg = "#1f2335" },
     DevOpsDiffSep      = { fg = "#e0af68", bg = "#292e42" },
+    DevOpsDiffFileGap  = { bg = "#16161e" },
   }},
   { name = "Pastel", hl = {
     DevOpsDiffFileHdr  = { fg = "#e0af68", bg = "#292e42" },
@@ -36,6 +37,7 @@ local diff_themes = {
     DevOpsDiffLineNr   = { fg = "#3b4261" },
     DevOpsDiffBar      = { fg = "#a9b1d6", bg = "#1f2335" },
     DevOpsDiffSep      = { fg = "#e0af68", bg = "#292e42" },
+    DevOpsDiffFileGap  = { bg = "#16161e" },
   }},
 }
 

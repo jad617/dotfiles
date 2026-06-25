@@ -1106,6 +1106,68 @@ local function build_pr(pr, width)
   return b
 end
 
+-- Cache of enriched PR data, keyed "repo#n", so re-opening a PR (nav back/forth)
+-- paints full content instantly while a fresh copy loads in the background.
+local pr_full_cache = {}
+
+-- Two-phase, parallel PR enrichment:
+--   1. pr_view (core: description + status) renders the moment it returns;
+--   2. pr_view_extra (CI checks + files/commits/reviews/comments) and the inline
+--      review comments fill in afterwards.
+-- The description thus appears fast instead of waiting on the paginating heavy
+-- fields. show() reuses the buffer and keeps the cursor, so the appended sections
+-- don't yank you. Re-opens paint the full cached copy first (no core-only flash)
+-- and skip the rebuild when nothing changed. still_valid() guards a closed view.
+local function enrich_pr(repo, n, base, render, still_valid)
+  if not (repo and n) then return end
+  local key = repo .. "#" .. n
+  local cached = pr_full_cache[key]
+  if cached and still_valid() then render(cached) end
+
+  local core, extra, rc = nil, nil, nil
+  local pending_extra = 2 -- pr_view_extra + review comments
+  local painted_core = cached ~= nil -- cached already shows everything
+
+  local function paint(full)
+    local data = vim.tbl_extend("force", {}, core)
+    data.repository, data.url = base.repository, base.url
+    if extra then
+      data.statusCheckRollup = extra.statusCheckRollup
+      data.files, data.commits = extra.files, extra.commits
+      data.reviews, data.comments = extra.reviews, extra.comments
+    end
+    data.reviewComments = rc or {}
+    if full then
+      local same = cached and cached.updatedAt and cached.updatedAt == data.updatedAt
+        and #(cached.reviewComments or {}) == #(rc or {})
+      pr_full_cache[key] = data
+      if same then return end -- identical to the cached paint; don't rebuild
+    end
+    if still_valid() then render(data) end
+  end
+
+  local function maybe_paint()
+    if not core then return end -- core failed → keep skeleton
+    if not painted_core then painted_core = true; paint(false) end
+    if pending_extra == 0 then paint(true) end
+  end
+
+  gh.pr_view(repo, n, function(ok, d)
+    if ok and d then core = d end
+    maybe_paint()
+  end)
+  gh.pr_view_extra(repo, n, function(ok, d)
+    if ok and d then extra = d end
+    pending_extra = pending_extra - 1
+    maybe_paint()
+  end)
+  gh.pr_review_comments(repo, n, function(ok, d)
+    rc = (ok and type(d) == "table") and d or {}
+    pending_extra = pending_extra - 1
+    maybe_paint()
+  end)
+end
+
 function M.open_pr(pr)
   local repo = pr.repository and pr.repository.nameWithOwner
   local n = pr.number
@@ -1196,19 +1258,9 @@ function M.open_pr(pr)
   -- Show a quick card immediately, then enrich with a full `gh pr view`.
   show(title, build_pr(pr), function(buf)
     setup_keys(buf)
-    if repo and n then
-      gh.pr_view(repo, n, function(ok, full)
-        if not ok or not full then return end
-        if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
-        full.repository = pr.repository
-        full.url = pr.url
-        gh.pr_review_comments(repo, n, function(ok2, rc)
-          full.reviewComments = (ok2 and type(rc) == "table") and rc or {}
-          if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
-          show(title, build_pr(full), setup_keys)
-        end)
-      end)
-    end
+    enrich_pr(repo, n, pr,
+      function(full) show(title, build_pr(full), setup_keys) end,
+      function() return state.buf and vim.api.nvim_buf_is_valid(state.buf) end)
   end)
 end
 
@@ -1390,18 +1442,10 @@ function M.load_pr(pr, opts)
 
   on_ready(build_pr(pr, pr_w), make_keys)
 
-  -- Enrich with full PR data
-  if repo and n then
-    gh.pr_view(repo, n, function(ok, full)
-      if not ok or not full then return end
-      full.repository = pr.repository
-      full.url = pr.url
-      gh.pr_review_comments(repo, n, function(ok2, rc)
-        full.reviewComments = (ok2 and type(rc) == "table") and rc or {}
-        on_update(build_pr(full, pr_w), make_keys)
-      end)
-    end)
-  end
+  -- Enrich with full PR data (parallel + cached; see enrich_pr).
+  enrich_pr(repo, n, pr,
+    function(full) on_update(build_pr(full, pr_w), make_keys) end,
+    function() return true end)
 end
 
 return M
