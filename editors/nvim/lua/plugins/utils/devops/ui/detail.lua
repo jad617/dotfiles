@@ -8,7 +8,6 @@ local api = require("plugins.utils.devops.jira.api")
 local adf = require("plugins.utils.devops.jira.adf")
 local gh = require("plugins.utils.devops.github.api")
 local input = require("plugins.utils.devops.ui.input")
-local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
 local pr_files_picker = require("plugins.utils.devops.ui.pr_files_picker")
 local markdown = require("plugins.utils.devops.ui.markdown")
 local render = require("plugins.utils.devops.ui.render")
@@ -1148,16 +1147,8 @@ function M.open_pr(pr)
       end)
     end, { buffer = buf, desc = "Comment" })
 
-    -- Diff
+    -- Changed files (snacks picker): list + live diff preview, ↵ opens the diff viewer
     vim.keymap.set("n", "d", function()
-      gh.pr_diff(repo, n, function(ok, diff_text, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
-        diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
-      end)
-    end, { buffer = buf, desc = "Diff" })
-
-    -- Changed-files picker (snacks): list + diff preview, ↵ opens the diff viewer
-    vim.keymap.set("n", "F", function()
       gh.pr_diff(repo, n, function(ok, diff_text, err)
         if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
         pr_files_picker.open(repo, n, diff_text)
@@ -1353,12 +1344,6 @@ function M.load_pr(pr, opts)
       end)
     end, { buffer = buf, nowait = true, desc = "Comment" })
     vim.keymap.set("n", "d", function()
-      gh.pr_diff(repo, n, function(ok, diff_text, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
-        diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
-      end)
-    end, { buffer = buf, nowait = true, desc = "Diff" })
-    vim.keymap.set("n", "F", function()
       gh.pr_diff(repo, n, function(ok, diff_text, err)
         if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
         pr_files_picker.open(repo, n, diff_text)

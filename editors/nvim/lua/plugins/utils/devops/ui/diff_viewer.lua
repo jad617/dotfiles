@@ -353,14 +353,30 @@ local function half_page()
   return 10
 end
 
+local scroll_timer
 local function scroll_diff(lines)
   local w = state.main_win
   if not (w and vim.api.nvim_win_is_valid(w)) then return end
-  local n = math.abs(lines)
-  if n == 0 then return end
-  pcall(vim.api.nvim_win_call, w, function()
-    vim.cmd("normal! " .. n .. (lines > 0 and CE or CY))
-  end)
+  local remaining = math.abs(lines)
+  if remaining == 0 then return end
+  local key = lines > 0 and CE or CY
+  -- Animate one line per tick (matches comfortable-motion's feel) instead of a
+  -- single jump, so scrolling the diff is smooth. Restart cleanly on re-press.
+  if scroll_timer then
+    pcall(function() scroll_timer:stop() scroll_timer:close() end)
+    scroll_timer = nil
+  end
+  local timer = vim.uv.new_timer()
+  scroll_timer = timer
+  timer:start(0, 16, vim.schedule_wrap(function()
+    if remaining <= 0 or not (state.main_win and vim.api.nvim_win_is_valid(state.main_win)) then
+      pcall(function() timer:stop() timer:close() end)
+      if scroll_timer == timer then scroll_timer = nil end
+      return
+    end
+    pcall(vim.api.nvim_win_call, state.main_win, function() vim.cmd("normal! " .. key) end)
+    remaining = remaining - 1
+  end))
 end
 
 local function setup_keymaps(buf)
