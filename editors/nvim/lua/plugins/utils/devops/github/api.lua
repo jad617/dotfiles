@@ -104,22 +104,14 @@ query($n: Int!) {
   end)
 end
 
--- statusCheckRollup is the single priciest field; it's fetched separately (in
--- parallel) so the main view doesn't wait on the CI-checks fan-out.
 local PR_VIEW_FIELDS =
   "number,title,body,state,isDraft,url,headRefName,baseRefName,author," ..
-  "additions,deletions,reviewDecision,labels,assignees,updatedAt," ..
+  "additions,deletions,reviewDecision,statusCheckRollup,labels,assignees,updatedAt," ..
   "reviewRequests,reviews,comments,files,mergeStateStatus,mergeable,commits"
 
 -- Full PR details for the detail view. cb(ok, pr, err)
 function M.pr_view(repo, number, cb)
   gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_FIELDS }, cb)
-end
-
--- CI check rollup only — fetched in parallel with pr_view. cb(ok, data, err)
--- where data = { statusCheckRollup = … }.
-function M.pr_view_checks(repo, number, cb)
-  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", "statusCheckRollup" }, cb)
 end
 
 -- Inline review (code-thread) comments. cb(ok, comments[], err)
