@@ -240,7 +240,7 @@ local function toggle_blame()
       paths[#paths + 1] = info.path
     end
   end
-  local remaining = #paths
+  local remaining, failed = #paths, 0
   if remaining == 0 then
     vim.notify("DevOps: no files to blame", vim.log.levels.INFO)
     state.blame_visible = false
@@ -274,12 +274,16 @@ local function toggle_blame()
             end
           end
           state.blame_data[fpath] = blame
+        else
+          failed = failed + 1 -- git blame couldn't read this file (not in the working tree)
         end
         remaining = remaining - 1
         if remaining == 0 and state.blame_visible then
+          local applied = 0
           for lnum, info in pairs(state.line_map) do
             local bd = state.blame_data[info.path]
             if bd and bd[info.line] then
+              applied = applied + 1
               for _, key in ipairs({ "unified", "left", "right" }) do
                 local b = state.bufs[key]
                 if b and vim.api.nvim_buf_is_valid(b) then
@@ -291,7 +295,15 @@ local function toggle_blame()
               end
             end
           end
-          vim.notify("DevOps: blame on", vim.log.levels.INFO)
+          if applied == 0 then
+            state.blame_visible = false
+            vim.notify(
+              "DevOps: blame unavailable — git blame found no matching lines.\n"
+                .. "Check out the PR branch ('x') and open Neovim from the repo dir.",
+              vim.log.levels.WARN)
+          else
+            vim.notify("DevOps: blame on", vim.log.levels.INFO)
+          end
         end
       end)
     end)

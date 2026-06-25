@@ -12,7 +12,8 @@ local state = { tab = nil, tree_win = nil, tree_buf = nil, diff_win = nil, diff_
 -- Split a unified diff into { [path] = {lines...} } preserving file order.
 local function parse_chunks(diff)
   local chunks, order, cur = {}, {}, nil
-  for _, line in ipairs(vim.split(diff or "", "\n", { plain = true })) do
+  for _, raw in ipairs(vim.split(diff or "", "\n", { plain = true })) do
+    local line = raw:gsub("\r$", "")
     local path = line:match("^diff %-%-git a/.- b/(.+)$")
     if path then
       cur = { line }; chunks[path] = cur; order[#order + 1] = path
