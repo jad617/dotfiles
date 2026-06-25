@@ -23,7 +23,15 @@ local state = {
   pending_comments = {}, -- { { path, line, body }, ... }
   blame_visible = false,
   blame_data = {}, -- [filepath] = { [line_num] = "author date" }
+  tree_visible = true, -- left file-tree pane (shown by default; 'f' toggles)
+  tree_collapsed = {}, -- [dir_path] = true when collapsed in the tree
 }
+
+local render = require("plugins.utils.devops.ui.render")
+local TREE_W = 38 -- file-tree pane content width
+local render_tree_pane, toggle_tree -- forward declarations (defined below)
+-- Horizontal space the tree reserves on the left (pane width + its border).
+local function tree_off() return state.tree_visible and (TREE_W + 2) or 0 end
 
 ---------------------------------------------------------------------------
 -- Helpers
@@ -240,7 +248,7 @@ local function toggle_blame()
       paths[#paths + 1] = info.path
     end
   end
-  local remaining = #paths
+  local remaining, failed = #paths, 0
   if remaining == 0 then
     vim.notify("DevOps: no files to blame", vim.log.levels.INFO)
     state.blame_visible = false
@@ -274,12 +282,16 @@ local function toggle_blame()
             end
           end
           state.blame_data[fpath] = blame
+        else
+          failed = failed + 1 -- git blame couldn't read this file (not in the working tree)
         end
         remaining = remaining - 1
         if remaining == 0 and state.blame_visible then
+          local applied = 0
           for lnum, info in pairs(state.line_map) do
             local bd = state.blame_data[info.path]
             if bd and bd[info.line] then
+              applied = applied + 1
               for _, key in ipairs({ "unified", "left", "right" }) do
                 local b = state.bufs[key]
                 if b and vim.api.nvim_buf_is_valid(b) then
@@ -291,7 +303,15 @@ local function toggle_blame()
               end
             end
           end
-          vim.notify("DevOps: blame on", vim.log.levels.INFO)
+          if applied == 0 then
+            state.blame_visible = false
+            vim.notify(
+              "DevOps: blame unavailable — git blame found no matching lines.\n"
+                .. "Check out the PR branch ('x') and open Neovim from the repo dir.",
+              vim.log.levels.WARN)
+          else
+            vim.notify("DevOps: blame on", vim.log.levels.INFO)
+          end
         end
       end)
     end)
@@ -313,6 +333,11 @@ local function setup_keymaps(buf)
     M.open(state.diff_text, state.title)
   end, "Cycle diff theme")
   map_buf(buf, "B", toggle_blame, "Toggle blame")
+  map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
+  map_buf(buf, "<S-Left>", function()
+    local w = state.wins.tree
+    if w and vim.api.nvim_win_is_valid(w) then vim.api.nvim_set_current_win(w) end
+  end, "Focus file tree")
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
   -- Open in browser at current file/line position
@@ -468,6 +493,10 @@ local function render_footer(total_width, footer_row)
     { "T ", "DevOpsKey" }, { "theme", "DevOpsAction" },
     { "  ", nil },
     { "B ", "DevOpsKey" }, { "blame", "DevOpsAction" },
+    { "  ", nil },
+    { "f ", "DevOpsKey" }, { "tree", "DevOpsAction" },
+    { "  ", nil },
+    { "S-←→ ", "DevOpsKey" }, { "pane", "DevOpsAction" },
     { sep, nil },
     { "q ", "DevOpsKey" }, { "close", "DevOpsAction" },
   })
@@ -512,7 +541,8 @@ local function render_unified()
   local lines, marks = {}, {}
   state.file_positions = {}
 
-  local total_w = vim.o.columns - 2
+  local off = tree_off()
+  local total_w = vim.o.columns - 2 - off
   local total_h = vim.o.lines - 4
 
   local line_map = {}
@@ -588,7 +618,7 @@ local function render_unified()
     width = total_w,
     height = total_h,
     row = 0,
-    col = 0,
+    col = off,
     style = "minimal",
     border = "rounded",
     title = " " .. (state.title ~= "" and state.title or "Diff") .. " · unified ",
@@ -598,6 +628,7 @@ local function render_unified()
   set_win_opts(win)
   setup_keymaps(buf)
   render_footer(total_w, total_h + 2)
+  render_tree_pane(total_h)
 end
 
 ---------------------------------------------------------------------------
@@ -699,7 +730,8 @@ end
 local function render_split()
   close_windows()
   local files = state.parsed or {}
-  local total_w = vim.o.columns - 4
+  local off = tree_off()
+  local total_w = vim.o.columns - 4 - off
   local left_w = math.floor(total_w / 2)
   local left_lines, right_lines, left_marks, right_marks, file_pos, line_map = build_split_data(files, left_w)
   state.file_positions = file_pos
@@ -717,13 +749,13 @@ local function render_split()
   local base = state.title ~= "" and state.title or "Diff"
   local left_win = vim.api.nvim_open_win(left_buf, true, {
     relative = "editor",
-    width = left_w, height = total_h, row = 0, col = 0,
+    width = left_w, height = total_h, row = 0, col = off,
     style = "minimal", border = "rounded",
     title = " " .. base .. " · old ", title_pos = "center",
   })
   local right_win = vim.api.nvim_open_win(right_buf, false, {
     relative = "editor",
-    width = right_w, height = total_h, row = 0, col = left_w + 2,
+    width = right_w, height = total_h, row = 0, col = off + left_w + 2,
     style = "minimal", border = "rounded",
     title = " " .. base .. " · new ", title_pos = "center",
   })
@@ -774,6 +806,191 @@ local function render_split()
   end
   update_titles()
   render_footer(vim.o.columns - 2, total_h + 2)
+  render_tree_pane(total_h)
+end
+
+---------------------------------------------------------------------------
+-- File-tree pane (left) — a snacks-explorer-style nested tree of the changed
+-- files: directory nodes (▾/▸ expand/collapse) + file icons. Moving onto a file
+-- (or ↵) jumps the diff to that file. The diff itself is unchanged.
+---------------------------------------------------------------------------
+
+render_tree_pane = function(total_h)
+  if not state.tree_visible then return end
+  local files = state.parsed or {}
+  if #files == 0 then return end
+  state.tree_collapsed = state.tree_collapsed or {}
+  local ok_dev, devicons = pcall(require, "nvim-web-devicons")
+  local function file_icon(name)
+    if ok_dev and devicons then
+      local ic, hl = devicons.get_icon(name, name:match("%.([%w_]+)$"), { default = true })
+      return ic or "", hl or "DevOpsId"
+    end
+    return "", "DevOpsId"
+  end
+
+  -- Build a nested directory tree from the file paths.
+  local root = { dirs = {}, dorder = {}, files = {}, path = "" }
+  for i, f in ipairs(files) do
+    local path = f.new_path or f.old_path or "?"
+    local parts = vim.split(path, "/", { plain = true })
+    local node = root
+    for d = 1, #parts - 1 do
+      local seg = parts[d]
+      if not node.dirs[seg] then
+        local full = node.path == "" and seg or (node.path .. "/" .. seg)
+        node.dirs[seg] = { name = seg, path = full, dirs = {}, dorder = {}, files = {} }
+        node.dorder[#node.dorder + 1] = seg
+      end
+      node = node.dirs[seg]
+    end
+    node.files[#node.files + 1] = { name = parts[#parts], idx = i, path = path }
+  end
+
+  local buf = make_buf()
+  state.bufs.tree = buf
+  local win = vim.api.nvim_open_win(buf, false, {
+    relative = "editor", width = TREE_W, height = total_h, row = 0, col = 0,
+    style = "minimal", border = "rounded", title = " files ", title_pos = "center",
+  })
+  state.wins.tree = win
+  set_win_opts(win)
+  vim.wo[win].cursorline = true
+  -- New windows inherit window-local options from the window they're opened in,
+  -- and the split panes set these — which would bind the tree to the diff
+  -- (scrolls off-screen, cursor yoked). Unbind so the tree is independent.
+  vim.wo[win].scrollbind = false
+  vim.wo[win].cursorbind = false
+  -- Match the rest of the plugin (the dashboard panes use Normal, not the dimmer
+  -- NormalFloat; default cursorline) so the tree's background is consistent.
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle"
+
+  -- rows[line] = { dir=true, path=… } | { dir=false, idx=…, path=… }
+  local rows = {}
+  local function rebuild()
+    local lines, hls = {}, {}
+    rows = {}
+    local function emit(text, segs)
+      lines[#lines + 1] = text
+      for _, sg in ipairs(segs or {}) do
+        hls[#hls + 1] = { l = #lines - 1, s = sg[1], e = sg[2], g = sg[3] }
+      end
+    end
+    local header = "  Changed files (" .. #files .. ")"
+    emit(header, { { 0, #header, "DevOpsTitle" } })
+    emit("", {})
+    local function walk(node, depth)
+      table.sort(node.dorder)
+      for _, seg in ipairs(node.dorder) do
+        local d = node.dirs[seg]
+        local indent = string.rep("  ", depth)
+        local arrow = state.tree_collapsed[d.path] and "▸" or "▾"
+        local text = indent .. arrow .. " " .. render.truncate(d.name, TREE_W - #indent - 4)
+        emit(text, { { #indent, #text, "Directory" } })
+        rows[#lines] = { dir = true, path = d.path }
+        if not state.tree_collapsed[d.path] then walk(d, depth + 1) end
+      end
+      table.sort(node.files, function(a, b) return a.name < b.name end)
+      for _, fl in ipairs(node.files) do
+        local indent = string.rep("  ", depth)
+        local ic, ihl = file_icon(fl.name)
+        local text = indent .. "  " .. ic .. " " .. render.truncate(fl.name, TREE_W - #indent - 4)
+        local istart = #indent + 2
+        emit(text, {
+          { istart, istart + #ic, ihl },
+          { istart + #ic + 1, #text, "Normal" },
+        })
+        rows[#lines] = { dir = false, idx = fl.idx, path = fl.path }
+      end
+    end
+    walk(root, 0)
+    set_lines(buf, lines)
+    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    for _, h in ipairs(hls) do
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns, h.l, h.s, { end_col = h.e, hl_group = h.g })
+    end
+  end
+
+  local function current() return rows[vim.api.nvim_win_get_cursor(win)[1]] end
+
+  -- Move every diff pane to file `idx` (programmatic cursor sets don't trigger
+  -- scrollbind, so set all of them).
+  local function jump()
+    local r = current()
+    if not r or r.dir then return end
+    local pos = state.file_positions[r.idx]
+    if not pos then return end
+    for _, key in ipairs({ "unified", "left", "right" }) do
+      local w = state.wins[key]
+      if w and vim.api.nvim_win_is_valid(w) then
+        pcall(vim.api.nvim_win_set_cursor, w, { pos + 1, 0 })
+        pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zt") end)
+      end
+    end
+  end
+  local function focus_diff()
+    for _, key in ipairs({ "left", "unified" }) do
+      local w = state.wins[key]
+      if w and vim.api.nvim_win_is_valid(w) then vim.api.nvim_set_current_win(w) return end
+    end
+  end
+  local function goto_path(path, want_dir)
+    for line, r in pairs(rows) do
+      if r.path == path and (r.dir == want_dir) then
+        pcall(vim.api.nvim_win_set_cursor, win, { line, 0 })
+        return true
+      end
+    end
+  end
+  local function set_collapsed(path, val)
+    state.tree_collapsed[path] = val or nil
+    rebuild()
+    goto_path(path, true)
+  end
+
+  map_buf(buf, "q", close, "Close diff")
+  map_buf(buf, "<C-d>", close, "Close diff")
+  map_buf(buf, "<Esc>", close, "Close diff")
+  map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
+  map_buf(buf, "<S-Right>", focus_diff, "Focus diff")
+  map_buf(buf, "<CR>", function()
+    local r = current()
+    if not r then return end
+    if r.dir then set_collapsed(r.path, not state.tree_collapsed[r.path])
+    else jump() focus_diff() end
+  end, "Open file / toggle dir")
+  map_buf(buf, "l", function()
+    local r = current()
+    if not r then return end
+    if r.dir then set_collapsed(r.path, false)
+    else jump() focus_diff() end
+  end, "Expand / open")
+  map_buf(buf, "h", function()
+    local r = current()
+    if not r then return end
+    if r.dir and not state.tree_collapsed[r.path] then
+      set_collapsed(r.path, true)
+    else
+      local parent = r.path:match("(.+)/[^/]+$")
+      if parent then goto_path(parent, true) end
+    end
+  end, "Collapse / parent")
+  vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = jump })
+
+  rebuild()
+  -- Park on the first file and focus the tree so you can navigate it right away
+  -- (moving onto a file jumps the diff). <S-Right> jumps into the diff to scroll.
+  local first
+  for line, r in pairs(rows) do
+    if not r.dir and (not first or line < first) then first = line end
+  end
+  if first then pcall(vim.api.nvim_win_set_cursor, win, { first, 0 }) end
+  vim.api.nvim_set_current_win(win)
+end
+
+toggle_tree = function()
+  state.tree_visible = not state.tree_visible
+  if state.mode == "split" then render_split() else render_unified() end
 end
 
 ---------------------------------------------------------------------------
@@ -783,7 +1000,7 @@ end
 --- Open diff viewer.
 --- @param diff_text string  Raw diff output
 --- @param title string|nil  Window title
---- @param opts table|nil    { pr = { repo = "owner/repo", number = N } }
+--- @param opts table|nil    { pr = { repo = "owner/repo", number = N }, focus_file = idx }
 function M.open(diff_text, title, opts)
   opts = opts or {}
   local reapply_blame = state.blame_visible
@@ -806,6 +1023,34 @@ function M.open(diff_text, title, opts)
     state.blame_visible = false
     toggle_blame()
   end
+  -- Position on a specific file (1-based index into the parsed file list).
+  -- Additive: behaviour is unchanged when focus_file is not passed.
+  if opts.focus_file then
+    local pos = state.file_positions[opts.focus_file]
+    if pos then
+      for _, key in ipairs({ "unified", "left", "right" }) do
+        local w = state.wins[key]
+        if w and vim.api.nvim_win_is_valid(w) then
+          pcall(vim.api.nvim_win_set_cursor, w, { pos + 1, 0 })
+          pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zt") end)
+        end
+      end
+    end
+  end
+end
+
+--- Parse a raw diff into a path-only file list, for external callers (the
+--- changed-files tree). Returns { { path, old_path, new_path }, … } in diff order.
+function M.parse_files(diff_text)
+  local out = {}
+  for _, f in ipairs(parse_diff(diff_text or "")) do
+    out[#out + 1] = {
+      path = f.new_path or f.old_path or "?",
+      old_path = f.old_path,
+      new_path = f.new_path,
+    }
+  end
+  return out
 end
 
 return M

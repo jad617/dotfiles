@@ -48,6 +48,15 @@ function M.run()
     add("   or export JIRA_URL / JIRA_EMAIL / JIRA_API_TOKEN.")
   end
 
+  -- Remembered Jira project / board (a missing board → empty Sprint Board)
+  local prefs = require("plugins.utils.devops.store").load() or {}
+  if prefs.project_key then
+    add("✓ Jira project: " .. prefs.project_key
+      .. (prefs.board_id and ("  ·  board " .. prefs.board_id) or "  ⚠ no board (Sprint Board needs 'b')"))
+  else
+    add("· No Jira project remembered yet — pick one with 'p' in the dashboard")
+  end
+
   -- gh
   add(gh.available() and "✓ gh CLI found" or "✗ gh CLI not found (GitHub sections disabled)")
   -- curl
