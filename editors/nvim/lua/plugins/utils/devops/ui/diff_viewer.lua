@@ -861,6 +861,9 @@ render_tree_pane = function(total_h)
   -- (scrolls off-screen, cursor yoked). Unbind so the tree is independent.
   vim.wo[win].scrollbind = false
   vim.wo[win].cursorbind = false
+  -- Match the rest of the plugin (the dashboard panes use Normal, not the dimmer
+  -- NormalFloat; default cursorline) so the tree's background is consistent.
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle"
 
   -- rows[line] = { dir=true, path=… } | { dir=false, idx=…, path=… }
   local rows = {}
