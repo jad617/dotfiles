@@ -1129,7 +1129,12 @@ local function enrich_pr(repo, n, base, render, still_valid)
     full_data.repository = base.repository
     full_data.url = base.url
     full_data.reviewComments = rc_data
+    -- If we already painted identical cached data, skip the second (expensive)
+    -- rebuild — re-opening an unchanged PR shouldn't re-render the whole buffer.
+    local same = cached and cached.updatedAt and cached.updatedAt == full_data.updatedAt
+      and #(cached.reviewComments or {}) == #rc_data
     pr_full_cache[key] = full_data
+    if same then return end
     if still_valid() then render(full_data) end
   end
   gh.pr_view(repo, n, function(ok, full)

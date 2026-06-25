@@ -452,6 +452,8 @@ local function apply_marks(buf, marks)
       vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffCtx" })
     elseif m.type == "sep" then
       vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffSep" })
+    elseif m.type == "filegap" then
+      vim.api.nvim_buf_set_extmark(buf, ns, m.line, 0, { line_hl_group = "DevOpsDiffFileGap" })
     end
     -- Line number gutter highlight
     if m.gutter_end then
@@ -549,11 +551,11 @@ local function render_unified()
 
   for fi, file in ipairs(files) do
     if fi > 1 then
-      local rule = sep_rule(total_w)
-      lines[#lines + 1] = rule
-      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
-      lines[#lines + 1] = rule
-      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
+      -- 3 dark blank lines to visually separate files before the next header.
+      for _ = 1, 3 do
+        lines[#lines + 1] = ""
+        marks[#marks + 1] = { line = #lines - 1, type = "filegap" }
+      end
     end
     local title = file.new_path or file.old_path or "unknown"
     local fpath = file.new_path or file.old_path or ""
@@ -653,9 +655,10 @@ local function build_split_data(files, pane_width)
 
   for fi, file in ipairs(files) do
     if fi > 1 then
-      local rule = sep_rule(pane_width)
-      add(nil, rule, rule, "sep", "sep")
-      add(nil, rule, rule, "sep", "sep")
+      -- 3 dark blank lines to visually separate files before the next header.
+      add(nil, "", "", "filegap", "filegap")
+      add(nil, "", "", "filegap", "filegap")
+      add(nil, "", "", "filegap", "filegap")
     end
     local title = file.new_path or file.old_path or "unknown"
     local fpath = file.new_path or file.old_path or ""
