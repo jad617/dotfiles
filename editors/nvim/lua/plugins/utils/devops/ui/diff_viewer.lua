@@ -23,7 +23,17 @@ local state = {
   pending_comments = {}, -- { { path, line, body }, ... }
   blame_visible = false,
   blame_data = {}, -- [filepath] = { [line_num] = "author date" }
+  tree_visible = true, -- file tree pane shown by default; 'f' toggles
+  main_win = nil,      -- the diff window the tree jumps/scrolls
 }
+
+local render = require("plugins.utils.devops.ui.render")
+local TREE_W = 36
+local toggle_tree   -- forward-declared; defined after render_unified/render_split
+local render_tree_pane -- forward-declared; defined before the render fns
+
+-- Horizontal space the tree pane reserves on the left (0 when hidden).
+local function tree_off() return state.tree_visible and (TREE_W + 2) or 0 end
 
 ---------------------------------------------------------------------------
 -- Helpers
@@ -325,6 +335,7 @@ local function setup_keymaps(buf)
     M.open(state.diff_text, state.title)
   end, "Cycle diff theme")
   map_buf(buf, "B", toggle_blame, "Toggle blame")
+  map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
   -- Open in browser at current file/line position
@@ -480,6 +491,8 @@ local function render_footer(total_width, footer_row)
     { "T ", "DevOpsKey" }, { "theme", "DevOpsAction" },
     { "  ", nil },
     { "B ", "DevOpsKey" }, { "blame", "DevOpsAction" },
+    { "  ", nil },
+    { "f ", "DevOpsKey" }, { "tree", "DevOpsAction" },
     { sep, nil },
     { "q ", "DevOpsKey" }, { "close", "DevOpsAction" },
   })
@@ -515,6 +528,74 @@ local function render_footer(total_width, footer_row)
 end
 
 ---------------------------------------------------------------------------
+-- File tree pane (left) — lists the parsed files; cursor/↵ jumps the diff.
+---------------------------------------------------------------------------
+
+-- Render the left file-tree float. `main_win` is the diff window it drives.
+render_tree_pane = function(total_h)
+  if not state.tree_visible then return end
+  local files = state.parsed or {}
+  local lines, hls, rows = {}, {}, {}
+  local groups, gorder = {}, {}
+  for i, f in ipairs(files) do
+    local path = f.new_path or f.old_path or "?"
+    local dir = path:match("(.+)/[^/]+$") or ""
+    if not groups[dir] then groups[dir] = {}; gorder[#gorder + 1] = dir end
+    table.insert(groups[dir], { idx = i, path = path })
+  end
+  lines[#lines + 1] = "  Changed files (" .. #files .. ")"
+  hls[#hls + 1] = { l = 0, s = 0, e = #lines[1], g = "DevOpsTitle" }
+  lines[#lines + 1] = ""
+  for _, dir in ipairs(gorder) do
+    if dir ~= "" then
+      lines[#lines + 1] = "  ▾ " .. render.truncate(dir, TREE_W - 4)
+      hls[#hls + 1] = { l = #lines - 1, s = 0, e = #lines[#lines], g = "DevOpsId" }
+    end
+    for _, ent in ipairs(groups[dir]) do
+      local name = ent.path:match("[^/]+$") or ent.path
+      local indent = dir ~= "" and "      " or "  "
+      lines[#lines + 1] = indent .. render.truncate(name, TREE_W - #indent - 1)
+      rows[#lines] = ent.idx
+    end
+  end
+
+  local buf = make_buf()
+  state.bufs.tree = buf
+  set_lines(buf, lines)
+  for _, h in ipairs(hls) do
+    pcall(vim.api.nvim_buf_set_extmark, buf, ns, h.l, h.s, { end_col = h.e, hl_group = h.g })
+  end
+  local win = vim.api.nvim_open_win(buf, false, {
+    relative = "editor", width = TREE_W, height = total_h, row = 0, col = 0,
+    style = "minimal", border = "rounded", title = " files ", title_pos = "center",
+  })
+  state.wins.tree = win
+  set_win_opts(win)
+  vim.wo[win].cursorline = true
+
+  local function jump()
+    local idx = rows[vim.api.nvim_win_get_cursor(win)[1]]
+    if idx and state.main_win and vim.api.nvim_win_is_valid(state.main_win) then
+      local pos = state.file_positions[idx]
+      if pos then pcall(vim.api.nvim_win_set_cursor, state.main_win, { pos + 1, 0 }) end
+    end
+  end
+  setup_keymaps(buf) -- q/f/T/B/]f… also work from the tree
+  vim.keymap.set("n", "<CR>", function()
+    jump()
+    if state.main_win and vim.api.nvim_win_is_valid(state.main_win) then
+      vim.api.nvim_set_current_win(state.main_win)
+    end
+  end, { buffer = buf, nowait = true })
+  vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = jump })
+  -- Park on the first file row (lowest line) and focus the tree.
+  local first
+  for line in pairs(rows) do if not first or line < first then first = line end end
+  if first then pcall(vim.api.nvim_win_set_cursor, win, { first, 0 }) end
+  vim.api.nvim_set_current_win(win)
+end
+
+---------------------------------------------------------------------------
 -- Unified
 ---------------------------------------------------------------------------
 
@@ -524,7 +605,8 @@ local function render_unified()
   local lines, marks = {}, {}
   state.file_positions = {}
 
-  local total_w = vim.o.columns - 2
+  local off = tree_off()
+  local total_w = vim.o.columns - 2 - off
   local total_h = vim.o.lines - 4
 
   local line_map = {}
@@ -600,16 +682,18 @@ local function render_unified()
     width = total_w,
     height = total_h,
     row = 0,
-    col = 0,
+    col = off,
     style = "minimal",
     border = "rounded",
     title = " " .. (state.title ~= "" and state.title or "Diff") .. " · unified ",
     title_pos = "center",
   })
   state.wins.unified = win
+  state.main_win = win
   set_win_opts(win)
   setup_keymaps(buf)
   render_footer(total_w, total_h + 2)
+  render_tree_pane(total_h)
 end
 
 ---------------------------------------------------------------------------
@@ -711,7 +795,8 @@ end
 local function render_split()
   close_windows()
   local files = state.parsed or {}
-  local total_w = vim.o.columns - 4
+  local off = tree_off()
+  local total_w = vim.o.columns - 4 - off
   local left_w = math.floor(total_w / 2)
   local left_lines, right_lines, left_marks, right_marks, file_pos, line_map = build_split_data(files, left_w)
   state.file_positions = file_pos
@@ -729,17 +814,18 @@ local function render_split()
   local base = state.title ~= "" and state.title or "Diff"
   local left_win = vim.api.nvim_open_win(left_buf, true, {
     relative = "editor",
-    width = left_w, height = total_h, row = 0, col = 0,
+    width = left_w, height = total_h, row = 0, col = off,
     style = "minimal", border = "rounded",
     title = " " .. base .. " · old ", title_pos = "center",
   })
   local right_win = vim.api.nvim_open_win(right_buf, false, {
     relative = "editor",
-    width = right_w, height = total_h, row = 0, col = left_w + 2,
+    width = right_w, height = total_h, row = 0, col = off + left_w + 2,
     style = "minimal", border = "rounded",
     title = " " .. base .. " · new ", title_pos = "center",
   })
   state.wins.left, state.wins.right = left_win, right_win
+  state.main_win = left_win
   set_win_opts(left_win)
   set_win_opts(right_win)
 
@@ -786,6 +872,13 @@ local function render_split()
   end
   update_titles()
   render_footer(vim.o.columns - 2, total_h + 2)
+  render_tree_pane(total_h)
+end
+
+-- Toggle the file tree pane and re-render the current mode.
+toggle_tree = function()
+  state.tree_visible = not state.tree_visible
+  if state.mode == "split" then render_split() else render_unified() end
 end
 
 ---------------------------------------------------------------------------

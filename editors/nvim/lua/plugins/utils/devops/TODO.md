@@ -31,9 +31,9 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
       the `gh api …/pulls/N/comments` shape.
 - [x] **Openable link URLs** — `gx` on a PR collects URLs from body/comments/reviews and
       opens (single) or picks (many).
-- [x] **PR changed-files tree** — `f` on a PR opens `ui/pr_files.lua`: a file tree (left
-      split, grouped by dir, +/- per file) with live diff preview on the right. Navigate
-      j/k/↵, q to close.
+- [x] **PR changed-files tree in the diff viewer** — a left tree pane (grouped by dir) is
+      shown by default inside `d`; j/k live-jumps the diff to that file, ↵ focuses the
+      diff, `f` toggles the pane. Works in both unified and split modes.
 
 ## 🟢 Performance
 - [x] **Section-cache read warmed at idle** — `dashboard.preload_cache` is scheduled from
