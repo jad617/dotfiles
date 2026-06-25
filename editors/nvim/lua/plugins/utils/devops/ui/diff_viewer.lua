@@ -23,34 +23,7 @@ local state = {
   pending_comments = {}, -- { { path, line, body }, ... }
   blame_visible = false,
   blame_data = {}, -- [filepath] = { [line_num] = "author date" }
-  tree_visible = false, -- homemade tree off by default (snacks 'F' picker preferred); 'f' toggles it back
-  main_win = nil,      -- the diff window the tree jumps/scrolls
 }
-
-local render = require("plugins.utils.devops.ui.render")
-local TREE_W = 36
-local toggle_tree   -- forward-declared; defined after render_unified/render_split
-local render_tree_pane -- forward-declared; defined before the render fns
-
--- Horizontal space the tree pane reserves on the left (0 when hidden).
-local function tree_off() return state.tree_visible and (TREE_W + 2) or 0 end
-
--- Move focus between the diff panes left→right (tree | diff, or tree | old | new).
--- These are floats, so smart-splits/<C-w> can't reach them — we hop explicitly.
-local function focus_pane(delta)
-  local order, cur = {}, vim.api.nvim_get_current_win()
-  for _, key in ipairs({ "tree", "unified", "left", "right" }) do
-    local w = state.wins[key]
-    if w and vim.api.nvim_win_is_valid(w) then order[#order + 1] = w end
-  end
-  for i, w in ipairs(order) do
-    if w == cur then
-      local t = order[i + delta]
-      if t then vim.api.nvim_set_current_win(t) end
-      return
-    end
-  end
-end
 
 ---------------------------------------------------------------------------
 -- Helpers
@@ -337,58 +310,10 @@ local function toggle_blame()
   end
 end
 
--- Diff scrolling. The user's scroll keys (<C-o>/<C-p> are comfortable-motion,
--- which just feed j/k to the focused pane; <C-d> is the global :q!, <C-u> a yank)
--- would otherwise move the cursor in whatever pane has focus — or quit. Bind them
--- here so they scroll the diff *content* no matter which pane is focused, and the
--- tree never moves. In split mode scrollbind carries the other pane along.
-local CE = vim.api.nvim_replace_termcodes("<C-e>", true, false, true)
-local CY = vim.api.nvim_replace_termcodes("<C-y>", true, false, true)
-
-local function half_page()
-  local w = state.main_win
-  if w and vim.api.nvim_win_is_valid(w) then
-    return math.max(1, math.floor(vim.api.nvim_win_get_height(w) / 2))
-  end
-  return 10
-end
-
-local scroll_timer
-local function scroll_diff(lines)
-  local w = state.main_win
-  if not (w and vim.api.nvim_win_is_valid(w)) then return end
-  local remaining = math.abs(lines)
-  if remaining == 0 then return end
-  local key = lines > 0 and CE or CY
-  -- Animate one line per tick (matches comfortable-motion's feel) instead of a
-  -- single jump, so scrolling the diff is smooth. Restart cleanly on re-press.
-  if scroll_timer then
-    pcall(function() scroll_timer:stop() scroll_timer:close() end)
-    scroll_timer = nil
-  end
-  local timer = vim.uv.new_timer()
-  scroll_timer = timer
-  timer:start(0, 16, vim.schedule_wrap(function()
-    if remaining <= 0 or not (state.main_win and vim.api.nvim_win_is_valid(state.main_win)) then
-      pcall(function() timer:stop() timer:close() end)
-      if scroll_timer == timer then scroll_timer = nil end
-      return
-    end
-    pcall(vim.api.nvim_win_call, state.main_win, function() vim.cmd("normal! " .. key) end)
-    remaining = remaining - 1
-  end))
-end
-
 local function setup_keymaps(buf)
   map_buf(buf, "q", close, "Close diff")
+  map_buf(buf, "<C-d>", close, "Close diff")
   map_buf(buf, "<Esc>", close, "Close diff")
-  -- Scroll the diff content (works from any pane; leaves the tree fixed).
-  map_buf(buf, "<C-p>", function() scroll_diff(10) end, "Scroll diff down")
-  map_buf(buf, "<C-o>", function() scroll_diff(-10) end, "Scroll diff up")
-  map_buf(buf, "<C-d>", function() scroll_diff(half_page()) end, "Scroll diff ½ down")
-  map_buf(buf, "<C-u>", function() scroll_diff(-half_page()) end, "Scroll diff ½ up")
-  map_buf(buf, "<C-f>", function() scroll_diff(half_page() * 2) end, "Scroll diff page down")
-  map_buf(buf, "<C-b>", function() scroll_diff(-half_page() * 2) end, "Scroll diff page up")
   map_buf(buf, "<Tab>", function()
     state.mode = state.mode == "unified" and "split" or "unified"
     M.open(state.diff_text, state.title)
@@ -400,9 +325,6 @@ local function setup_keymaps(buf)
     M.open(state.diff_text, state.title)
   end, "Cycle diff theme")
   map_buf(buf, "B", toggle_blame, "Toggle blame")
-  map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
-  map_buf(buf, "<S-Left>", function() focus_pane(-1) end, "Focus pane left")
-  map_buf(buf, "<S-Right>", function() focus_pane(1) end, "Focus pane right")
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
   -- Open in browser at current file/line position
@@ -558,10 +480,6 @@ local function render_footer(total_width, footer_row)
     { "T ", "DevOpsKey" }, { "theme", "DevOpsAction" },
     { "  ", nil },
     { "B ", "DevOpsKey" }, { "blame", "DevOpsAction" },
-    { "  ", nil },
-    { "f ", "DevOpsKey" }, { "tree", "DevOpsAction" },
-    { "  ", nil },
-    { "S-←→ ", "DevOpsKey" }, { "pane", "DevOpsAction" },
     { sep, nil },
     { "q ", "DevOpsKey" }, { "close", "DevOpsAction" },
   })
@@ -597,107 +515,6 @@ local function render_footer(total_width, footer_row)
 end
 
 ---------------------------------------------------------------------------
--- File tree pane (left) — lists the parsed files; cursor/↵ jumps the diff.
----------------------------------------------------------------------------
-
--- Render the left file-tree float. `main_win` is the diff window it drives.
-render_tree_pane = function(total_h)
-  if not state.tree_visible then return end
-  local files = state.parsed or {}
-  local lines, hls, rows = {}, {}, {}
-  local groups, gorder = {}, {}
-  for i, f in ipairs(files) do
-    local path = f.new_path or f.old_path or "?"
-    local dir = path:match("(.+)/[^/]+$") or ""
-    if not groups[dir] then groups[dir] = {}; gorder[#gorder + 1] = dir end
-    table.insert(groups[dir], { idx = i, path = path })
-  end
-  lines[#lines + 1] = "  Changed files (" .. #files .. ")"
-  hls[#hls + 1] = { l = 0, s = 0, e = #lines[1], g = "DevOpsTitle" }
-  lines[#lines + 1] = ""
-  for _, dir in ipairs(gorder) do
-    if dir ~= "" then
-      lines[#lines + 1] = "  ▾ " .. render.truncate(dir, TREE_W - 4)
-      hls[#hls + 1] = { l = #lines - 1, s = 0, e = #lines[#lines], g = "DevOpsId" }
-    end
-    for _, ent in ipairs(groups[dir]) do
-      local name = ent.path:match("[^/]+$") or ent.path
-      local indent = dir ~= "" and "      " or "  "
-      lines[#lines + 1] = indent .. render.truncate(name, TREE_W - #indent - 1)
-      rows[#lines] = ent.idx
-    end
-  end
-
-  local buf = make_buf()
-  state.bufs.tree = buf
-  set_lines(buf, lines)
-  for _, h in ipairs(hls) do
-    pcall(vim.api.nvim_buf_set_extmark, buf, ns, h.l, h.s, { end_col = h.e, hl_group = h.g })
-  end
-  local win = vim.api.nvim_open_win(buf, false, {
-    relative = "editor", width = TREE_W, height = total_h, row = 0, col = 0,
-    style = "minimal", border = "rounded", title = " files ", title_pos = "center",
-  })
-  state.wins.tree = win
-  set_win_opts(win)
-  vim.wo[win].cursorline = true
-
-  local function jump()
-    local idx = rows[vim.api.nvim_win_get_cursor(win)[1]]
-    if not idx then return end
-    local pos = state.file_positions[idx]
-    if not pos then return end
-    -- Move every diff pane (programmatic cursor sets don't trigger scrollbind).
-    for _, key in ipairs({ "unified", "left", "right" }) do
-      local w = state.wins[key]
-      if w and vim.api.nvim_win_is_valid(w) then
-        pcall(vim.api.nvim_win_set_cursor, w, { pos + 1, 0 })
-        pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zt") end)
-      end
-    end
-  end
-  -- Step between file rows (skips dir headers/blanks) and preview the diff.
-  -- Explicit so it works even if arrow keys are remapped globally, and so the
-  -- cursor always lands on an actual file.
-  local file_rows = {}
-  for line in pairs(rows) do file_rows[#file_rows + 1] = line end
-  table.sort(file_rows)
-  local function step(dir)
-    local cur = vim.api.nvim_win_get_cursor(win)[1]
-    local target
-    if dir > 0 then
-      for _, l in ipairs(file_rows) do if l > cur then target = l break end end
-    else
-      for i = #file_rows, 1, -1 do if file_rows[i] < cur then target = file_rows[i] break end end
-    end
-    if target then
-      pcall(vim.api.nvim_win_set_cursor, win, { target, 0 })
-      jump()
-    end
-  end
-
-  setup_keymaps(buf) -- q/f/T/B/]f… also work from the tree
-  for _, k in ipairs({ "j", "<Down>" }) do
-    vim.keymap.set("n", k, function() step(1) end, { buffer = buf, nowait = true })
-  end
-  for _, k in ipairs({ "k", "<Up>" }) do
-    vim.keymap.set("n", k, function() step(-1) end, { buffer = buf, nowait = true })
-  end
-  vim.keymap.set("n", "<CR>", function()
-    jump()
-    if state.main_win and vim.api.nvim_win_is_valid(state.main_win) then
-      vim.api.nvim_set_current_win(state.main_win)
-    end
-  end, { buffer = buf, nowait = true })
-  vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = jump })
-  -- Park on the first file row (lowest line) and focus the tree.
-  local first
-  for line in pairs(rows) do if not first or line < first then first = line end end
-  if first then pcall(vim.api.nvim_win_set_cursor, win, { first, 0 }) end
-  vim.api.nvim_set_current_win(win)
-end
-
----------------------------------------------------------------------------
 -- Unified
 ---------------------------------------------------------------------------
 
@@ -707,8 +524,7 @@ local function render_unified()
   local lines, marks = {}, {}
   state.file_positions = {}
 
-  local off = tree_off()
-  local total_w = vim.o.columns - 2 - off
+  local total_w = vim.o.columns - 2
   local total_h = vim.o.lines - 4
 
   local line_map = {}
@@ -784,18 +600,16 @@ local function render_unified()
     width = total_w,
     height = total_h,
     row = 0,
-    col = off,
+    col = 0,
     style = "minimal",
     border = "rounded",
     title = " " .. (state.title ~= "" and state.title or "Diff") .. " · unified ",
     title_pos = "center",
   })
   state.wins.unified = win
-  state.main_win = win
   set_win_opts(win)
   setup_keymaps(buf)
   render_footer(total_w, total_h + 2)
-  render_tree_pane(total_h)
 end
 
 ---------------------------------------------------------------------------
@@ -897,8 +711,7 @@ end
 local function render_split()
   close_windows()
   local files = state.parsed or {}
-  local off = tree_off()
-  local total_w = vim.o.columns - 4 - off
+  local total_w = vim.o.columns - 4
   local left_w = math.floor(total_w / 2)
   local left_lines, right_lines, left_marks, right_marks, file_pos, line_map = build_split_data(files, left_w)
   state.file_positions = file_pos
@@ -916,18 +729,17 @@ local function render_split()
   local base = state.title ~= "" and state.title or "Diff"
   local left_win = vim.api.nvim_open_win(left_buf, true, {
     relative = "editor",
-    width = left_w, height = total_h, row = 0, col = off,
+    width = left_w, height = total_h, row = 0, col = 0,
     style = "minimal", border = "rounded",
     title = " " .. base .. " · old ", title_pos = "center",
   })
   local right_win = vim.api.nvim_open_win(right_buf, false, {
     relative = "editor",
-    width = right_w, height = total_h, row = 0, col = off + left_w + 2,
+    width = right_w, height = total_h, row = 0, col = left_w + 2,
     style = "minimal", border = "rounded",
     title = " " .. base .. " · new ", title_pos = "center",
   })
   state.wins.left, state.wins.right = left_win, right_win
-  state.main_win = left_win
   set_win_opts(left_win)
   set_win_opts(right_win)
 
@@ -974,13 +786,6 @@ local function render_split()
   end
   update_titles()
   render_footer(vim.o.columns - 2, total_h + 2)
-  render_tree_pane(total_h)
-end
-
--- Toggle the file tree pane and re-render the current mode.
-toggle_tree = function()
-  state.tree_visible = not state.tree_visible
-  if state.mode == "split" then render_split() else render_unified() end
 end
 
 ---------------------------------------------------------------------------
@@ -1014,6 +819,7 @@ function M.open(diff_text, title, opts)
     toggle_blame()
   end
   -- Position on a specific file (1-based index into the parsed file list).
+  -- Additive: behaviour is unchanged when focus_file is not passed.
   if opts.focus_file then
     local pos = state.file_positions[opts.focus_file]
     if pos then
@@ -1028,8 +834,8 @@ function M.open(diff_text, title, opts)
   end
 end
 
---- Parse a raw diff into a list of files (path-only), for external callers
---- (e.g. the snacks file picker). Returns { { path, old_path, new_path }, … }.
+--- Parse a raw diff into a path-only file list, for external callers (the
+--- changed-files tree). Returns { { path, old_path, new_path }, … } in diff order.
 function M.parse_files(diff_text)
   local out = {}
   for _, f in ipairs(parse_diff(diff_text or "")) do

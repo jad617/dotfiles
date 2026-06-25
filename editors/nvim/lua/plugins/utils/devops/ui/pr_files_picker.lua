@@ -1,47 +1,67 @@
 ---------------------------------------------------------------------------
--- PR changed-files browser built on Snacks.picker.
--- A flat, fuzzy-searchable list of the PR's changed files on the left with a
--- live diff preview on the right (native, smooth navigation). ↵ opens the full
--- diff viewer (split / blame / inline comments) positioned on that file.
+-- PR changed-files tree, built on Snacks.picker.
 --
--- This is the preferred file browser; the diff viewer's homemade tree pane is
--- kept (toggle with 'f' inside the viewer) but off by default.
+-- A directory-nested tree of the PR's changed files. It is purely a navigator:
+-- ↵ opens the *normal* diff viewer positioned on that file. No diff preview of
+-- its own — the diff is shown by the original viewer ('d'), unchanged.
+--
+-- It floats (the DevOps dashboard/detail are themselves floats, and a real split
+-- would render behind them, invisible).
 ---------------------------------------------------------------------------
 
 local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
 
 local M = {}
 
--- Split a raw unified diff into one block per file. Files are delimited by
--- `diff --git` — the same boundary parse_diff() uses, so block i lines up with
--- the diff viewer's file index i.
-local function split_by_file(diff_text)
-  local blocks, cur = {}, nil
-  for _, line in ipairs(vim.split(diff_text or "", "\n", { plain = true })) do
-    if line:match("^diff %-%-git ") then
-      local old_path, new_path = line:match("^diff %-%-git a/(.-) b/(.-)$")
-      cur = { path = new_path or old_path or line, lines = { line } }
-      blocks[#blocks + 1] = cur
-    elseif cur then
-      cur.lines[#cur.lines + 1] = line
+-- Build a flattened, pre-expanded directory tree from a list of { path, idx }.
+local function build_tree_items(files)
+  local root = { children = {}, order = {} }
+  for _, f in ipairs(files) do
+    local parts = vim.split(f.path, "/", { plain = true })
+    local node = root
+    for i = 1, #parts - 1 do
+      local seg = parts[i]
+      if not node.children[seg] then
+        node.children[seg] = { name = seg, dir = true, children = {}, order = {} }
+        node.order[#node.order + 1] = seg
+      end
+      node = node.children[seg]
+    end
+    local fname = parts[#parts]
+    node.children[fname] = { name = fname, dir = false, idx = f.idx, path = f.path }
+    node.order[#node.order + 1] = fname
+  end
+
+  local items = {}
+  local function walk(node, depth)
+    local dirs, fnodes = {}, {}
+    for _, key in ipairs(node.order) do
+      local c = node.children[key]
+      if c.dir then dirs[#dirs + 1] = c else fnodes[#fnodes + 1] = c end
+    end
+    table.sort(dirs, function(a, b) return a.name < b.name end)
+    table.sort(fnodes, function(a, b) return a.name < b.name end)
+    for _, d in ipairs(dirs) do
+      items[#items + 1] = { dir = true, depth = depth, name = d.name, text = d.name }
+      walk(d, depth + 1)
+    end
+    for _, fl in ipairs(fnodes) do
+      items[#items + 1] = { dir = false, depth = depth, name = fl.name, idx = fl.idx, path = fl.path, text = fl.path }
     end
   end
-  for _, b in ipairs(blocks) do b.diff = table.concat(b.lines, "\n") end
-  return blocks
+  walk(root, 0)
+  return items
 end
 
 local function format_item(item)
-  local dir = vim.fs.dirname(item.text)
-  local name = vim.fs.basename(item.text)
-  local ret = {}
-  if dir and dir ~= "." and dir ~= "" then
-    ret[#ret + 1] = { dir .. "/", "SnacksPickerDir" }
+  local indent = string.rep("  ", item.depth or 0)
+  if item.dir then
+    return { { indent, "Normal" }, { " " .. item.name, "Directory" } }
   end
-  ret[#ret + 1] = { name, "SnacksPickerFile" }
-  return ret
+  return { { indent, "Normal" }, { " " .. item.name, "SnacksPickerFile" } }
 end
 
---- Open the changed-files picker for a PR.
+--- Open the changed-files tree for a PR.
 --- @param repo string       "owner/repo"
 --- @param n number          PR number
 --- @param diff_text string  Raw unified diff (as from `gh pr diff`)
@@ -49,61 +69,39 @@ function M.open(repo, n, diff_text)
   if not (Snacks and Snacks.picker) then
     return vim.notify("DevOps: Snacks.picker not available", vim.log.levels.ERROR)
   end
-  local blocks = split_by_file(diff_text)
-  if #blocks == 0 then
-    return vim.notify("DevOps: no changed files in #" .. n, vim.log.levels.INFO)
-  end
 
-  local items = {}
-  for i, b in ipairs(blocks) do
-    items[#items + 1] = {
-      idx = i,
-      text = b.path,
-      file = b.path,
-      diff = b.diff,
-    }
+  local files = {}
+  for i, f in ipairs(diff_viewer.parse_files(diff_text)) do
+    files[#files + 1] = { path = f.path, idx = i }
+  end
+  if #files == 0 then
+    return vim.notify("DevOps: no changed files in #" .. n, vim.log.levels.INFO)
   end
 
   Snacks.picker.pick({
     source = "devops_pr_files",
-    title = "PR #" .. n .. " · " .. #items .. " files",
-    items = items,
+    title = "PR #" .. n .. " · " .. #files .. " files",
+    items = build_tree_items(files),
     format = format_item,
-    -- The DevOps dashboard/detail are themselves floating windows, and a real
-    -- split (e.g. the "sidebar" preset) opens *behind* floats — invisible. So lay
-    -- the picker out as a full-height float styled like a tree: a narrow file
-    -- list on the left, the diff preview filling the rest.
+    -- Tree only, no diff preview (the diff lives in the normal viewer).
     layout = {
-      preview = true,
+      preview = false,
       layout = {
         backdrop = false,
-        width = 0,
-        height = 0,
-        border = "none",
-        box = "horizontal",
-        {
-          box = "vertical",
-          width = 40,
-          border = "rounded",
-          title = "{title}",
-          title_pos = "center",
-          { win = "input", height = 1, border = "bottom" },
-          { win = "list", border = "none" },
-        },
-        { win = "preview", border = "rounded", title = "{preview}", title_pos = "center" },
+        width = 0.32,
+        min_width = 42,
+        height = 0.85,
+        border = "rounded",
+        box = "vertical",
+        title = "{title}",
+        title_pos = "center",
+        { win = "input", height = 1, border = "bottom" },
+        { win = "list", border = "none" },
       },
     },
-    -- Render the file's diff directly (the file may not be checked out, so the
-    -- default file previewer can't read it from disk).
-    preview = function(ctx)
-      ctx.preview:set_lines(vim.split(ctx.item.diff or "", "\n", { plain = true }))
-      ctx.preview:highlight({ ft = "diff" })
-      ctx.preview:set_title(ctx.item.text)
-      return true
-    end,
     confirm = function(picker, item)
+      if not item or item.dir then return end
       picker:close()
-      if not item then return end
       diff_viewer.open(diff_text, "Diff #" .. n, {
         pr = { repo = repo, number = n },
         focus_file = item.idx,

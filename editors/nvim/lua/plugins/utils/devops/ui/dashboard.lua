@@ -308,7 +308,7 @@ local function render_footer()
     else
       groups = {
         { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
-        { "Actions",  { "a approve", "R changes", "c comment", "d files" } },
+        { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files" } },
         { "PR",       { "D ready", "x checkout", "m merge", "o browser", "gx links" } },
         { "Window",   { "? help", "Q close" } },
       }
@@ -336,14 +336,14 @@ local function render_footer()
   elseif sec_id == "gh_reviews" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d files", "m merge", "S search", "* pin" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
       { "PR",       { "s sort", "D ready", "x checkout", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   else
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d files", "m merge", "S search", "* pin" } },
+      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
       { "PR",       { "D ready", "x checkout", "N new", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
@@ -1829,6 +1829,15 @@ local function gh_merge()
   end)
 end
 
+local function gh_diff()
+  local item, repo, n = pr_item()
+  if not item then return end
+  gh.pr_diff(repo, n, function(ok, diff_text, err)
+    if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+    require("plugins.utils.devops.ui.diff_viewer").open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
+  end)
+end
+
 local function gh_files()
   local item, repo, n = pr_item()
   if not item then return end
@@ -2022,7 +2031,8 @@ local function show_help()
       { "a",     "Approve PR" },
       { "R",     "Request changes" },
       { "c",     "Comment on PR" },
-      { "d",     "Changed files (picker → ↵ opens diff)" },
+      { "d",     "View diff" },
+      { "F",     "Changed-files tree (↵ opens diff at file)" },
       { "D",     "Mark ready for review" },
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
@@ -2453,7 +2463,8 @@ local function setup_keymaps()
   map("R", gh_request_changes, "request changes")
   map("D", gh_ready, "mark ready")
   map("m", dispatch_m, "move issue / merge PR")
-  map("d", gh_files, "changed files (picker)")
+  map("d", gh_diff, "view diff")
+  map("F", gh_files, "changed files tree")
   map("x", gh_checkout, "checkout PR")
   map("N", gh_create_pr, "new PR")
   -- Toggles
