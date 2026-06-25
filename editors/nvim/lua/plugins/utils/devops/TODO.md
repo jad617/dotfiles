@@ -35,10 +35,10 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
       shows all file diffs; per-file jump needs diff-viewer support + line→path mapping.
 
 ## 🟢 Performance
-- [ ] **Synchronous section-cache read on first open** (`store.lua`) — defer so first
-      paint isn't blocked.
-- [ ] **No in-flight request de-dup** — fast section switching fires overlapping API
-      calls; cancel or coalesce.
+- [x] **Section-cache read warmed at idle** — `dashboard.preload_cache` is scheduled from
+      init so the file read happens off the first-open path.
+- [x] **Request de-dup / race guard** — `load_section` stamps a generation token; stale or
+      superseded callbacks (rapid switches, re-loads) are dropped, so no double-render.
 
 ## ⚪ Polish / robustness
 - [ ] **No automated tests.** Pure helpers (`render.truncate`, markdown `wrap_words` /

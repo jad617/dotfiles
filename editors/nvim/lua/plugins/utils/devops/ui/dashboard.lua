@@ -817,6 +817,10 @@ local function ensure_cache_loaded()
   end
 end
 
+-- Warm the persisted cache off the critical path (call from idle/init) so the first
+-- open doesn't pay the file read.
+function M.preload_cache() pcall(ensure_cache_loaded) end
+
 local function cache_get(sec_id)
   ensure_cache_loaded()
   local entry = cache[sec_id]
@@ -848,6 +852,10 @@ end
 
 local function load_section(force)
   local sec_id = current_section_id()
+  -- Generation token: only the latest load's callback applies, so rapid section
+  -- switches (or re-loads of the same section) don't double-render or race.
+  state.load_gen = (state.load_gen or 0) + 1
+  local gen = state.load_gen
 
   -- Bookmark sections are local — no API call needed
   if sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
@@ -880,7 +888,7 @@ local function load_section(force)
     local account = state.jira_user and state.jira_user.account_id or client.account_id()
     local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
     local function on_issues(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id then return end
+      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
       if not ok then return set_message("⚠ " .. (err or "Jira search failed")) end
       cache_set(sec_id, issues)
       render_jira(issues, name, state.columns)
@@ -916,7 +924,7 @@ local function load_section(force)
       scope_project = true, -- sprint board follows the selected project
       include_done = true,
     }, function(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id then return end
+      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
       if not ok then return set_message("⚠ " .. (err or "sprint fetch failed")) end
       cache_set(sec_id, issues)
       local title = (picked and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
@@ -932,7 +940,7 @@ local function load_section(force)
       return
     end
     api.epics(state.project.key, state.jira_user and state.jira_user.account_id or nil, function(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id then return end
+      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
       if not ok then return set_message("⚠ " .. (err or "epics fetch failed")) end
       cache_set(sec_id, issues)
       render_jira(issues, state.jira_user and state.jira_user.name or state.project.key, nil, "Jira  ·  Epics")
@@ -960,7 +968,7 @@ local function load_section(force)
       render_jira(issues, state.jira_user and state.jira_user.name or state.project.key, nil, "Jira  ·  Backlog")
     end
     local on_bl = function(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id then return end
+      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
       if not ok then return set_message("⚠ " .. (err or "backlog fetch failed")) end
       render_backlog(issues)
     end
@@ -975,7 +983,7 @@ local function load_section(force)
     local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
     local show_meta = sec_id == "gh_reviews"
     fn(function(ok, prs, err)
-      if not is_open() or current_section_id() ~= sec_id then return end
+      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
       if not ok then return set_message("⚠ " .. (err or "gh failed")) end
       cache_set(sec_id, prs)
       render_github(prs, title, show_meta)
