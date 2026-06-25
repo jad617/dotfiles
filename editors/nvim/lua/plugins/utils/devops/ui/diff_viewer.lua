@@ -339,8 +339,7 @@ end
 
 local function setup_keymaps(buf)
   map_buf(buf, "q", close, "Close diff")
-  map_buf(buf, "<C-d>", close, "Close diff")
-  map_buf(buf, "<Esc>", close, "Close diff")
+  map_buf(buf, "<Esc>", close, "Close diff") -- <C-d> is left free for half-page scroll
   map_buf(buf, "<Tab>", function()
     state.mode = state.mode == "unified" and "split" or "unified"
     M.open(state.diff_text, state.title)
