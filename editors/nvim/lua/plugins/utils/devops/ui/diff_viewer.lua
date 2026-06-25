@@ -35,6 +35,23 @@ local render_tree_pane -- forward-declared; defined before the render fns
 -- Horizontal space the tree pane reserves on the left (0 when hidden).
 local function tree_off() return state.tree_visible and (TREE_W + 2) or 0 end
 
+-- Move focus between the diff panes left→right (tree | diff, or tree | old | new).
+-- These are floats, so smart-splits/<C-w> can't reach them — we hop explicitly.
+local function focus_pane(delta)
+  local order, cur = {}, vim.api.nvim_get_current_win()
+  for _, key in ipairs({ "tree", "unified", "left", "right" }) do
+    local w = state.wins[key]
+    if w and vim.api.nvim_win_is_valid(w) then order[#order + 1] = w end
+  end
+  for i, w in ipairs(order) do
+    if w == cur then
+      local t = order[i + delta]
+      if t then vim.api.nvim_set_current_win(t) end
+      return
+    end
+  end
+end
+
 ---------------------------------------------------------------------------
 -- Helpers
 ---------------------------------------------------------------------------
@@ -336,6 +353,8 @@ local function setup_keymaps(buf)
   end, "Cycle diff theme")
   map_buf(buf, "B", toggle_blame, "Toggle blame")
   map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
+  map_buf(buf, "<S-Left>", function() focus_pane(-1) end, "Focus pane left")
+  map_buf(buf, "<S-Right>", function() focus_pane(1) end, "Focus pane right")
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
   -- Open in browser at current file/line position
@@ -575,9 +594,16 @@ render_tree_pane = function(total_h)
 
   local function jump()
     local idx = rows[vim.api.nvim_win_get_cursor(win)[1]]
-    if idx and state.main_win and vim.api.nvim_win_is_valid(state.main_win) then
-      local pos = state.file_positions[idx]
-      if pos then pcall(vim.api.nvim_win_set_cursor, state.main_win, { pos + 1, 0 }) end
+    if not idx then return end
+    local pos = state.file_positions[idx]
+    if not pos then return end
+    -- Move every diff pane (programmatic cursor sets don't trigger scrollbind).
+    for _, key in ipairs({ "unified", "left", "right" }) do
+      local w = state.wins[key]
+      if w and vim.api.nvim_win_is_valid(w) then
+        pcall(vim.api.nvim_win_set_cursor, w, { pos + 1, 0 })
+        pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zt") end)
+      end
     end
   end
   setup_keymaps(buf) -- q/f/T/B/]f… also work from the tree
