@@ -59,4 +59,7 @@ if open_key and open_key ~= "" then
   vim.keymap.set("n", open_key, "<cmd>DevOps<cr>", { desc = "DevOps (Jira + GitHub)" })
 end
 
+-- Warm the persisted section cache during idle so the first open is instant.
+if dashboard.preload_cache then vim.schedule(dashboard.preload_cache) end
+
 return {}
