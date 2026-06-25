@@ -804,8 +804,36 @@ local function check_display(ctx)
   return "○", "DevOpsDim", tostring(state):lower()
 end
 
+local active_pr -- the PR currently rendered (enriched), for keymaps like links
+
+-- Collect distinct URLs from a PR's body, comments, reviews, and review threads,
+-- so they stay openable even though the rendered text flattens links to their label.
+local function pr_links(pr)
+  local seen, urls = {}, {}
+  local function scan(text)
+    for url in (text or ""):gmatch("https?://[%w%-%._~:/%?#%[%]@!%$&'%(%)%*%+,;=%%]+") do
+      url = url:gsub("[%.,%)%]>]+$", "") -- trim trailing punctuation/brackets
+      if not seen[url] then seen[url] = true; urls[#urls + 1] = url end
+    end
+  end
+  scan(pr.body)
+  for _, c in ipairs(pr.comments or {}) do scan(c.body) end
+  for _, r in ipairs(pr.reviews or {}) do scan(r.body) end
+  for _, c in ipairs(pr.reviewComments or {}) do scan(c.body) end
+  return urls
+end
+
+-- Open a link from the current PR (the rendered text hides raw URLs).
+local function open_pr_links(pr)
+  local urls = pr_links(pr)
+  if #urls == 0 then return vim.notify("DevOps: no links in this PR", vim.log.levels.INFO) end
+  if #urls == 1 then return vim.ui.open(urls[1]) end
+  vim.ui.select(urls, { prompt = "Open link:" }, function(u) if u then vim.ui.open(u) end end)
+end
+
 local function build_pr(pr, width)
   local b = builder()
+  active_pr = pr -- remember for keymaps (gx links)
   local W = width or math.max(60, math.floor(vim.o.columns * 0.75))
   local draft = pr.isDraft
   local icon = draft and "" or ""
@@ -945,8 +973,8 @@ local function build_pr(pr, width)
       local pl = b.add("  " .. render.truncate(p, W - 4))
       b.hl(pl, 2, #b.lines()[pl], "DevOpsId")
       for _, c in ipairs(groups[p]) do
-        local author = (c.user and c.user.login) or "?"
-        local ln = c.line or c.original_line
+        local author = (c.user and c.user.login) or (c.author and c.author.login) or "?"
+        local ln = c.line or c.original_line or c.position or c.original_position
         local hdr = "    " .. (ln and ("L" .. ln .. "  ") or "") .. "@" .. author
         local hline = b.add(hdr)
         b.hl(hline, #hdr - #author - 1, #hdr, "DevOpsKey")
@@ -1084,6 +1112,7 @@ function M.open_pr(pr)
 
   local function setup_keys(buf)
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, desc = "Open in browser" })
+    vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, desc = "Open a link from the PR" })
 
     if not repo or not n then return end
 
@@ -1287,6 +1316,7 @@ function M.load_pr(pr, opts)
 
   local function make_keys(buf)
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, nowait = true, desc = "Open in browser" })
+    vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, nowait = true, desc = "Open a link from the PR" })
     if not repo or not n then return end
     vim.keymap.set("n", "a", function()
       gh.pr_approve(repo, n, function(ok, _, err)

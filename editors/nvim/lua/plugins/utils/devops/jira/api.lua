@@ -39,17 +39,30 @@ function M.build_jql(opts)
   return table.concat(parts, " AND ") .. " ORDER BY updated DESC"
 end
 
--- List issues. opts = { account_id, project_key, open_sprints }. cb(ok, issues[], err)
+-- Max issues fetched across pages for a single view (safety cap).
+local MAX_ISSUES = 1000
+
+-- List issues, following nextPageToken so big sprints/lists aren't truncated.
+-- opts = { account_id, project_key, sprint_id, open_sprints, scope_project, include_done }.
 function M.search(opts, cb)
-  local body = {
-    jql = M.build_jql(opts),
-    fields = LIST_FIELDS,
-    maxResults = config.options.jira.page_size or 50,
-  }
-  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
-    if not ok then return cb(false, nil, err) end
-    cb(true, (data and data.issues) or {}, nil)
-  end)
+  local jql = M.build_jql(opts)
+  local page = config.options.jira.page_size or 100
+  local all = {}
+  local function fetch(token)
+    local body = { jql = jql, fields = LIST_FIELDS, maxResults = page }
+    if token then body.nextPageToken = token end
+    client.post("/rest/api/3/search/jql", body, function(ok, data, err)
+      if not ok then return cb(false, nil, err) end
+      vim.list_extend(all, (data and data.issues) or {})
+      local next_token = data and data.nextPageToken
+      if next_token and #all < MAX_ISSUES then
+        fetch(next_token)
+      else
+        cb(true, all, nil)
+      end
+    end)
+  end
+  fetch(nil)
 end
 
 function M.epics(project_key, account_id, cb)
@@ -84,10 +97,21 @@ end
 -- Agile board backlog — matches Jira's Backlog view (unscheduled + future-sprint
 -- issues), so it shows everything, not just sprint-empty. cb(ok, issues[], err)
 function M.board_backlog(board_id, cb)
-  client.get("/rest/agile/1.0/board/" .. board_id .. "/backlog?maxResults=100", function(ok, data, err)
-    if not ok then return cb(false, nil, err) end
-    cb(true, (data and data.issues) or {}, nil)
-  end)
+  local all = {}
+  local function fetch(start)
+    client.get("/rest/agile/1.0/board/" .. board_id .. "/backlog?maxResults=100&startAt=" .. start, function(ok, data, err)
+      if not ok then return cb(false, nil, err) end
+      local issues = (data and data.issues) or {}
+      vim.list_extend(all, issues)
+      local total = (data and data.total) or #all
+      if #issues == 0 or (data and data.isLast) or #all >= total or #all >= MAX_ISSUES then
+        cb(true, all, nil)
+      else
+        fetch(#all)
+      end
+    end)
+  end
+  fetch(0)
 end
 
 -- Active + closed + future sprints for a board (for the sprint picker).
