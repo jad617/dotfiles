@@ -308,7 +308,7 @@ local function render_footer()
     else
       groups = {
         { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
-        { "Actions",  { "a approve", "R changes", "c comment", "d diff" } },
+        { "Actions",  { "a approve", "R changes", "c comment", "d diff", "f files" } },
         { "PR",       { "D ready", "x checkout", "m merge", "o browser", "gx links" } },
         { "Window",   { "? help", "Q close" } },
       }

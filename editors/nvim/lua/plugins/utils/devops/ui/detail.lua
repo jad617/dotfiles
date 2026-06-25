@@ -9,6 +9,7 @@ local adf = require("plugins.utils.devops.jira.adf")
 local gh = require("plugins.utils.devops.github.api")
 local input = require("plugins.utils.devops.ui.input")
 local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
+local pr_files = require("plugins.utils.devops.ui.pr_files")
 local markdown = require("plugins.utils.devops.ui.markdown")
 local render = require("plugins.utils.devops.ui.render")
 local user_picker = require("plugins.utils.devops.ui.user_picker")
@@ -1113,6 +1114,7 @@ function M.open_pr(pr)
   local function setup_keys(buf)
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, desc = "Open in browser" })
     vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, desc = "Open a link from the PR" })
+    vim.keymap.set("n", "f", function() pr_files.open(active_pr or pr) end, { buffer = buf, desc = "Browse changed files (tree)" })
 
     if not repo or not n then return end
 
@@ -1317,6 +1319,7 @@ function M.load_pr(pr, opts)
   local function make_keys(buf)
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, nowait = true, desc = "Open in browser" })
     vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, nowait = true, desc = "Open a link from the PR" })
+    vim.keymap.set("n", "f", function() pr_files.open(active_pr or pr) end, { buffer = buf, nowait = true, desc = "Browse changed files (tree)" })
     if not repo or not n then return end
     vim.keymap.set("n", "a", function()
       gh.pr_approve(repo, n, function(ok, _, err)
