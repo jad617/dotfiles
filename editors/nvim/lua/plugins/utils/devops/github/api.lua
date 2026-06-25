@@ -104,14 +104,22 @@ query($n: Int!) {
   end)
 end
 
+-- statusCheckRollup is the single priciest field; it's fetched separately (in
+-- parallel) so the main view doesn't wait on the CI-checks fan-out.
 local PR_VIEW_FIELDS =
   "number,title,body,state,isDraft,url,headRefName,baseRefName,author," ..
-  "additions,deletions,reviewDecision,statusCheckRollup,labels,assignees,updatedAt," ..
+  "additions,deletions,reviewDecision,labels,assignees,updatedAt," ..
   "reviewRequests,reviews,comments,files,mergeStateStatus,mergeable,commits"
 
 -- Full PR details for the detail view. cb(ok, pr, err)
 function M.pr_view(repo, number, cb)
   gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_FIELDS }, cb)
+end
+
+-- CI check rollup only — fetched in parallel with pr_view. cb(ok, data, err)
+-- where data = { statusCheckRollup = … }.
+function M.pr_view_checks(repo, number, cb)
+  gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", "statusCheckRollup" }, cb)
 end
 
 -- Inline review (code-thread) comments. cb(ok, comments[], err)
@@ -170,8 +178,30 @@ function M.pr_merge(repo, n, cb)
   gh_run({ "pr", "merge", tostring(n), "--repo", repo, "--squash" }, cb)
 end
 
+-- `gh pr diff` is re-fetched on every 'd' / 'F' / reopen and is ~0.6s+ (scales
+-- with PR size). Cache it per repo#n with a short TTL so repeats are instant.
+local diff_cache = {} -- [repo#n] = { text = ..., ts = os.time() }
+local DIFF_TTL = 90   -- seconds
+
 function M.pr_diff(repo, n, cb)
-  gh_run({ "pr", "diff", tostring(n), "--repo", repo }, cb)
+  local key = repo .. "#" .. tostring(n)
+  local e = diff_cache[key]
+  if e and (os.time() - e.ts) < DIFF_TTL then
+    return vim.schedule(function() cb(true, e.text, "") end)
+  end
+  gh_run({ "pr", "diff", tostring(n), "--repo", repo }, function(ok, text, err)
+    if ok then diff_cache[key] = { text = text, ts = os.time() } end
+    cb(ok, text, err)
+  end)
+end
+
+-- Drop cached diffs (all, or one repo#n) — e.g. on manual refresh.
+function M.clear_diff_cache(repo, n)
+  if repo and n then
+    diff_cache[repo .. "#" .. tostring(n)] = nil
+  else
+    for k in pairs(diff_cache) do diff_cache[k] = nil end
+  end
 end
 
 function M.pr_checkout(repo, n, cb)

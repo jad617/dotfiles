@@ -1121,7 +1121,7 @@ local function enrich_pr(repo, n, base, render, still_valid)
   local cached = pr_full_cache[key]
   if cached and still_valid() then render(cached) end
 
-  local full_data, rc_data, pending = nil, {}, 2
+  local full_data, rc_data, checks, pending = nil, {}, nil, 3
   local function done()
     pending = pending - 1
     if pending > 0 then return end
@@ -1129,6 +1129,7 @@ local function enrich_pr(repo, n, base, render, still_valid)
     full_data.repository = base.repository
     full_data.url = base.url
     full_data.reviewComments = rc_data
+    full_data.statusCheckRollup = checks
     pr_full_cache[key] = full_data
     if still_valid() then render(full_data) end
   end
@@ -1138,6 +1139,10 @@ local function enrich_pr(repo, n, base, render, still_valid)
   end)
   gh.pr_review_comments(repo, n, function(ok2, rc)
     rc_data = (ok2 and type(rc) == "table") and rc or {}
+    done()
+  end)
+  gh.pr_view_checks(repo, n, function(ok3, d)
+    if ok3 and d then checks = d.statusCheckRollup end
     done()
   end)
 end
