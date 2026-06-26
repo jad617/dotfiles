@@ -718,8 +718,9 @@ local function review_request_name(req)
 end
 
 local function review_rows(pr)
+  local me = gh.current_user_login()
   local rows, by_key = {}, {}
-  local function upsert(key, name, verdict, hl, order)
+  local function upsert(key, name, verdict, hl, order, is_me)
     if not key or key == "" or not name or name == "" then return end
     local existing = by_key[key]
     if existing and existing.order > order then return end
@@ -727,8 +728,9 @@ local function review_rows(pr)
       existing.verdict = verdict
       existing.hl = hl
       existing.order = order
+      existing.is_me = is_me or existing.is_me
     else
-      local row = { key = key, name = name, verdict = verdict, hl = hl, order = order }
+      local row = { key = key, name = name, verdict = verdict, hl = hl, order = order, is_me = is_me }
       by_key[key] = row
       rows[#rows + 1] = row
     end
@@ -738,14 +740,17 @@ local function review_rows(pr)
   for i, review in ipairs(pr.reviews or {}) do
     local author = gh_person_name(review.author)
     local key = gh_person_key(review.author)
+    local is_me = (review.author and review.author.login and review.author.login == me) or false
     if author and key and key ~= author_key then
       local state = review.state or ""
       if state == "APPROVED" then
-        upsert(key, author, "approved", "DevOpsOk", i)
+        upsert(key, author, "approved", "DevOpsOk", i, is_me)
       elseif state == "CHANGES_REQUESTED" then
-        upsert(key, author, "changes_requested", "DevOpsErr", i)
+        upsert(key, author, "changes_requested", "DevOpsErr", i, is_me)
+      elseif state == "COMMENTED" then
+        upsert(key, author, "commented", "DevOpsKey", i, is_me)
       elseif state ~= "" and state ~= "DISMISSED" then
-        upsert(key, author, "pending", "DevOpsWarn", i)
+        upsert(key, author, "pending", "DevOpsWarn", i, is_me)
       end
     end
   end
@@ -914,12 +919,17 @@ local function build_pr(pr, width)
       local line = b.add("   none")
       b.hl(line, 0, #b.lines()[line], "DevOpsDim")
     else
+      local labels = {
+        approved = "✓ Approved", changes_requested = "✗ Changes requested",
+        commented = "💬 Commented", pending = "○ Pending",
+      }
       for _, reviewer in ipairs(reviewers) do
-        local verdict = reviewer.verdict
-        local trunc = render.truncate(reviewer.name, 24)
-        local name = render.pad(trunc, 24) -- exactly 24 display cols
+        local verdict = labels[reviewer.verdict] or reviewer.verdict
+        local nm = reviewer.name .. (reviewer.is_me and " (you)" or "")
+        local trunc = render.truncate(nm, 28)
+        local name = render.pad(trunc, 28) -- exactly 28 display cols
         local line = b.add("  " .. name .. "  " .. verdict)
-        b.hl(line, 2, 2 + #trunc, "DevOpsDetailTitle")
+        b.hl(line, 2, 2 + #trunc, reviewer.is_me and "DevOpsOk" or "DevOpsDetailTitle")
         local vstart = 2 + #name + 2
         b.hl(line, vstart, vstart + #verdict, reviewer.hl)
       end
@@ -963,31 +973,63 @@ local function build_pr(pr, width)
   end
 
   if type(pr.reviewComments) == "table" and #pr.reviewComments > 0 then
+    local me = gh.current_user_login()
+    -- Build threads: roots (no in_reply_to_id) + replies keyed by their root id.
+    local replies, roots = {}, {}
+    for _, c in ipairs(pr.reviewComments) do
+      if c.in_reply_to_id then
+        replies[c.in_reply_to_id] = replies[c.in_reply_to_id] or {}
+        table.insert(replies[c.in_reply_to_id], c)
+      else
+        roots[#roots + 1] = c
+      end
+    end
     b.divider("Review Comments (" .. #pr.reviewComments .. ")")
     local groups, order = {}, {}
-    for _, c in ipairs(pr.reviewComments) do
+    for _, c in ipairs(roots) do
       local p = c.path or "?"
       if not groups[p] then groups[p] = {} order[#order + 1] = p end
       table.insert(groups[p], c)
+    end
+    local function add_body(c, indent)
+      local cbody = markdown.clean(c.body or "")
+      if cbody == "" then return end
+      local mdc = markdown.render(cbody, indent, W - #indent - 2)
+      for i, l in ipairs(mdc.lines) do
+        local li = b.add(l)
+        for _, h in ipairs(mdc.highlights) do
+          if h.line == i - 1 then b.hl(li, h.col_start, h.col_end, h.hl) end
+        end
+      end
+    end
+    local function comment_header(c, indent, marker)
+      local author = (c.user and c.user.login) or (c.author and c.author.login) or "?"
+      local is_me = (author == me)
+      local at = "@" .. author .. (is_me and " (you)" or "")
+      local thread = replies[c.id] or {}
+      local status, status_hl
+      if #thread > 0 then
+        status = "↩ replied (" .. #thread .. ")"; status_hl = "DevOpsOk"
+      elseif is_me then
+        status = "⏳ awaiting reply"; status_hl = "DevOpsWarn"
+      end
+      local ln = c.line or c.original_line or c.position or c.original_position
+      local prefix = indent .. (marker or "") .. (ln and ("L" .. ln .. "  ") or "")
+      local hdr = prefix .. at
+      local line = b.add(hdr .. (status and ("   " .. status) or ""))
+      b.hl(line, #prefix, #prefix + #at, is_me and "DevOpsOk" or "DevOpsKey")
+      if status then b.hl(line, #hdr + 3, #hdr + 3 + #status, status_hl) end
+      return thread
     end
     for _, p in ipairs(order) do
       local pl = b.add("  " .. render.truncate(p, W - 4))
       b.hl(pl, 2, #b.lines()[pl], "DevOpsId")
       for _, c in ipairs(groups[p]) do
-        local author = (c.user and c.user.login) or (c.author and c.author.login) or "?"
-        local ln = c.line or c.original_line or c.position or c.original_position
-        local hdr = "    " .. (ln and ("L" .. ln .. "  ") or "") .. "@" .. author
-        local hline = b.add(hdr)
-        b.hl(hline, #hdr - #author - 1, #hdr, "DevOpsKey")
-        local cbody = markdown.clean(c.body or "")
-        if cbody ~= "" then
-          local mdc = markdown.render(cbody, "      ", W - 8)
-          for i, l in ipairs(mdc.lines) do
-            local li = b.add(l)
-            for _, h in ipairs(mdc.highlights) do
-              if h.line == i - 1 then b.hl(li, h.col_start, h.col_end, h.hl) end
-            end
-          end
+        local thread = comment_header(c, "    ")
+        add_body(c, "      ")
+        for _, r in ipairs(thread) do
+          comment_header(r, "      ", "↳ ")
+          add_body(r, "         ")
         end
       end
     end
@@ -1120,6 +1162,7 @@ local pr_full_cache = {}
 -- and skip the rebuild when nothing changed. still_valid() guards a closed view.
 local function enrich_pr(repo, n, base, render, still_valid)
   if not (repo and n) then return end
+  gh.fetch_current_user() -- warm the "(you)" marker (cached after first call)
   local key = repo .. "#" .. n
   local cached = pr_full_cache[key]
   if cached and still_valid() then render(cached) end
