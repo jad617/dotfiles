@@ -30,6 +30,7 @@ local state = {
 local render = require("plugins.utils.devops.ui.render")
 local TREE_W = 38 -- file-tree pane content width
 local render_tree_pane, toggle_tree -- forward declarations (defined below)
+local _saved_sidescroll -- sidescroll is global-only; set to 1 while open, restored on close
 -- Horizontal space the tree reserves on the left (pane width + its border).
 local function tree_off() return state.tree_visible and (TREE_W + 2) or 0 end
 
@@ -54,6 +55,10 @@ end
 
 local function close()
   close_windows()
+  if _saved_sidescroll ~= nil then
+    vim.o.sidescroll = _saved_sidescroll
+    _saved_sidescroll = nil
+  end
   state.mode = "split"
   state.pr = nil
   state.pending_comments = {}
@@ -79,8 +84,7 @@ end
 
 local function set_win_opts(win)
   vim.wo[win].wrap = false
-  vim.wo[win].sidescroll = 1 -- smooth 1-col horizontal scroll for long lines
-  vim.wo[win].sidescrolloff = 4
+  vim.wo[win].sidescrolloff = 4 -- keep a few cols of context past the cursor
   vim.wo[win].cursorline = true
   vim.wo[win].number = false
   vim.wo[win].signcolumn = "no"
@@ -1197,6 +1201,10 @@ function M.open(diff_text, title, opts)
     state.pr = opts.pr
     bind_pending() -- restore this PR's persisted draft review comments
   end
+  -- Smooth 1-col horizontal scrolling for long lines while the diff is open
+  -- (sidescroll is a global option; saved once and restored on close).
+  if _saved_sidescroll == nil then _saved_sidescroll = vim.o.sidescroll end
+  vim.o.sidescroll = 1
   if state.mode == "split" then
     render_split()
   else
