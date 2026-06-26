@@ -31,6 +31,17 @@ end
 
 function M.available() return vim.fn.executable("gh") == 1 end
 
+-- Authenticated GitHub login (cached), for "(you)" markers. Fetched once.
+local _user_login
+function M.current_user_login() return _user_login end
+function M.fetch_current_user(cb)
+  if _user_login then if cb then cb(_user_login) end return end
+  gh_json({ "api", "user" }, function(ok, data)
+    if ok and type(data) == "table" and data.login then _user_login = data.login end
+    if cb then cb(_user_login) end
+  end)
+end
+
 local function limit() return tostring(config.options.github.pr_limit or 30) end
 
 function M.notifications_count(cb)
@@ -58,13 +69,13 @@ function M.search_prs(query, opts, cb)
   gh_json(args, cb)
 end
 
--- Open PRs where the current user is requested as a reviewer.
--- Uses GraphQL to include reviewRequests (user or team name).
+-- Open PRs the current user is involved in (review-requested, author, assignee,
+-- mentioned, or commenter). Uses GraphQL to include reviewRequests (user/team).
 function M.my_reviews(cb)
   local n = config.options.github.pr_limit or 30
   local query = [[
 query($n: Int!) {
-  search(query: "is:pr is:open review-requested:@me", type: ISSUE, first: $n) {
+  search(query: "is:pr is:open involves:@me", type: ISSUE, first: $n) {
     nodes {
       ... on PullRequest {
         number title url state isDraft headRefName

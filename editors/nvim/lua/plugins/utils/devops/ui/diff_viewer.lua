@@ -136,6 +136,34 @@ end
 
 local input = require("plugins.utils.devops.ui.input")
 local gh = require("plugins.utils.devops.github.api")
+local store = require("plugins.utils.devops.store")
+
+-- Persisted draft review comments, keyed "repo#number", so an in-progress review
+-- survives closing/reopening the diff and Neovim restarts.
+local pending_by_pr -- lazy-loaded map
+
+local function pending_key()
+  return state.pr and (state.pr.repo .. "#" .. tostring(state.pr.number)) or nil
+end
+local function load_pending_store()
+  if not pending_by_pr then pending_by_pr = store.load_pending() or {} end
+  return pending_by_pr
+end
+local function save_pending_store()
+  if not pending_by_pr then return end
+  for k, v in pairs(pending_by_pr) do
+    if type(v) ~= "table" or #v == 0 then pending_by_pr[k] = nil end
+  end
+  pcall(store.save_pending, pending_by_pr)
+end
+-- Bind state.pending_comments to this PR's persisted draft list (same table).
+local function bind_pending()
+  local key = pending_key()
+  if not key then return end
+  load_pending_store()
+  pending_by_pr[key] = pending_by_pr[key] or {}
+  state.pending_comments = pending_by_pr[key]
+end
 
 local function get_line_info()
   local line = vim.api.nvim_win_get_cursor(0)[1]
@@ -175,6 +203,7 @@ local function add_inline_comment()
       line = info.line,
       body = body,
     }
+    save_pending_store()
     vim.notify(string.format("DevOps: comment queued (%d pending)", #state.pending_comments), vim.log.levels.INFO)
     -- Show virtual text on all active diff buffers
     for _, key in ipairs({ "unified", "left", "right" }) do
@@ -205,11 +234,13 @@ local function submit_review()
         if not ok then
           return vim.notify("DevOps: review failed — " .. (err or "unknown"), vim.log.levels.ERROR)
         end
-        state.pending_comments = {}
+        local n_inline = #pending
+        for i = #pending, 1, -1 do pending[i] = nil end -- clear in place (keeps the persisted ref)
+        save_pending_store()
         local label = event == "APPROVE" and "approved"
           or event == "REQUEST_CHANGES" and "changes requested"
           or "commented"
-        local count = #pending > 0 and string.format(" (%d inline comments)", #pending) or ""
+        local count = n_inline > 0 and string.format(" (%d inline comments)", n_inline) or ""
         vim.notify("DevOps: review submitted — " .. label .. count, vim.log.levels.INFO)
       end)
     end
@@ -221,6 +252,112 @@ local function submit_review()
       end)
     end
   end)
+end
+
+-- Refresh the 💬 markers on every open diff buffer.
+local function refresh_virt_all()
+  for _, key in ipairs({ "unified", "left", "right" }) do
+    local b = state.bufs[key]
+    if b and vim.api.nvim_buf_is_valid(b) then show_pending_virt(b) end
+  end
+end
+
+-- Move the diff to a queued comment's file:line.
+local function jump_to_comment(c)
+  for bl, info in pairs(state.line_map) do
+    if info.path == c.path and info.line == c.line then
+      local w = state.wins.right or state.wins.unified or state.wins.left
+      if w and vim.api.nvim_win_is_valid(w) then
+        vim.api.nvim_set_current_win(w)
+        pcall(vim.api.nvim_win_set_cursor, w, { bl, 0 })
+        pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zz") end)
+      end
+      return
+    end
+  end
+  vim.notify("DevOps: that line isn't in the current diff", vim.log.levels.WARN)
+end
+
+-- Panel listing the queued review comments: ↵ jump · e edit · dd delete · S submit.
+local function open_pending_panel()
+  if not state.pr then
+    vim.notify("DevOps: no PR context — open the diff from a PR", vim.log.levels.WARN)
+    return
+  end
+  local pending = state.pending_comments
+  if not pending or #pending == 0 then
+    vim.notify("DevOps: no pending review comments (add with 'c')", vim.log.levels.INFO)
+    return
+  end
+  local buf = make_buf()
+  local win
+  local rows = {}
+  local function rerender()
+    local lines, hls = {}, {}
+    local hdr = "  Pending review (" .. #pending .. ")"
+    lines[1], lines[2] = hdr, ""
+    hls[#hls + 1] = { 0, 0, #hdr, "DevOpsTitle" }
+    rows = {}
+    for i, c in ipairs(pending) do
+      local name = (c.path or "?"):match("[^/]+$") or c.path or "?"
+      local loc = ("  %s:%d"):format(name, c.line or 0)
+      local prev = render.truncate(((c.body or ""):gsub("%s+", " ")), 54)
+      lines[#lines + 1] = loc .. "   " .. prev
+      hls[#hls + 1] = { #lines - 1, 0, #loc, "DevOpsId" }
+      rows[#lines] = i
+    end
+    local help = "  ↵ jump   e edit   dd delete   S submit   q close"
+    lines[#lines + 1], lines[#lines + 2] = "", help
+    hls[#hls + 1] = { #lines - 1, 0, #help, "DevOpsDim" }
+    set_lines(buf, lines)
+    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    for _, h in ipairs(hls) do
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns, h[1], h[2], { end_col = h[3], hl_group = h[4] })
+    end
+  end
+  rerender()
+  local w = math.min(74, vim.o.columns - 8)
+  local ht = math.min(#pending + 5, math.max(8, vim.o.lines - 6))
+  win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor", width = w, height = ht,
+    row = math.floor((vim.o.lines - ht) / 2), col = math.floor((vim.o.columns - w) / 2),
+    style = "minimal", border = "rounded",
+    title = " Pending review comments ", title_pos = "center",
+  })
+  vim.wo[win].cursorline = true
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle"
+  pcall(vim.api.nvim_win_set_cursor, win, { 3, 0 })
+
+  local function cur() return rows[vim.api.nvim_win_get_cursor(win)[1]] end
+  local function close_panel()
+    if win and vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+  end
+  local function map(k, fn) vim.keymap.set("n", k, fn, { buffer = buf, nowait = true, silent = true }) end
+
+  map("<CR>", function()
+    local i = cur(); if not i then return end
+    close_panel()
+    jump_to_comment(pending[i])
+  end)
+  map("e", function()
+    local i = cur(); if not i then return end
+    local c = pending[i]
+    input.open("Edit comment on " .. c.path .. ":" .. c.line, c.body, function(nb)
+      if nb and not nb:match("^%s*$") then c.body = nb; save_pending_store(); refresh_virt_all() end
+      if win and vim.api.nvim_win_is_valid(win) then rerender() end
+    end)
+  end)
+  map("dd", function()
+    local i = cur(); if not i then return end
+    table.remove(pending, i)
+    save_pending_store(); refresh_virt_all()
+    if #pending == 0 then close_panel(); return end
+    rerender()
+    pcall(vim.api.nvim_win_set_cursor, win, { math.min(2 + i, 2 + #pending), 0 })
+  end)
+  map("S", function() close_panel(); submit_review() end)
+  map("q", close_panel)
+  map("<Esc>", close_panel)
 end
 
 local function toggle_blame()
@@ -356,6 +493,7 @@ local function setup_keymaps(buf)
   -- Review keymaps (only active when PR context exists)
   if state.pr then
     map_buf(buf, "c", add_inline_comment, "Inline comment")
+    map_buf(buf, "gc", open_pending_panel, "Pending review comments")
     map_buf(buf, "S", submit_review, "Submit review")
   end
 end
@@ -487,7 +625,9 @@ local function render_footer(total_width, footer_row)
       { sep, nil },
       { "c ", "DevOpsKey" }, { "comment", "DevOpsAction" },
       { "  ", nil },
-      { "S ", "DevOpsKey" }, { "submit review" .. badge, "DevOpsAction" },
+      { "gc ", "DevOpsKey" }, { "list" .. badge, "DevOpsAction" },
+      { "  ", nil },
+      { "S ", "DevOpsKey" }, { "submit review", "DevOpsAction" },
     })
   end
   vim.list_extend(parts, {
@@ -1035,7 +1175,7 @@ function M.open(diff_text, title, opts)
   state.pending_focus = opts.focus_file
   if opts.pr then
     state.pr = opts.pr
-    state.pending_comments = {}
+    bind_pending() -- restore this PR's persisted draft review comments
   end
   if state.mode == "split" then
     render_split()
