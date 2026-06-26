@@ -318,7 +318,7 @@ local function render_footer()
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "S search", "* pin" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "+ new", "y clone", "S search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
@@ -346,7 +346,7 @@ local function render_footer()
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
       { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
-      { "PR",       { "D ready", "x checkout", "N new", "r refresh" } },
+      { "PR",       { "D ready", "x checkout", "+ new", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   end
@@ -833,6 +833,14 @@ local function cache_get(sec_id)
   return nil
 end
 
+-- Cached data ignoring the TTL — used when restoring a list we just left (e.g.
+-- backing out of a story), so we don't re-fetch the list we were just viewing.
+local function cache_get_raw(sec_id)
+  ensure_cache_loaded()
+  local entry = cache[sec_id]
+  return entry and entry.data or nil
+end
+
 local cache_save_timer = vim.uv.new_timer()
 local function cache_set(sec_id, data)
   cache[sec_id] = { data = data, ts = os.time() }
@@ -855,7 +863,7 @@ local function invalidate_tab_cache(tab_id)
   end
 end
 
-local function load_section(force)
+local function load_section(force, allow_stale)
   local sec_id = current_section_id()
   -- Generation token: only the latest load's callback applies, so rapid section
   -- switches (or re-loads of the same section) don't double-render or race.
@@ -869,9 +877,10 @@ local function load_section(force)
     return
   end
 
-  -- Serve from cache unless forced (manual refresh)
+  -- Serve from cache unless forced (manual refresh). allow_stale ignores the TTL
+  -- (restoring a list we just left shouldn't re-query it).
   if not force then
-    local cached = cache_get(sec_id)
+    local cached = (allow_stale and cache_get_raw(sec_id)) or cache_get(sec_id)
     if cached then
       if sec_id == "gh_prs" or sec_id == "gh_reviews" then
         local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
@@ -1067,7 +1076,7 @@ local function nav_render_detail(b, make_keys, preserve_cursor)
   state.rows = {}
   detail.write_to_buf(state.content.buf, b)
   -- Clear old keymaps by resetting buffer-local keymaps for action keys
-  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "n", "y", "t" }
+  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "+", "y", "t" }
   for _, k in ipairs(action_keys) do
     pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
   end
@@ -1085,8 +1094,8 @@ local function nav_pop()
   state.detail_kind = entry.detail_kind
   state.rows = entry.rows
   if not entry.in_detail then
-    -- Restore the list view
-    load_section()
+    -- Restore the list view from cache (no re-fetch of the list we just left).
+    load_section(false, true)
     vim.schedule(function()
       if state.content.win and vim.api.nvim_win_is_valid(state.content.win) then
         pcall(vim.api.nvim_win_set_cursor, state.content.win, entry.cursor)
@@ -2023,7 +2032,7 @@ local function show_help()
       { "c",     "Add comment" },
       { "e",     "Edit summary/description" },
       { "a",     "Assign issue" },
-      { "n",     "Create new issue" },
+      { "+",     "Create new issue" },
       { "y",     "Clone selected issue" },
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
@@ -2077,7 +2086,7 @@ local function show_help()
       { "D",     "Mark ready for review" },
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
-      { "N",     "Create new PR" },
+      { "+",     "Create new PR" },
       { "S",     "Search GitHub" },
       { "*",     "Pin/unpin selected item" },
       { "r",     "Refresh" },
@@ -2495,7 +2504,11 @@ local function setup_keymaps()
   map("c", dispatch_comment, "comment")
   map("a", dispatch_action_a, "assign/approve")
   map("e", jira_edit, "edit issue")
-  map("n", jira_create, "new issue")
+  -- '+' creates (Jira issue in a Jira section, PR in a GitHub section). 'n'/'N'
+  -- are left to Vim's search-next/prev.
+  map("+", function()
+    if is_jira_section(current_section_id()) then jira_create() else gh_create_pr() end
+  end, "new issue / PR")
   map("y", jira_clone, "clone issue")
   -- '/' stays native Vim search in the buffer; 'S' runs the DevOps Jira/GitHub search.
   map("S", dispatch_search, "search")
@@ -2507,7 +2520,6 @@ local function setup_keymaps()
   map("d", gh_diff, "view diff")
   map("F", gh_files, "changed files tree")
   map("x", gh_checkout, "checkout PR")
-  map("N", gh_create_pr, "new PR")
   -- Toggles
   map("s", toggle_scope, "toggle scope")
   map("h", toggle_done, "toggle done")
