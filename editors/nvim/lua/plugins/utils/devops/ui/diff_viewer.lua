@@ -79,6 +79,8 @@ end
 
 local function set_win_opts(win)
   vim.wo[win].wrap = false
+  vim.wo[win].sidescroll = 1 -- smooth 1-col horizontal scroll for long lines
+  vim.wo[win].sidescrolloff = 4
   vim.wo[win].cursorline = true
   vim.wo[win].number = false
   vim.wo[win].signcolumn = "no"
@@ -455,6 +457,25 @@ local function toggle_blame()
   end
 end
 
+-- Cycle focus across the visible panes (tree → old → new). Lets you land on
+-- either diff side so you can scroll it horizontally to read long lines (the diff
+-- panes have wrap off; cursorbind keeps the other side aligned as you move right).
+local function focus_pane(delta)
+  local order = {}
+  for _, key in ipairs({ "tree", "left", "right", "unified" }) do
+    local w = state.wins[key]
+    if w and vim.api.nvim_win_is_valid(w) then order[#order + 1] = w end
+  end
+  local cur = vim.api.nvim_get_current_win()
+  for i, w in ipairs(order) do
+    if w == cur then
+      local t = order[i + delta]
+      if t then vim.api.nvim_set_current_win(t) end
+      return
+    end
+  end
+end
+
 local function setup_keymaps(buf)
   map_buf(buf, "q", close, "Close diff")
   map_buf(buf, "<C-d>", close, "Close diff")
@@ -471,10 +492,8 @@ local function setup_keymaps(buf)
   end, "Cycle diff theme")
   map_buf(buf, "B", toggle_blame, "Toggle blame")
   map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
-  map_buf(buf, "<S-Left>", function()
-    local w = state.wins.tree
-    if w and vim.api.nvim_win_is_valid(w) then vim.api.nvim_set_current_win(w) end
-  end, "Focus file tree")
+  map_buf(buf, "<S-Left>", function() focus_pane(-1) end, "Focus pane left (old / tree)")
+  map_buf(buf, "<S-Right>", function() focus_pane(1) end, "Focus pane right (new)")
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
   -- Open in browser at current file/line position
@@ -1100,7 +1119,8 @@ render_tree_pane = function(total_h)
   map_buf(buf, "<C-d>", close, "Close diff")
   map_buf(buf, "<Esc>", close, "Close diff")
   map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
-  map_buf(buf, "<S-Right>", focus_diff, "Focus diff")
+  map_buf(buf, "<S-Right>", function() focus_pane(1) end, "Focus pane right (old/new)")
+  map_buf(buf, "<S-Left>", function() focus_pane(-1) end, "Focus pane left")
   map_buf(buf, "<CR>", function()
     local r = current()
     if not r then return end
