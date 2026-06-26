@@ -18,7 +18,9 @@ function M.build_jql(opts)
   end
 
   local parts = {}
-  if opts.account_id and opts.account_id ~= "" then
+  if opts.unassigned then
+    parts[#parts + 1] = "assignee is EMPTY"
+  elseif opts.account_id and opts.account_id ~= "" then
     parts[#parts + 1] = 'assignee = "' .. opts.account_id .. '"'
   end
   local in_sprint = opts.sprint_id ~= nil or opts.open_sprints
@@ -65,9 +67,15 @@ function M.search(opts, cb)
   fetch(nil)
 end
 
-function M.epics(project_key, account_id, cb)
+function M.epics(project_key, filter, cb)
+  if type(filter) == "string" then filter = { account_id = filter } end
+  filter = filter or {}
   local jql = 'project = "' .. project_key .. '" AND issuetype = Epic AND statusCategory != Done'
-  if account_id and account_id ~= "" then jql = jql .. ' AND assignee = "' .. account_id .. '"' end
+  if filter.unassigned then
+    jql = jql .. " AND assignee is EMPTY"
+  elseif filter.account_id and filter.account_id ~= "" then
+    jql = jql .. ' AND assignee = "' .. filter.account_id .. '"'
+  end
   local body = {
     jql = jql .. " ORDER BY updated DESC",
     fields = LIST_FIELDS,
