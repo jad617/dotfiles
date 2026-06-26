@@ -242,9 +242,11 @@ local function render_sidebar()
     if #parts > 0 then
       push("   " .. table.concat(parts, " · "), "DevOpsDim")
     end
-    -- Only show the user filter where it actually applies (not the team Sprint Board).
+    -- Show the user filter where it applies. The team Sprint Board ignores a
+    -- specific user, but the 'Unassigned' filter does narrow it.
     local fsec = current_section_id()
-    if state.jira_user and (fsec == "jira_issues" or fsec == "jira_backlog" or fsec == "jira_epics") then
+    if state.jira_user and (fsec == "jira_issues" or fsec == "jira_backlog" or fsec == "jira_epics"
+        or (fsec == "jira_sprint" and state.jira_user.unassigned)) then
       push("   👤 " .. render.truncate(state.jira_user.name or "user", 24), "DevOpsKey")
     end
   end
@@ -316,7 +318,7 @@ local function render_footer()
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "m move", "n new", "y clone", "S search", "* pin" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "+ new", "y clone", "S search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
@@ -344,7 +346,7 @@ local function render_footer()
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
       { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
-      { "PR",       { "D ready", "x checkout", "N new", "r refresh" } },
+      { "PR",       { "D ready", "x checkout", "+ new", "r refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   end
@@ -831,6 +833,14 @@ local function cache_get(sec_id)
   return nil
 end
 
+-- Cached data ignoring the TTL — used when restoring a list we just left (e.g.
+-- backing out of a story), so we don't re-fetch the list we were just viewing.
+local function cache_get_raw(sec_id)
+  ensure_cache_loaded()
+  local entry = cache[sec_id]
+  return entry and entry.data or nil
+end
+
 local cache_save_timer = vim.uv.new_timer()
 local function cache_set(sec_id, data)
   cache[sec_id] = { data = data, ts = os.time() }
@@ -853,7 +863,7 @@ local function invalidate_tab_cache(tab_id)
   end
 end
 
-local function load_section(force)
+local function load_section(force, allow_stale)
   local sec_id = current_section_id()
   -- Generation token: only the latest load's callback applies, so rapid section
   -- switches (or re-loads of the same section) don't double-render or race.
@@ -867,9 +877,10 @@ local function load_section(force)
     return
   end
 
-  -- Serve from cache unless forced (manual refresh)
+  -- Serve from cache unless forced (manual refresh). allow_stale ignores the TTL
+  -- (restoring a list we just left shouldn't re-query it).
   if not force then
-    local cached = cache_get(sec_id)
+    local cached = (allow_stale and cache_get_raw(sec_id)) or cache_get(sec_id)
     if cached then
       if sec_id == "gh_prs" or sec_id == "gh_reviews" then
         local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
@@ -888,8 +899,10 @@ local function load_section(force)
       set_message("⚠ Jira not configured — run :JiraAuth. Missing: " .. table.concat(client.missing(), ", "))
       return
     end
-    local account = state.jira_user and state.jira_user.account_id or client.account_id()
-    local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
+    local u = state.jira_user
+    local unassigned = (u and u.unassigned) or false
+    local account = (not unassigned) and ((u and u.account_id) or client.account_id()) or nil
+    local name = unassigned and "Unassigned" or (u and u.name) or (client.display_name() or "me")
     local function on_issues(ok, issues, err)
       if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
       if not ok then return set_message("⚠ " .. (err or "Jira search failed")) end
@@ -899,6 +912,7 @@ local function load_section(force)
     local use_sprints = state.sprint ~= nil and state.scope_override ~= "project"
     api.search({
       account_id = account,
+      unassigned = unassigned or nil,
       -- My Issues spans projects by default; only scope to the project on 's' toggle.
       project_key = (state.scope_override == "project") and state.project and state.project.key or nil,
       open_sprints = use_sprints,
@@ -919,8 +933,12 @@ local function load_section(force)
     -- whatever team owns the board's sprint). A specific sprint is used only when
     -- explicitly picked with 'v'.
     local picked = state.sprint and state.sprint.picked
+    -- Team-wide by default; only the 'Unassigned' user-filter narrows it (so you can
+    -- spot sprint tickets nobody's picked up). A specific 'u' user still doesn't apply.
+    local unassigned = (state.jira_user and state.jira_user.unassigned) or false
     api.search({
-      account_id = nil, -- sprint board is team-wide; the 'u' user filter doesn't apply here
+      account_id = nil,
+      unassigned = unassigned or nil,
       project_key = state.project and state.project.key,
       sprint_id = picked and state.sprint.id or nil,
       open_sprints = not picked,
@@ -931,7 +949,7 @@ local function load_section(force)
       if not ok then return set_message("⚠ " .. (err or "sprint fetch failed")) end
       cache_set(sec_id, issues)
       local title = (picked and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
-      render_jira(issues, "all", state.columns, title)
+      render_jira(issues, unassigned and "Unassigned" or "all", state.columns, title)
     end)
   elseif sec_id == "jira_epics" then
     if not client.configured() then
@@ -942,7 +960,11 @@ local function load_section(force)
       set_message("⚠ Pick a Jira project with 'p'")
       return
     end
-    api.epics(state.project.key, state.jira_user and state.jira_user.account_id or nil, function(ok, issues, err)
+    local efilter = state.jira_user
+      and (state.jira_user.unassigned and { unassigned = true }
+        or (state.jira_user.account_id and { account_id = state.jira_user.account_id }))
+      or nil
+    api.epics(state.project.key, efilter, function(ok, issues, err)
       if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
       if not ok then return set_message("⚠ " .. (err or "epics fetch failed")) end
       cache_set(sec_id, issues)
@@ -958,8 +980,16 @@ local function load_section(force)
       return
     end
     local acct = state.jira_user and state.jira_user.account_id or nil
+    local unassigned = (state.jira_user and state.jira_user.unassigned) or false
     local function render_backlog(issues)
-      if acct then -- board backlog isn't assignee-filtered server-side; do it here
+      -- board backlog isn't assignee-filtered server-side; do it here.
+      if unassigned then
+        local filtered = {}
+        for _, it in ipairs(issues) do
+          if not (it.fields and it.fields.assignee) then filtered[#filtered + 1] = it end
+        end
+        issues = filtered
+      elseif acct then
         local filtered = {}
         for _, it in ipairs(issues) do
           local a = it.fields and it.fields.assignee
@@ -1046,7 +1076,7 @@ local function nav_render_detail(b, make_keys, preserve_cursor)
   state.rows = {}
   detail.write_to_buf(state.content.buf, b)
   -- Clear old keymaps by resetting buffer-local keymaps for action keys
-  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "n", "y", "t" }
+  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "+", "y", "t" }
   for _, k in ipairs(action_keys) do
     pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
   end
@@ -1064,8 +1094,8 @@ local function nav_pop()
   state.detail_kind = entry.detail_kind
   state.rows = entry.rows
   if not entry.in_detail then
-    -- Restore the list view
-    load_section()
+    -- Restore the list view from cache (no re-fetch of the list we just left).
+    load_section(false, true)
     vim.schedule(function()
       if state.content.win and vim.api.nvim_win_is_valid(state.content.win) then
         pcall(vim.api.nvim_win_set_cursor, state.content.win, entry.cursor)
@@ -1222,6 +1252,7 @@ local function select_user()
     if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
     local me_id = client.account_id()
     local choices = { { label = "● Me" .. (client.display_name() and (" (" .. client.display_name() .. ")") or ""), account_id = me_id, me = true } }
+    choices[#choices + 1] = { label = "○ Unassigned", unassigned = true }
     for _, u in ipairs(users) do
       if u.accountId and u.accountType ~= "app" and u.accountId ~= me_id then
         choices[#choices + 1] = { label = u.displayName or u.accountId, account_id = u.accountId }
@@ -1246,7 +1277,13 @@ local function select_user()
         end, { title = "Filter by user", project_key = state.project.key })
         return
       end
-      apply(choice.me and nil or { account_id = choice.account_id, name = choice.label })
+      if choice.me then
+        apply(nil)
+      elseif choice.unassigned then
+        apply({ unassigned = true, name = "Unassigned" })
+      else
+        apply({ account_id = choice.account_id, name = choice.label })
+      end
     end)
   end)
 end
@@ -1995,7 +2032,7 @@ local function show_help()
       { "c",     "Add comment" },
       { "e",     "Edit summary/description" },
       { "a",     "Assign issue" },
-      { "n",     "Create new issue" },
+      { "+",     "Create new issue" },
       { "y",     "Clone selected issue" },
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
@@ -2049,7 +2086,7 @@ local function show_help()
       { "D",     "Mark ready for review" },
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
-      { "N",     "Create new PR" },
+      { "+",     "Create new PR" },
       { "S",     "Search GitHub" },
       { "*",     "Pin/unpin selected item" },
       { "r",     "Refresh" },
@@ -2467,7 +2504,11 @@ local function setup_keymaps()
   map("c", dispatch_comment, "comment")
   map("a", dispatch_action_a, "assign/approve")
   map("e", jira_edit, "edit issue")
-  map("n", jira_create, "new issue")
+  -- '+' creates (Jira issue in a Jira section, PR in a GitHub section). 'n'/'N'
+  -- are left to Vim's search-next/prev.
+  map("+", function()
+    if is_jira_section(current_section_id()) then jira_create() else gh_create_pr() end
+  end, "new issue / PR")
   map("y", jira_clone, "clone issue")
   -- '/' stays native Vim search in the buffer; 'S' runs the DevOps Jira/GitHub search.
   map("S", dispatch_search, "search")
@@ -2479,7 +2520,6 @@ local function setup_keymaps()
   map("d", gh_diff, "view diff")
   map("F", gh_files, "changed files tree")
   map("x", gh_checkout, "checkout PR")
-  map("N", gh_create_pr, "new PR")
   -- Toggles
   map("s", toggle_scope, "toggle scope")
   map("h", toggle_done, "toggle done")
