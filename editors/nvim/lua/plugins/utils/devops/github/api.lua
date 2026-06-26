@@ -69,13 +69,13 @@ function M.search_prs(query, opts, cb)
   gh_json(args, cb)
 end
 
--- Open PRs where the current user is requested as a reviewer.
--- Uses GraphQL to include reviewRequests (user or team name).
+-- Open PRs the current user is involved in (review-requested, author, assignee,
+-- mentioned, or commenter). Uses GraphQL to include reviewRequests (user/team).
 function M.my_reviews(cb)
   local n = config.options.github.pr_limit or 30
   local query = [[
 query($n: Int!) {
-  search(query: "is:pr is:open review-requested:@me", type: ISSUE, first: $n) {
+  search(query: "is:pr is:open involves:@me", type: ISSUE, first: $n) {
     nodes {
       ... on PullRequest {
         number title url state isDraft headRefName
