@@ -1059,6 +1059,8 @@ end
 ---------------------------------------------------------------------------
 -- Navigation stack — detail views render into the content pane
 ---------------------------------------------------------------------------
+local setup_keymaps -- forward decl; defined below, re-run when leaving a detail
+                    -- (nav_render_detail deletes the list action maps, e.g. 'y')
 local function nav_push()
   local cursor = state.content.win and vim.api.nvim_win_is_valid(state.content.win)
     and vim.api.nvim_win_get_cursor(state.content.win) or { 1, 0 }
@@ -1095,6 +1097,9 @@ local function nav_pop()
   state.rows = entry.rows
   if not entry.in_detail then
     -- Restore the list view from cache (no re-fetch of the list we just left).
+    -- Re-apply the list keymaps: opening a detail deleted the list action maps
+    -- (e.g. 'y' clone) and they're not otherwise restored on the way back.
+    if setup_keymaps then setup_keymaps() end
     load_section(false, true)
     vim.schedule(function()
       if state.content.win and vim.api.nvim_win_is_valid(state.content.win) then
@@ -2471,7 +2476,7 @@ local function map(lhs, fn, desc)
   vim.keymap.set("n", lhs, fn, { buffer = state.content.buf, nowait = true, silent = true, desc = "DevOps: " .. desc })
 end
 
-local function setup_keymaps()
+function setup_keymaps()
   local function smart_back()
     if state.in_detail then nav_back() else hide() end
   end
