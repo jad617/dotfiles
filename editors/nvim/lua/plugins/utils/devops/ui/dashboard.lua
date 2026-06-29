@@ -1526,6 +1526,55 @@ local function jira_create()
   end)
 end
 
+-- Popup confirming a clone, showing the new key with quick actions.
+local function show_clone_popup(old_key, new_key)
+  local url = client.base_url() .. "/browse/" .. new_key
+  local lines = {
+    "",
+    "  ✓ Cloned  " .. old_key .. "  →  " .. new_key,
+    "",
+    "  ↵ / o  open in browser      y  copy key      q  close",
+    "",
+  }
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  local width = 0
+  for _, l in ipairs(lines) do width = math.max(width, vim.fn.strdisplaywidth(l)) end
+  width = math.min(width + 2, vim.o.columns - 4)
+  local prev = vim.api.nvim_get_current_win()
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor", width = width, height = #lines,
+    row = math.floor((vim.o.lines - #lines) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+    style = "minimal", border = "rounded",
+    title = " Issue cloned ", title_pos = "center",
+  })
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle"
+  local cns = vim.api.nvim_create_namespace("DevOpsClone")
+  local s = lines[2]:find(new_key, 1, true)
+  if s then
+    pcall(vim.api.nvim_buf_set_extmark, buf, cns, 1, s - 1, { end_col = s - 1 + #new_key, hl_group = "DevOpsId" })
+  end
+  local function close_popup()
+    if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+    if vim.api.nvim_win_is_valid(prev) then pcall(vim.api.nvim_set_current_win, prev) end
+  end
+  local function open_browser() close_popup(); vim.ui.open(url) end
+  for _, k in ipairs({ "<CR>", "o" }) do
+    vim.keymap.set("n", k, open_browser, { buffer = buf, nowait = true, silent = true })
+  end
+  vim.keymap.set("n", "y", function()
+    vim.fn.setreg("+", new_key); vim.fn.setreg('"', new_key)
+    vim.notify("DevOps: copied " .. new_key, vim.log.levels.INFO)
+    close_popup()
+  end, { buffer = buf, nowait = true, silent = true })
+  for _, k in ipairs({ "q", "<Esc>" }) do
+    vim.keymap.set("n", k, close_popup, { buffer = buf, nowait = true, silent = true })
+  end
+end
+
 local function jira_clone()
   local item = current_item()
   if not item or item.kind ~= "jira" then
@@ -1551,8 +1600,8 @@ local function jira_clone()
         api.create_issue(fields, function(ok2, data, err2)
           if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
           local new_key = data and data.key or "?"
-          vim.notify("DevOps: cloned " .. item.key .. " → " .. new_key, vim.log.levels.INFO)
           refresh_current_jira_section()
+          show_clone_popup(item.key, new_key)
         end)
       end, input_opts_with_win())
     end)
