@@ -1529,11 +1529,14 @@ end
 -- Popup confirming a clone, showing the new key with quick actions.
 local function show_clone_popup(old_key, new_key)
   local url = client.base_url() .. "/browse/" .. new_key
+  -- Auto-copy the new key to the system (and unnamed) clipboard.
+  pcall(vim.fn.setreg, "+", new_key)
+  pcall(vim.fn.setreg, '"', new_key)
   local lines = {
     "",
-    "  ✓ Cloned  " .. old_key .. "  →  " .. new_key,
+    "  ✓ Cloned  " .. old_key .. "  →  " .. new_key .. "    📋 copied",
     "",
-    "  ↵ / o  open in browser      y  copy key      q  close",
+    "  ↵ / o  open in browser      y  copy again      q  close",
     "",
   }
   local buf = vim.api.nvim_create_buf(false, true)
