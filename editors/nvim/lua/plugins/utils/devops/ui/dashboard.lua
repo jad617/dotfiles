@@ -1622,21 +1622,21 @@ local function move_to_sprint()
   if not state.board then
     return vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
   end
+  -- Only active + future sprints are valid move targets (and asking for them
+  -- avoids closed sprints crowding out the list on boards with long histories).
   api.list_sprints(state.board.id, function(ok, sprints, err)
     if not ok then return vim.notify("DevOps: " .. (err or "sprint list failed"), vim.log.levels.ERROR) end
-    local rank = { active = 0, future = 1, closed = 2 }
+    local rank = { active = 0, future = 1 }
     table.sort(sprints, function(a, b)
       local ra, rb = rank[a.state] or 3, rank[b.state] or 3
       if ra ~= rb then return ra < rb end
       return (a.id or 0) > (b.id or 0)
     end)
     local choices = {}
-    for _, s in ipairs(sprints) do
-      if s.state ~= "closed" then choices[#choices + 1] = s end -- can't move into a closed sprint
-    end
+    for _, s in ipairs(sprints) do choices[#choices + 1] = s end
     choices[#choices + 1] = { name = "○ Backlog", backlog = true }
     vim.ui.select(choices, {
-      prompt = "Move " .. item.key .. " to:",
+      prompt = "Move " .. item.key .. " to (active/future sprints):",
       format_item = function(s) return (s.name or "?") .. (s.backlog and "" or ("   [" .. (s.state or "?") .. "]")) end,
     }, function(choice)
       if not choice then return end
@@ -1648,7 +1648,7 @@ local function move_to_sprint()
       if choice.backlog then api.move_to_backlog(item.key, done)
       else api.move_to_sprint(choice.id, item.key, done) end
     end)
-  end)
+  end, "active,future")
 end
 
 local function jira_search()
