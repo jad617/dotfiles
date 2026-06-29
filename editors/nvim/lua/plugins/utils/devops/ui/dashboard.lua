@@ -1613,26 +1613,26 @@ local function jira_clone()
   end)
 end
 
--- Move the selected Jira issue into a sprint (or the backlog).
+-- Move the selected Jira issue into a sprint (or the backlog). Sprints live on
+-- per-team boards, so we gather active+future sprints from all of the issue's
+-- *project* boards (not just the dashboard's selected board, which may not own
+-- the sprint you want — e.g. HORA's future sprint lives on the Horasphere board).
 local function move_to_sprint()
   local item = current_item()
   if not item or item.kind ~= "jira" then
     return vim.notify("DevOps: select a Jira issue to move", vim.log.levels.INFO)
   end
-  if not state.board then
-    return vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
-  end
-  -- Only active + future sprints are valid move targets (and asking for them
-  -- avoids closed sprints crowding out the list on boards with long histories).
-  api.list_sprints(state.board.id, function(ok, sprints, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "sprint list failed"), vim.log.levels.ERROR) end
-    -- Future first (the usual plan-ahead target, and what gets crowded out on a
-    -- shared board with many active sprints), then active.
-    local rank = { future = 0, active = 1 }
+  local project = item.key:match("^(%u+)-")
+
+  local function pick(sprints)
+    if #sprints == 0 then
+      return vim.notify("DevOps: no active/future sprints for " .. (project or "?"), vim.log.levels.INFO)
+    end
+    local rank = { future = 0, active = 1 } -- future first (soonest), then active
     table.sort(sprints, function(a, b)
       local ra, rb = rank[a.state] or 3, rank[b.state] or 3
       if ra ~= rb then return ra < rb end
-      return (a.id or 0) < (b.id or 0) -- soonest first
+      return (a.id or 0) < (b.id or 0)
     end)
     local choices = {}
     for _, s in ipairs(sprints) do choices[#choices + 1] = s end
@@ -1650,7 +1650,36 @@ local function move_to_sprint()
       if choice.backlog then api.move_to_backlog(item.key, done)
       else api.move_to_sprint(choice.id, item.key, done) end
     end)
-  end, "active,future")
+  end
+
+  -- Fetch active+future sprints from the given boards (parallel), dedup by id.
+  local function aggregate(boards)
+    if not boards or #boards == 0 then
+      return vim.notify("DevOps: no Scrum board found for " .. (project or "this issue"), vim.log.levels.INFO)
+    end
+    local seen, all, pending = {}, {}, #boards
+    for _, b in ipairs(boards) do
+      api.list_sprints(b.id, function(ok, sprints)
+        for _, s in ipairs(ok and sprints or {}) do
+          if s.id and not seen[s.id] then seen[s.id] = true; all[#all + 1] = s end
+        end
+        pending = pending - 1
+        if pending == 0 then pick(all) end
+      end, "active,future")
+    end
+  end
+
+  if project then
+    api.boards_for_project(project, function(ok, boards)
+      if ok and boards and #boards > 0 then aggregate(boards)
+      elseif state.board then aggregate({ { id = state.board.id } })
+      else vim.notify("DevOps: no Scrum board found for " .. project, vim.log.levels.INFO) end
+    end)
+  elseif state.board then
+    aggregate({ { id = state.board.id } })
+  else
+    vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
+  end
 end
 
 local function jira_search()

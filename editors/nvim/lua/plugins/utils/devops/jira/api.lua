@@ -133,6 +133,14 @@ function M.list_sprints(board_id, cb, states)
   end)
 end
 
+-- Scrum boards associated with a project. cb(ok, boards[], err)
+function M.boards_for_project(project_key, cb)
+  client.get("/rest/agile/1.0/board?projectKeyOrId=" .. project_key .. "&type=scrum&maxResults=50", function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.values) or {}, nil)
+  end)
+end
+
 -- Move an issue into a sprint (Agile API; 204 No Content on success). cb(ok, _, err)
 function M.move_to_sprint(sprint_id, key, cb)
   client.post("/rest/agile/1.0/sprint/" .. tostring(sprint_id) .. "/issue", { issues = { key } }, cb)
