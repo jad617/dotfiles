@@ -1626,17 +1626,19 @@ local function move_to_sprint()
   -- avoids closed sprints crowding out the list on boards with long histories).
   api.list_sprints(state.board.id, function(ok, sprints, err)
     if not ok then return vim.notify("DevOps: " .. (err or "sprint list failed"), vim.log.levels.ERROR) end
-    local rank = { active = 0, future = 1 }
+    -- Future first (the usual plan-ahead target, and what gets crowded out on a
+    -- shared board with many active sprints), then active.
+    local rank = { future = 0, active = 1 }
     table.sort(sprints, function(a, b)
       local ra, rb = rank[a.state] or 3, rank[b.state] or 3
       if ra ~= rb then return ra < rb end
-      return (a.id or 0) > (b.id or 0)
+      return (a.id or 0) < (b.id or 0) -- soonest first
     end)
     local choices = {}
     for _, s in ipairs(sprints) do choices[#choices + 1] = s end
     choices[#choices + 1] = { name = "○ Backlog", backlog = true }
     vim.ui.select(choices, {
-      prompt = "Move " .. item.key .. " to (active/future sprints):",
+      prompt = "Move " .. item.key .. " to (future/active sprints):",
       format_item = function(s) return (s.name or "?") .. (s.backlog and "" or ("   [" .. (s.state or "?") .. "]")) end,
     }, function(choice)
       if not choice then return end
