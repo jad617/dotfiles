@@ -131,6 +131,16 @@ function M.list_sprints(board_id, cb)
   end)
 end
 
+-- Move an issue into a sprint (Agile API; 204 No Content on success). cb(ok, _, err)
+function M.move_to_sprint(sprint_id, key, cb)
+  client.post("/rest/agile/1.0/sprint/" .. tostring(sprint_id) .. "/issue", { issues = { key } }, cb)
+end
+
+-- Move an issue to the backlog (remove from its sprint). cb(ok, _, err)
+function M.move_to_backlog(key, cb)
+  client.post("/rest/agile/1.0/backlog/issue", { issues = { key } }, cb)
+end
+
 function M.text_search(query, opts, cb)
   opts = opts or {}
   local conditions = {}

@@ -318,7 +318,7 @@ local function render_footer()
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "m move", "+ new", "y clone", "S search", "* pin" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "+ new", "y clone", "V sprint", "S search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
@@ -1078,7 +1078,7 @@ local function nav_render_detail(b, make_keys, preserve_cursor)
   state.rows = {}
   detail.write_to_buf(state.content.buf, b)
   -- Clear old keymaps by resetting buffer-local keymaps for action keys
-  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "+", "y", "t" }
+  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "+", "y", "V", "t" }
   for _, k in ipairs(action_keys) do
     pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
   end
@@ -1536,7 +1536,7 @@ local function show_clone_popup(old_key, new_key)
     "",
     "  ✓ Cloned  " .. old_key .. "  →  " .. new_key .. "    📋 copied",
     "",
-    "  ↵ / o  open in browser      y  copy again      q  close",
+    "  ↵  open in DevOps     o  open in browser     y  copy     q  close",
     "",
   }
   local buf = vim.api.nvim_create_buf(false, true)
@@ -1564,10 +1564,12 @@ local function show_clone_popup(old_key, new_key)
     if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
     if vim.api.nvim_win_is_valid(prev) then pcall(vim.api.nvim_set_current_win, prev) end
   end
-  local function open_browser() close_popup(); vim.ui.open(url) end
-  for _, k in ipairs({ "<CR>", "o" }) do
-    vim.keymap.set("n", k, open_browser, { buffer = buf, nowait = true, silent = true })
-  end
+  vim.keymap.set("n", "<CR>", function()
+    close_popup(); detail.open_issue(new_key)
+  end, { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "o", function()
+    close_popup(); vim.ui.open(url)
+  end, { buffer = buf, nowait = true, silent = true })
   vim.keymap.set("n", "y", function()
     vim.fn.setreg("+", new_key); vim.fn.setreg('"', new_key)
     vim.notify("DevOps: copied " .. new_key, vim.log.levels.INFO)
@@ -1607,6 +1609,44 @@ local function jira_clone()
           show_clone_popup(item.key, new_key)
         end)
       end, input_opts_with_win())
+    end)
+  end)
+end
+
+-- Move the selected Jira issue into a sprint (or the backlog).
+local function move_to_sprint()
+  local item = current_item()
+  if not item or item.kind ~= "jira" then
+    return vim.notify("DevOps: select a Jira issue to move", vim.log.levels.INFO)
+  end
+  if not state.board then
+    return vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
+  end
+  api.list_sprints(state.board.id, function(ok, sprints, err)
+    if not ok then return vim.notify("DevOps: " .. (err or "sprint list failed"), vim.log.levels.ERROR) end
+    local rank = { active = 0, future = 1, closed = 2 }
+    table.sort(sprints, function(a, b)
+      local ra, rb = rank[a.state] or 3, rank[b.state] or 3
+      if ra ~= rb then return ra < rb end
+      return (a.id or 0) > (b.id or 0)
+    end)
+    local choices = {}
+    for _, s in ipairs(sprints) do
+      if s.state ~= "closed" then choices[#choices + 1] = s end -- can't move into a closed sprint
+    end
+    choices[#choices + 1] = { name = "○ Backlog", backlog = true }
+    vim.ui.select(choices, {
+      prompt = "Move " .. item.key .. " to:",
+      format_item = function(s) return (s.name or "?") .. (s.backlog and "" or ("   [" .. (s.state or "?") .. "]")) end,
+    }, function(choice)
+      if not choice then return end
+      local function done(ok2, _, err2)
+        if not ok2 then return vim.notify("DevOps: move failed — " .. (err2 or "?"), vim.log.levels.ERROR) end
+        vim.notify("DevOps: moved " .. item.key .. " → " .. (choice.name or "?"), vim.log.levels.INFO)
+        refresh_current_jira_section()
+      end
+      if choice.backlog then api.move_to_backlog(item.key, done)
+      else api.move_to_sprint(choice.id, item.key, done) end
     end)
   end)
 end
@@ -2091,6 +2131,7 @@ local function show_help()
       { "a",     "Assign issue" },
       { "+",     "Create new issue" },
       { "y",     "Clone selected issue" },
+      { "V",     "Move issue to a sprint / backlog" },
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "m",     "Move (change status)" },
@@ -2567,6 +2608,7 @@ function setup_keymaps()
     if is_jira_section(current_section_id()) then jira_create() else gh_create_pr() end
   end, "new issue / PR")
   map("y", jira_clone, "clone issue")
+  map("V", move_to_sprint, "move issue to sprint")
   -- '/' stays native Vim search in the buffer; 'S' runs the DevOps Jira/GitHub search.
   map("S", dispatch_search, "search")
   map("*", toggle_bookmark, "bookmark")
