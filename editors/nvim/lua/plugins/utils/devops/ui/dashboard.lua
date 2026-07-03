@@ -679,7 +679,7 @@ local function render_github(prs, title, show_meta)
       local reviewers = pr.reviewReason or "?"
 
       -- Align values: pad labels to same width
-      local lbl_w = #"Reviewers:  "
+      local lbl_w = #"Approved by:  "
       local function pad_lbl(lbl) return lbl .. string.rep(" ", lbl_w - #lbl) end
 
       -- Repo line
@@ -705,6 +705,36 @@ local function render_github(prs, title, show_meta)
       local rv = #lines - 1
       hls[#hls + 1] = { line = rv, col_start = #indent, col_end = #indent + #lbl_rv, hl = "DevOpsDim" }
       hls[#hls + 1] = { line = rv, col_start = #indent + #lbl_rv, col_end = #indent + #lbl_rv + #reviewers, hl = "DevOpsAction" }
+
+      -- Approved by line
+      if pr.approvedBy and #pr.approvedBy > 0 then
+        local lbl_ap = pad_lbl("Approved by:")
+        local approvers = table.concat(pr.approvedBy, ", ")
+        lines[#lines + 1] = indent .. lbl_ap .. approvers
+        rows[#lines] = { kind = "pr", pr = pr }
+        local apl = #lines - 1
+        hls[#hls + 1] = { line = apl, col_start = #indent, col_end = #indent + #lbl_ap, hl = "DevOpsDim" }
+        hls[#hls + 1] = { line = apl, col_start = #indent + #lbl_ap, col_end = #indent + #lbl_ap + #approvers, hl = "DevOpsOk" }
+      end
+
+      -- Comments line (awaiting reply / new reply)
+      if pr.commentStatus == "awaiting_reply" then
+        local lbl_cm = pad_lbl("Comments:")
+        local txt = "󰍡 Awaiting reply"
+        lines[#lines + 1] = indent .. lbl_cm .. txt
+        rows[#lines] = { kind = "pr", pr = pr }
+        local cl = #lines - 1
+        hls[#hls + 1] = { line = cl, col_start = #indent, col_end = #indent + #lbl_cm, hl = "DevOpsDim" }
+        hls[#hls + 1] = { line = cl, col_start = #indent + #lbl_cm, col_end = #indent + #lbl_cm + #txt, hl = "DevOpsWarn" }
+      elseif pr.commentStatus == "replied" then
+        local lbl_cm = pad_lbl("Comments:")
+        local txt = " New reply"
+        lines[#lines + 1] = indent .. lbl_cm .. txt
+        rows[#lines] = { kind = "pr", pr = pr }
+        local cl = #lines - 1
+        hls[#hls + 1] = { line = cl, col_start = #indent, col_end = #indent + #lbl_cm, hl = "DevOpsDim" }
+        hls[#hls + 1] = { line = cl, col_start = #indent + #lbl_cm, col_end = #indent + #lbl_cm + #txt, hl = "DevOpsOk" }
+      end
 
       -- Age line
       local age = time_ago(pr.createdAt)
@@ -1012,6 +1042,7 @@ local function load_section(force, allow_stale)
     end
   else -- gh_prs / gh_reviews
     if not gh.available() then return set_message("⚠ gh CLI not found") end
+    gh.fetch_current_user() -- ensure login is cached for status detection
     local fn = sec_id == "gh_prs" and gh.my_prs or gh.my_reviews
     local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
     local show_meta = sec_id == "gh_reviews"
@@ -2764,6 +2795,7 @@ local function prefetch_other_sections()
 
   -- GitHub sections
   if gh.available() then
+    gh.fetch_current_user() -- ensure login is cached for review status detection
     if not cache_get("gh_prs") then
       gh.my_prs(function(ok, prs)
         if ok and prs then cache_set("gh_prs", prs) end
