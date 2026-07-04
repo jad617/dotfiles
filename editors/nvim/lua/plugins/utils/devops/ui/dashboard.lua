@@ -318,7 +318,7 @@ local function render_footer()
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "m move", "+ new", "y clone", "S search", "* pin" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "+ new", "y clone", "V sprint", "S search", "* pin" } },
       { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "r refresh" } },
       { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
@@ -679,7 +679,7 @@ local function render_github(prs, title, show_meta)
       local reviewers = pr.reviewReason or "?"
 
       -- Align values: pad labels to same width
-      local lbl_w = #"Reviewers:  "
+      local lbl_w = #"Approved by:  "
       local function pad_lbl(lbl) return lbl .. string.rep(" ", lbl_w - #lbl) end
 
       -- Repo line
@@ -705,6 +705,36 @@ local function render_github(prs, title, show_meta)
       local rv = #lines - 1
       hls[#hls + 1] = { line = rv, col_start = #indent, col_end = #indent + #lbl_rv, hl = "DevOpsDim" }
       hls[#hls + 1] = { line = rv, col_start = #indent + #lbl_rv, col_end = #indent + #lbl_rv + #reviewers, hl = "DevOpsAction" }
+
+      -- Approved by line
+      if pr.approvedBy and #pr.approvedBy > 0 then
+        local lbl_ap = pad_lbl("Approved by:")
+        local approvers = table.concat(pr.approvedBy, ", ")
+        lines[#lines + 1] = indent .. lbl_ap .. approvers
+        rows[#lines] = { kind = "pr", pr = pr }
+        local apl = #lines - 1
+        hls[#hls + 1] = { line = apl, col_start = #indent, col_end = #indent + #lbl_ap, hl = "DevOpsDim" }
+        hls[#hls + 1] = { line = apl, col_start = #indent + #lbl_ap, col_end = #indent + #lbl_ap + #approvers, hl = "DevOpsOk" }
+      end
+
+      -- Comments line (awaiting reply / new reply)
+      if pr.commentStatus == "awaiting_reply" then
+        local lbl_cm = pad_lbl("Comments:")
+        local txt = "󰍡 Awaiting reply"
+        lines[#lines + 1] = indent .. lbl_cm .. txt
+        rows[#lines] = { kind = "pr", pr = pr }
+        local cl = #lines - 1
+        hls[#hls + 1] = { line = cl, col_start = #indent, col_end = #indent + #lbl_cm, hl = "DevOpsDim" }
+        hls[#hls + 1] = { line = cl, col_start = #indent + #lbl_cm, col_end = #indent + #lbl_cm + #txt, hl = "DevOpsWarn" }
+      elseif pr.commentStatus == "replied" then
+        local lbl_cm = pad_lbl("Comments:")
+        local txt = " New reply"
+        lines[#lines + 1] = indent .. lbl_cm .. txt
+        rows[#lines] = { kind = "pr", pr = pr }
+        local cl = #lines - 1
+        hls[#hls + 1] = { line = cl, col_start = #indent, col_end = #indent + #lbl_cm, hl = "DevOpsDim" }
+        hls[#hls + 1] = { line = cl, col_start = #indent + #lbl_cm, col_end = #indent + #lbl_cm + #txt, hl = "DevOpsOk" }
+      end
 
       -- Age line
       local age = time_ago(pr.createdAt)
@@ -1012,6 +1042,7 @@ local function load_section(force, allow_stale)
     end
   else -- gh_prs / gh_reviews
     if not gh.available() then return set_message("⚠ gh CLI not found") end
+    gh.fetch_current_user() -- ensure login is cached for status detection
     local fn = sec_id == "gh_prs" and gh.my_prs or gh.my_reviews
     local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
     local show_meta = sec_id == "gh_reviews"
@@ -1059,6 +1090,8 @@ end
 ---------------------------------------------------------------------------
 -- Navigation stack — detail views render into the content pane
 ---------------------------------------------------------------------------
+local setup_keymaps -- forward decl; defined below, re-run when leaving a detail
+                    -- (nav_render_detail deletes the list action maps, e.g. 'y')
 local function nav_push()
   local cursor = state.content.win and vim.api.nvim_win_is_valid(state.content.win)
     and vim.api.nvim_win_get_cursor(state.content.win) or { 1, 0 }
@@ -1076,7 +1109,7 @@ local function nav_render_detail(b, make_keys, preserve_cursor)
   state.rows = {}
   detail.write_to_buf(state.content.buf, b)
   -- Clear old keymaps by resetting buffer-local keymaps for action keys
-  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "+", "y", "t" }
+  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "+", "y", "V", "t" }
   for _, k in ipairs(action_keys) do
     pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
   end
@@ -1095,6 +1128,9 @@ local function nav_pop()
   state.rows = entry.rows
   if not entry.in_detail then
     -- Restore the list view from cache (no re-fetch of the list we just left).
+    -- Re-apply the list keymaps: opening a detail deleted the list action maps
+    -- (e.g. 'y' clone) and they're not otherwise restored on the way back.
+    if setup_keymaps then setup_keymaps() end
     load_section(false, true)
     vim.schedule(function()
       if state.content.win and vim.api.nvim_win_is_valid(state.content.win) then
@@ -1521,6 +1557,60 @@ local function jira_create()
   end)
 end
 
+-- Popup confirming a clone, showing the new key with quick actions.
+local function show_clone_popup(old_key, new_key)
+  local url = client.base_url() .. "/browse/" .. new_key
+  -- Auto-copy the new key to the system (and unnamed) clipboard.
+  pcall(vim.fn.setreg, "+", new_key)
+  pcall(vim.fn.setreg, '"', new_key)
+  local lines = {
+    "",
+    "  ✓ Cloned  " .. old_key .. "  →  " .. new_key .. "    📋 copied",
+    "",
+    "  ↵  open in DevOps     o  open in browser     y  copy     q  close",
+    "",
+  }
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  local width = 0
+  for _, l in ipairs(lines) do width = math.max(width, vim.fn.strdisplaywidth(l)) end
+  width = math.min(width + 2, vim.o.columns - 4)
+  local prev = vim.api.nvim_get_current_win()
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor", width = width, height = #lines,
+    row = math.floor((vim.o.lines - #lines) / 2),
+    col = math.floor((vim.o.columns - width) / 2),
+    style = "minimal", border = "rounded",
+    title = " Issue cloned ", title_pos = "center",
+  })
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle"
+  local cns = vim.api.nvim_create_namespace("DevOpsClone")
+  local s = lines[2]:find(new_key, 1, true)
+  if s then
+    pcall(vim.api.nvim_buf_set_extmark, buf, cns, 1, s - 1, { end_col = s - 1 + #new_key, hl_group = "DevOpsId" })
+  end
+  local function close_popup()
+    if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+    if vim.api.nvim_win_is_valid(prev) then pcall(vim.api.nvim_set_current_win, prev) end
+  end
+  vim.keymap.set("n", "<CR>", function()
+    close_popup(); detail.open_issue(new_key)
+  end, { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "o", function()
+    close_popup(); vim.ui.open(url)
+  end, { buffer = buf, nowait = true, silent = true })
+  vim.keymap.set("n", "y", function()
+    vim.fn.setreg("+", new_key); vim.fn.setreg('"', new_key)
+    vim.notify("DevOps: copied " .. new_key, vim.log.levels.INFO)
+    close_popup()
+  end, { buffer = buf, nowait = true, silent = true })
+  for _, k in ipairs({ "q", "<Esc>" }) do
+    vim.keymap.set("n", k, close_popup, { buffer = buf, nowait = true, silent = true })
+  end
+end
+
 local function jira_clone()
   local item = current_item()
   if not item or item.kind ~= "jira" then
@@ -1546,12 +1636,81 @@ local function jira_clone()
         api.create_issue(fields, function(ok2, data, err2)
           if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
           local new_key = data and data.key or "?"
-          vim.notify("DevOps: cloned " .. item.key .. " → " .. new_key, vim.log.levels.INFO)
           refresh_current_jira_section()
+          show_clone_popup(item.key, new_key)
         end)
       end, input_opts_with_win())
     end)
   end)
+end
+
+-- Move the selected Jira issue into a sprint (or the backlog). Sprints live on
+-- per-team boards, so we gather active+future sprints from all of the issue's
+-- *project* boards (not just the dashboard's selected board, which may not own
+-- the sprint you want — e.g. HORA's future sprint lives on the Horasphere board).
+local function move_to_sprint()
+  local item = current_item()
+  if not item or item.kind ~= "jira" then
+    return vim.notify("DevOps: select a Jira issue to move", vim.log.levels.INFO)
+  end
+  local project = item.key:match("^(%u+)-")
+
+  local function pick(sprints)
+    if #sprints == 0 then
+      return vim.notify("DevOps: no active/future sprints for " .. (project or "?"), vim.log.levels.INFO)
+    end
+    local rank = { future = 0, active = 1 } -- future first (soonest), then active
+    table.sort(sprints, function(a, b)
+      local ra, rb = rank[a.state] or 3, rank[b.state] or 3
+      if ra ~= rb then return ra < rb end
+      return (a.id or 0) < (b.id or 0)
+    end)
+    local choices = {}
+    for _, s in ipairs(sprints) do choices[#choices + 1] = s end
+    choices[#choices + 1] = { name = "○ Backlog", backlog = true }
+    vim.ui.select(choices, {
+      prompt = "Move " .. item.key .. " to (future/active sprints):",
+      format_item = function(s) return (s.name or "?") .. (s.backlog and "" or ("   [" .. (s.state or "?") .. "]")) end,
+    }, function(choice)
+      if not choice then return end
+      local function done(ok2, _, err2)
+        if not ok2 then return vim.notify("DevOps: move failed — " .. (err2 or "?"), vim.log.levels.ERROR) end
+        vim.notify("DevOps: moved " .. item.key .. " → " .. (choice.name or "?"), vim.log.levels.INFO)
+        refresh_current_jira_section()
+      end
+      if choice.backlog then api.move_to_backlog(item.key, done)
+      else api.move_to_sprint(choice.id, item.key, done) end
+    end)
+  end
+
+  -- Fetch active+future sprints from the given boards (parallel), dedup by id.
+  local function aggregate(boards)
+    if not boards or #boards == 0 then
+      return vim.notify("DevOps: no Scrum board found for " .. (project or "this issue"), vim.log.levels.INFO)
+    end
+    local seen, all, pending = {}, {}, #boards
+    for _, b in ipairs(boards) do
+      api.list_sprints(b.id, function(ok, sprints)
+        for _, s in ipairs(ok and sprints or {}) do
+          if s.id and not seen[s.id] then seen[s.id] = true; all[#all + 1] = s end
+        end
+        pending = pending - 1
+        if pending == 0 then pick(all) end
+      end, "active,future")
+    end
+  end
+
+  if project then
+    api.boards_for_project(project, function(ok, boards)
+      if ok and boards and #boards > 0 then aggregate(boards)
+      elseif state.board then aggregate({ { id = state.board.id } })
+      else vim.notify("DevOps: no Scrum board found for " .. project, vim.log.levels.INFO) end
+    end)
+  elseif state.board then
+    aggregate({ { id = state.board.id } })
+  else
+    vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
+  end
 end
 
 local function jira_search()
@@ -2034,6 +2193,7 @@ local function show_help()
       { "a",     "Assign issue" },
       { "+",     "Create new issue" },
       { "y",     "Clone selected issue" },
+      { "V",     "Move issue to a sprint / backlog" },
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "m",     "Move (change status)" },
@@ -2471,7 +2631,7 @@ local function map(lhs, fn, desc)
   vim.keymap.set("n", lhs, fn, { buffer = state.content.buf, nowait = true, silent = true, desc = "DevOps: " .. desc })
 end
 
-local function setup_keymaps()
+function setup_keymaps()
   local function smart_back()
     if state.in_detail then nav_back() else hide() end
   end
@@ -2510,6 +2670,7 @@ local function setup_keymaps()
     if is_jira_section(current_section_id()) then jira_create() else gh_create_pr() end
   end, "new issue / PR")
   map("y", jira_clone, "clone issue")
+  map("V", move_to_sprint, "move issue to sprint")
   -- '/' stays native Vim search in the buffer; 'S' runs the DevOps Jira/GitHub search.
   map("S", dispatch_search, "search")
   map("*", toggle_bookmark, "bookmark")
@@ -2634,6 +2795,7 @@ local function prefetch_other_sections()
 
   -- GitHub sections
   if gh.available() then
+    gh.fetch_current_user() -- ensure login is cached for review status detection
     if not cache_get("gh_prs") then
       gh.my_prs(function(ok, prs)
         if ok and prs then cache_set("gh_prs", prs) end
