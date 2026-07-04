@@ -73,7 +73,8 @@ end
 -- mentioned, or commenter). Uses GraphQL to include reviewRequests (user/team).
 function M.my_reviews(cb)
   local n = config.options.github.pr_limit or 30
-  local query = [[
+  local function do_fetch()
+    local query = [[
 query($n: Int!) {
   search(query: "is:pr is:open involves:@me", type: ISSUE, first: $n) {
     nodes {
@@ -90,29 +91,112 @@ query($n: Int!) {
             }
           }
         }
+        reviews(last: 30) {
+          nodes {
+            author { login }
+            state
+            submittedAt
+          }
+        }
+        reviewThreads(first: 60) {
+          nodes {
+            isResolved
+            comments(first: 20) {
+              nodes {
+                author { login }
+                createdAt
+              }
+            }
+          }
+        }
       }
     }
   }
 }]]
-  gh_json({ "api", "graphql", "-F", "n=" .. tostring(n), "-f", "query=" .. query }, function(ok, data, err)
-    if not ok then return cb(false, nil, err) end
-    local nodes = data and data.data and data.data.search and data.data.search.nodes
-    if not nodes then return cb(false, nil, "unexpected GraphQL response") end
-    -- Normalize: extract reviewReason from reviewRequests
-    for _, pr in ipairs(nodes) do
-      local reasons = {}
-      if pr.reviewRequests and pr.reviewRequests.nodes then
-        for _, rr in ipairs(pr.reviewRequests.nodes) do
-          local rev = rr.requestedReviewer
-          if rev then
-            reasons[#reasons + 1] = rev.login or rev.name or "?"
+    gh_json({ "api", "graphql", "-F", "n=" .. tostring(n), "-f", "query=" .. query }, function(ok, data, err)
+      if not ok then return cb(false, nil, err) end
+      local nodes = data and data.data and data.data.search and data.data.search.nodes
+      if not nodes then return cb(false, nil, "unexpected GraphQL response") end
+      local me = _user_login
+      -- Normalize: extract reviewReason from reviewRequests
+      for _, pr in ipairs(nodes) do
+        local reasons = {}
+        if pr.reviewRequests and pr.reviewRequests.nodes then
+          for _, rr in ipairs(pr.reviewRequests.nodes) do
+            local rev = rr.requestedReviewer
+            if rev then
+              reasons[#reasons + 1] = rev.login or rev.name or "?"
+            end
+          end
+        end
+        pr.reviewReason = #reasons > 0 and table.concat(reasons, ", ") or nil
+
+        -- Derive approvedBy: list of users whose latest review is APPROVED
+        pr.approvedBy = {}
+        if pr.reviews and pr.reviews.nodes then
+          -- Track latest review state per user
+          local user_state = {} -- login → { state, ts }
+          for _, rev in ipairs(pr.reviews.nodes) do
+            local login = rev.author and rev.author.login
+            if login then
+              local ts = rev.submittedAt or ""
+              if not user_state[login] or ts > user_state[login].ts then
+                user_state[login] = { state = rev.state, ts = ts }
+              end
+            end
+          end
+          for login, info in pairs(user_state) do
+            if info.state == "APPROVED" then
+              pr.approvedBy[#pr.approvedBy + 1] = login
+            end
+          end
+          table.sort(pr.approvedBy)
+        end
+
+        -- Derive comment/reply status from review threads
+        -- awaiting_reply: I left a comment and no one replied after it
+        -- replied: someone replied after my latest comment in a thread
+        pr.commentStatus = nil -- nil | "awaiting_reply" | "replied"
+        if me and pr.reviewThreads and pr.reviewThreads.nodes then
+          local has_awaiting = false
+          local has_replied = false
+          for _, thread in ipairs(pr.reviewThreads.nodes) do
+            if not thread.isResolved and thread.comments and thread.comments.nodes then
+              local comments = thread.comments.nodes
+              -- Find if I participated and what the last comment state is
+              local my_last_idx = nil
+              for i, c in ipairs(comments) do
+                if c.author and c.author.login == me then
+                  my_last_idx = i
+                end
+              end
+              if my_last_idx then
+                if my_last_idx == #comments then
+                  -- My comment is the last one → awaiting reply
+                  has_awaiting = true
+                else
+                  -- Someone commented after me → replied
+                  has_replied = true
+                end
+              end
+            end
+          end
+          if has_replied then
+            pr.commentStatus = "replied"
+          elseif has_awaiting then
+            pr.commentStatus = "awaiting_reply"
           end
         end
       end
-      pr.reviewReason = #reasons > 0 and table.concat(reasons, ", ") or nil
-    end
-    cb(true, nodes, nil)
-  end)
+      cb(true, nodes, nil)
+    end)
+  end
+  -- Ensure user login is resolved before fetching (needed for status detection)
+  if _user_login then
+    do_fetch()
+  else
+    M.fetch_current_user(function() do_fetch() end)
+  end
 end
 
 -- Split the detail fetch: the "core" fields are light and render fast (the PR

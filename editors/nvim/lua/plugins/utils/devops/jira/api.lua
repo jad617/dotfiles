@@ -124,11 +124,31 @@ end
 
 -- Active + closed + future sprints for a board (for the sprint picker).
 -- cb(ok, sprints[] {id,name,state}, err)
-function M.list_sprints(board_id, cb)
-  client.get("/rest/agile/1.0/board/" .. board_id .. "/sprint?state=active,closed,future&maxResults=50", function(ok, data, err)
+-- states: comma-separated subset of "active,closed,future" (default: all).
+function M.list_sprints(board_id, cb, states)
+  states = states or "active,closed,future"
+  client.get("/rest/agile/1.0/board/" .. board_id .. "/sprint?state=" .. states .. "&maxResults=50", function(ok, data, err)
     if not ok then return cb(false, nil, err) end
     cb(true, (data and data.values) or {}, nil)
   end)
+end
+
+-- Scrum boards associated with a project. cb(ok, boards[], err)
+function M.boards_for_project(project_key, cb)
+  client.get("/rest/agile/1.0/board?projectKeyOrId=" .. project_key .. "&type=scrum&maxResults=50", function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    cb(true, (data and data.values) or {}, nil)
+  end)
+end
+
+-- Move an issue into a sprint (Agile API; 204 No Content on success). cb(ok, _, err)
+function M.move_to_sprint(sprint_id, key, cb)
+  client.post("/rest/agile/1.0/sprint/" .. tostring(sprint_id) .. "/issue", { issues = { key } }, cb)
+end
+
+-- Move an issue to the backlog (remove from its sprint). cb(ok, _, err)
+function M.move_to_backlog(key, cb)
+  client.post("/rest/agile/1.0/backlog/issue", { issues = { key } }, cb)
 end
 
 function M.text_search(query, opts, cb)
