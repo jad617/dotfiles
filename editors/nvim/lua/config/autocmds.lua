@@ -76,9 +76,9 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
     "environments/*.yaml",
     "environments/*.yml,",
   },
-  callback = function()
-    vim.opt.filetype = "yaml.ansible"
-    vim.cmd("TSDisable highlight")
+  callback = function(ev)
+    vim.bo[ev.buf].filetype = "yaml.ansible"
+    pcall(vim.treesitter.stop, ev.buf)
   end,
 })
 
