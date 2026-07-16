@@ -1152,6 +1152,12 @@ end
 -- paints full content instantly while a fresh copy loads in the background.
 local pr_full_cache = {}
 
+-- Drop the cached enrichment for a PR so the next load refetches from scratch
+-- (used by a manual 'r' refresh and after write actions like commenting).
+local function clear_pr_full_cache(repo, n)
+  if repo and n then pr_full_cache[repo .. "#" .. n] = nil end
+end
+
 -- Two-phase, parallel PR enrichment:
 --   1. pr_view (core: description + status) renders the moment it returns;
 --   2. pr_view_extra (CI checks + files/commits/reviews/comments) and the inline
@@ -1435,6 +1441,8 @@ function M.load_pr(pr, opts)
         gh.pr_request_changes(repo, n, body, function(ok, _, err)
           if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
           vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
+          clear_pr_full_cache(repo, n)
+          M.load_pr(pr, opts)
         end)
       end)
     end, { buffer = buf, nowait = true, desc = "Request changes" })
@@ -1444,9 +1452,16 @@ function M.load_pr(pr, opts)
         gh.pr_comment(repo, n, body, function(ok, _, err)
           if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
           vim.notify("DevOps: commented on #" .. n, vim.log.levels.INFO)
+          clear_pr_full_cache(repo, n)
+          M.load_pr(pr, opts)
         end)
       end)
     end, { buffer = buf, nowait = true, desc = "Comment" })
+    vim.keymap.set("n", "r", function()
+      clear_pr_full_cache(repo, n)
+      vim.notify("DevOps: refreshing #" .. n .. "…", vim.log.levels.INFO)
+      M.load_pr(pr, opts)
+    end, { buffer = buf, nowait = true, desc = "Refresh" })
     vim.keymap.set("n", "d", function()
       gh.pr_diff(repo, n, function(ok, diff_text, err)
         if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
