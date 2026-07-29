@@ -19,7 +19,7 @@ local state = {
   file_positions = {},
   -- PR review context (nil when viewing non-PR diffs)
   pr = nil,       -- { repo = "owner/repo", number = 123 }
-  line_map = {},   -- [buf_line_1indexed] = { path = "...", line = N }
+  line_map = {},   -- [buf_line_1indexed] = { path = "...", line = N, kind = "add"|"del"|"ctx" }
   pending_comments = {}, -- { { path, line, body }, ... }
   blame_visible = false,
   blame_data = {}, -- [filepath] = { [line_num] = "author date" }
@@ -677,16 +677,12 @@ end
 -- Unified
 ---------------------------------------------------------------------------
 
-local function render_unified()
-  close_windows()
-  local files = state.parsed or {}
+-- Build the unified-diff lines + highlight marks for a parsed file list.
+-- Pure: returns (lines, marks, file_positions, line_map) so the same styling
+-- renders into either the full-screen float or a plain side split.
+local function build_unified(files, total_w)
   local lines, marks = {}, {}
-  state.file_positions = {}
-
-  local off = tree_off()
-  local total_w = vim.o.columns - 2 - off
-  local total_h = vim.o.lines - 4
-
+  local file_positions = {}
   local line_map = {}
 
   for fi, file in ipairs(files) do
@@ -703,7 +699,7 @@ local function render_unified()
     local title = file.new_path or file.old_path or "unknown"
     local fpath = file.new_path or file.old_path or ""
 
-    state.file_positions[#state.file_positions + 1] = #lines
+    file_positions[#file_positions + 1] = #lines
     lines[#lines + 1] = file_separator(title, total_w)
     marks[#marks + 1] = { line = #lines - 1, type = "file" }
     do
@@ -728,17 +724,17 @@ local function render_unified()
         if prefix == "+" then
           lines[#lines + 1] = gutter(new_ln) .. content
           marks[#marks + 1] = { line = #lines - 1, type = "add", gutter_end = g }
-          line_map[#lines] = { path = fpath, line = new_ln }
+          line_map[#lines] = { path = fpath, line = new_ln, kind = "add" }
           new_ln = new_ln + 1
         elseif prefix == "-" then
           lines[#lines + 1] = gutter(old_ln) .. content
           marks[#marks + 1] = { line = #lines - 1, type = "del", gutter_end = g }
-          line_map[#lines] = { path = fpath, line = old_ln }
+          line_map[#lines] = { path = fpath, line = old_ln, kind = "del" }
           old_ln = old_ln + 1
         elseif prefix == " " then
           lines[#lines + 1] = gutter(new_ln) .. content
           marks[#marks + 1] = { line = #lines - 1, type = "ctx", gutter_end = g }
-          line_map[#lines] = { path = fpath, line = new_ln }
+          line_map[#lines] = { path = fpath, line = new_ln, kind = "ctx" }
           old_ln = old_ln + 1
           new_ln = new_ln + 1
         else
@@ -751,6 +747,19 @@ local function render_unified()
   end
 
   if #lines == 0 then lines = { "  No changes" } end
+  return lines, marks, file_positions, line_map
+end
+
+local function render_unified()
+  close_windows()
+  local files = state.parsed or {}
+
+  local off = tree_off()
+  local total_w = vim.o.columns - 2 - off
+  local total_h = vim.o.lines - 4
+
+  local lines, marks, file_positions, line_map = build_unified(files, total_w)
+  state.file_positions = file_positions
   state.line_map = line_map
 
   local buf = make_buf()
@@ -1201,6 +1210,29 @@ function M.open(diff_text, title, opts)
     end
     state.pending_focus = nil
   end
+end
+
+--- Render a unified diff into an existing buffer using the shared diff styling
+--- (identical colors/gutters/separators to the float viewer). Used by the
+--- side-split git diff so it looks exactly like the devops diff.
+--- @param buf integer      target buffer (contents are replaced)
+--- @param width integer    window width, for the file/hunk separator rules
+--- @param diff_text string raw `git diff` output
+--- @return table { files, file_positions, line_map }
+function M.render_unified_into(buf, width, diff_text)
+  -- Blank diff → clean placeholder (an empty string would otherwise parse into a
+  -- phantom "── diff ──" file header).
+  if not diff_text or diff_text:match("^%s*$") then
+    set_lines(buf, { "", "  No changes" })
+    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    return { files = {}, file_positions = {}, line_map = {} }
+  end
+  local files = parse_diff(diff_text)
+  local lines, marks, file_positions, line_map = build_unified(files, width)
+  set_lines(buf, lines)
+  vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  apply_marks(buf, marks)
+  return { files = files, file_positions = file_positions, line_map = line_map }
 end
 
 --- Parse a raw diff into a path-only file list, for external callers (the

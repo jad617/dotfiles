@@ -24,7 +24,17 @@ M.defaults = {
     pr_limit = 30,
   },
   layout = "float", -- "float" | "tab"
-  keys = { open = "<leader>dev" },
+  diff = {
+    -- Side-split git diff (follow-current-file mode) behaviour.
+    live = true,     -- true: update as you type, without saving. false: refresh on save only.
+    debounce = 150,  -- ms to wait after a keystroke before re-diffing (live mode)
+    follow = true,   -- scroll the split to the line your cursor is on (f toggles in the split)
+  },
+  keys = {
+    open = "<leader>dev",
+    diff = "<leader>dv",      -- git diff side split, follows the current buffer
+    diff_all = "<leader>dV",  -- git diff side split, all changed files
+  },
 }
 
 M.options = vim.deepcopy(M.defaults)

@@ -59,6 +59,26 @@ if open_key and open_key ~= "" then
   vim.keymap.set("n", open_key, "<cmd>DevOps<cr>", { desc = "DevOps (Jira + GitHub)" })
 end
 
+-- Git diff of the current file in a closable side split (devops diff styling),
+-- usable while coding without opening the dashboard. Required lazily so the diff
+-- viewer + its deps only load on first use.
+local function git_diff() return require("plugins.utils.devops.git_diff") end
+vim.api.nvim_create_user_command("DevOpsDiff", function() git_diff().toggle() end,
+  { desc = "Toggle git diff side split (follows the current file)" })
+vim.api.nvim_create_user_command("DevOpsDiffAll", function() git_diff().toggle_all() end,
+  { desc = "Toggle git diff side split (all changed files)" })
+
+local diff_key = config.options.keys and config.options.keys.diff
+if diff_key and diff_key ~= "" then
+  vim.keymap.set("n", diff_key, function() git_diff().toggle() end,
+    { desc = "DevOps git diff — follow current file" })
+end
+local diff_all_key = config.options.keys and config.options.keys.diff_all
+if diff_all_key and diff_all_key ~= "" then
+  vim.keymap.set("n", diff_all_key, function() git_diff().toggle_all() end,
+    { desc = "DevOps git diff — all changes" })
+end
+
 -- Warm the persisted section cache during idle so the first open is instant.
 if dashboard.preload_cache then vim.schedule(dashboard.preload_cache) end
 
