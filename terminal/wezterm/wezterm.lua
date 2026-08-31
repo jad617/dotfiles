@@ -7,13 +7,117 @@ local mux = wezterm.mux
 local config = {}
 
 --------------------------------------------------------------------------------
+-- Layout save / restore
+--------------------------------------------------------------------------------
+local layout_file = wezterm.home_dir .. "/.wezterm-layout.json"
+
+local function save_layout(window)
+	local tabs = {}
+	for _, tab_info in ipairs(window:mux_window():tabs_with_info()) do
+		local tab = tab_info.tab
+		local panes = {}
+		for _, pane_info in ipairs(tab:panes_with_info()) do
+			table.insert(panes, {
+				cwd = tostring(pane_info.pane:get_current_working_dir() or ""),
+				width = pane_info.width,
+				height = pane_info.height,
+				left = pane_info.left,
+				top = pane_info.top,
+				is_zoomed = pane_info.is_zoomed,
+			})
+		end
+		table.insert(tabs, {
+			title = tab:get_title() or "",
+			panes = panes,
+			is_active = tab_info.is_active,
+		})
+	end
+
+	local f = io.open(layout_file, "w")
+	if f then
+		-- Simple JSON serialization
+		local json = "[\n"
+		for ti, t in ipairs(tabs) do
+			json = json .. '  {"title":' .. wezterm.json_encode(t.title) .. ',"is_active":' .. tostring(t.is_active) .. ',"panes":[\n'
+			for pi, p in ipairs(t.panes) do
+				json = json .. '    {"cwd":' .. wezterm.json_encode(p.cwd)
+					.. ',"left":' .. p.left .. ',"top":' .. p.top
+					.. ',"width":' .. p.width .. ',"height":' .. p.height .. '}'
+				if pi < #t.panes then json = json .. "," end
+				json = json .. "\n"
+			end
+			json = json .. "  ]}"
+			if ti < #tabs then json = json .. "," end
+			json = json .. "\n"
+		end
+		json = json .. "]\n"
+		f:write(json)
+		f:close()
+		return true
+	end
+	return false
+end
+
+local function restore_layout(cmd)
+	local f = io.open(layout_file, "r")
+	if not f then return false end
+	local content = f:read("*a")
+	f:close()
+
+	local ok, tabs = pcall(wezterm.json_parse, content)
+	if not ok or not tabs or #tabs == 0 then return false end
+
+	local first_tab = true
+	local win
+	for _, t in ipairs(tabs) do
+		if first_tab then
+			local tab, pane, window = mux.spawn_window(cmd or {})
+			win = window
+			if t.title and t.title ~= "" then tab:set_title(t.title) end
+			-- Split for additional panes based on layout
+			if #t.panes > 1 then
+				for i = 2, #t.panes do
+					local p = t.panes[i]
+					local dir = (p.left > t.panes[1].left) and "Right" or "Bottom"
+					pane:split({ direction = dir, cwd = p.cwd:gsub("^file://[^/]*", "") })
+				end
+			end
+			first_tab = false
+		else
+			local tab, pane = win:spawn_tab({})
+			if t.title and t.title ~= "" then tab:set_title(t.title) end
+			if #t.panes > 1 then
+				for i = 2, #t.panes do
+					local p = t.panes[i]
+					local dir = (p.left > t.panes[1].left) and "Right" or "Bottom"
+					pane:split({ direction = dir, cwd = p.cwd:gsub("^file://[^/]*", "") })
+				end
+			end
+		end
+	end
+	-- Activate the correct tab
+	for i, t in ipairs(tabs) do
+		if t.is_active and win then
+			win:gui_window():perform_action(action.ActivateTab(i - 1), win:active_tab():active_pane())
+		end
+	end
+	return true
+end
+
+--------------------------------------------------------------------------------
 -- Global Config
 --------------------------------------------------------------------------------
 config.enable_kitty_graphics = true
 
 wezterm.on("gui-startup", function(cmd)
-	local tab, pane, window = mux.spawn_window(cmd or {})
-	window:gui_window():maximize()
+	if not restore_layout(cmd) then
+		local tab, pane, window = mux.spawn_window(cmd or {})
+		window:gui_window():maximize()
+	else
+		-- Maximize after restore
+		local window = mux.get_active_workspace() and mux.all_windows()[1]
+		if window then window:gui_window():maximize() end
+	end
 end)
 
 config.window_padding = {
@@ -72,8 +176,19 @@ wezterm.on("update-right-status", function(window, _)
 	local time = wezterm.strftime("%H:%M:%S")
 	local bcast = wezterm.GLOBAL.broadcast and "📡 " or ""
 	local leader = window:leader_is_active() and ("LEADER " .. LEADER_ICON .. " ") or ""
+
+	-- Layout save/clear flash message (show for 3 seconds)
+	local layout_msg = ""
+	if wezterm.GLOBAL.layout_msg and wezterm.GLOBAL.layout_msg_time then
+		if os.time() - wezterm.GLOBAL.layout_msg_time < 3 then
+			layout_msg = wezterm.GLOBAL.layout_msg .. " | "
+		else
+			wezterm.GLOBAL.layout_msg = nil
+		end
+	end
+
 	window:set_right_status(wezterm.format({
-		{ Text = leader .. bcast .. " 󱂬  " .. name .. " | " .. time .. " " },
+		{ Text = leader .. layout_msg .. bcast .. " 󱂬  " .. name .. " | " .. time .. " " },
 	}))
 
 	-- Left: leader active indicator
@@ -271,6 +386,32 @@ end
 config.keys = {
 	-- Reload config
 	{ key = "0", mods = "LEADER", action = action.ReloadConfiguration },
+
+	-- Save layout (LEADER+S)
+	{
+		key = "S",
+		mods = "LEADER",
+		action = wezterm.action_callback(function(window, _)
+			if save_layout(window) then
+				wezterm.GLOBAL.layout_msg = "💾 Layout saved!"
+				wezterm.GLOBAL.layout_msg_time = os.time()
+			else
+				wezterm.GLOBAL.layout_msg = "❌ Layout save failed!"
+				wezterm.GLOBAL.layout_msg_time = os.time()
+			end
+		end),
+	},
+
+	-- Clear saved layout (LEADER+X)
+	{
+		key = "X",
+		mods = "LEADER",
+		action = wezterm.action_callback(function(window, _)
+			os.remove(layout_file)
+			wezterm.GLOBAL.layout_msg = "🗑️ Layout cleared!"
+			wezterm.GLOBAL.layout_msg_time = os.time()
+		end),
+	},
 
 	-- Tabs
 	{ key = "c", mods = "LEADER", action = action.SpawnCommandInNewTab({ cwd = wezterm.home_dir }) },

@@ -35,5 +35,17 @@ return {
         },
       },
     })
+
+    -- Patch noice's UI event handler to gracefully skip single-word events
+    -- like "restart" (Neovim 0.13-dev) that lack the expected "group_type"
+    -- underscore format. Safe to remove once fixed upstream.
+    local ui = require("noice.ui")
+    local orig_get_handler = ui.get_handler
+    ui.get_handler = function(event, ...)
+      if not event:find("_") then
+        return
+      end
+      return orig_get_handler(event, ...)
+    end
   end,
 }
