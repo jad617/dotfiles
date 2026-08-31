@@ -74,7 +74,7 @@ function OpenNotesTelescope()
   local full_path = vim.fn.expand(root_dir)
   if vim.fn.isdirectory(full_path) == 0 then
     vim.fn.mkdir(full_path, "p")
-    os.execute("touch " .. full_path .. "/VERSION")
+    vim.fn.writefile({}, full_path .. "/VERSION")
   end
 
   vim.api.nvim_set_current_dir(full_path)

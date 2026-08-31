@@ -143,14 +143,19 @@ map("v", "<leader>dd", '"_dd', options)
 map("n", "<leader>D", '"_D', options)
 map("v", "<leader>D", '"_D', options)
 
--- [[ Copy current word ]]
--- Select word between double quote
-map("n", "<C-y>", 'yi"', options)
-map("i", "<C-y>", '<C-c>yi"', options)
-
--- Select word between single quote
-map("n", "<C-u>", "yi'", options)
-map("n", "<C-u>", "<C-c>yi'", options)
+-- [[ Copy word inside nearest quotes (single, double, or backtick) ]]
+local function yank_inner_quote()
+  -- Try each quote type; yi" etc. won't yank if cursor isn't inside that quote
+  for _, q in ipairs({ '"', "'", "`" }) do
+    local ok = pcall(vim.cmd, "normal! yi" .. q)
+    if ok and vim.fn.getreg('"') ~= "" then return end
+  end
+end
+vim.keymap.set("n", "<C-y>", yank_inner_quote, options)
+vim.keymap.set("i", "<C-y>", function()
+  vim.cmd("stopinsert")
+  yank_inner_quote()
+end, options)
 
 -- Disable Diagnostic warnings
 map("n", "<leader>di", "<cmd>lua vim.diagnostic.config({ virtual_text = false })<CR>", options) -- show lsp implementations

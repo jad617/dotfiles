@@ -49,7 +49,9 @@ vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI", "FocusGai
 vim.api.nvim_create_autocmd("LspAttach", {
   callback = function(args)
     local client = vim.lsp.get_client_by_id(args.data.client_id)
-    client.server_capabilities.semanticTokensProvider = nil
+    if client and client.server_capabilities then
+      client.server_capabilities.semanticTokensProvider = nil
+    end
   end,
 })
 
@@ -60,7 +62,7 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
   group = vim.api.nvim_create_augroup("Ansible", { clear = true }),
   pattern = {
     "*/roles/*/*/*.yaml",
-    "*/roles/*/*/.yml",
+    "*/roles/*/*/*.yml",
     "*/inventory/*/group_vars/*",
     "*/inventory/*/host_vars/*",
     "main.yml",
@@ -74,7 +76,7 @@ vim.api.nvim_create_autocmd({ "BufRead", "BufNewFile", "BufEnter" }, {
     "files/*.yaml",
     "files/*.yml",
     "environments/*.yaml",
-    "environments/*.yml,",
+    "environments/*.yml",
   },
   callback = function(ev)
     vim.bo[ev.buf].filetype = "yaml.ansible"

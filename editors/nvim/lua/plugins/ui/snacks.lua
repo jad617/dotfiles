@@ -28,7 +28,7 @@ return {
           title = "Todo List",
           icon = "󰒲 ",
           section = "terminal",
-          cmd = "cat ~/todo",
+          cmd = "cat " .. vim.fn.expand("~/todo"),
           padding = 1,
           height = 5,
           ttl = 5,
