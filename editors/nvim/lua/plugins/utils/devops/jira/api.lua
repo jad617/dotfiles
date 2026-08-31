@@ -274,6 +274,11 @@ end
 -- This is the real ~15-20 teammates (assignable/search returns org-wide perm holders).
 -- cb(ok, users[] {accountId, displayName, accountType}, err)
 function M.project_assignees(project_key, cb)
+  -- No project context (unparseable key, cross-project view): fall back to the
+  -- org-wide directory rather than building JQL around a nil key.
+  if not project_key or project_key == "" then
+    return M.assignable_users(nil, cb)
+  end
   local body = {
     jql = 'project = "' .. project_key .. '" AND assignee is not EMPTY ORDER BY updated DESC',
     fields = { "assignee" },

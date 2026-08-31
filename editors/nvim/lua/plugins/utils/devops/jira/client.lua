@@ -74,6 +74,9 @@ function M.request(method, path, body, cb)
       local out = res.stdout or ""
       local body_str, status = out:match("^(.*)\n(%d+)%s*$")
       status = tonumber(status)
+      -- Malformed/short response (no trailing status line): keep whatever came
+      -- back as the body so the error path can still report something useful.
+      if not body_str then body_str = out end
 
       local data = nil
       if body_str and #body_str > 0 then
@@ -91,6 +94,11 @@ function M.request(method, path, body, cb)
             for k, v in pairs(data.errors) do parts[#parts + 1] = k .. ": " .. tostring(v) end
             msg = msg .. ": " .. table.concat(parts, "; ")
           end
+        elseif body_str and body_str ~= "" then
+          -- Non-JSON body (HTML error page, proxy notice, plain text). Surface a
+          -- trimmed snippet instead of a bare status with no explanation.
+          local snippet = body_str:gsub("%s+", " "):gsub("^%s+", ""):sub(1, 200)
+          if snippet ~= "" then msg = msg .. ": " .. snippet end
         end
         cb(false, data, msg)
         return

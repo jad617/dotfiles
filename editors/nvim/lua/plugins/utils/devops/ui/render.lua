@@ -175,4 +175,72 @@ function M.fit(s, w)
   return M.pad(M.truncate(s, w), w)
 end
 
+---------------------------------------------------------------------------
+-- Time helpers
+--
+-- os.time() interprets a broken-down table as *local* time, so feeding it the
+-- UTC fields of an ISO 8601 string silently shifts the result by the local UTC
+-- offset (and again by an hour whenever the isdst flag disagrees). We convert
+-- the calendar date to a day count directly instead, which is exact and has no
+-- libc timezone/DST involvement at all.
+---------------------------------------------------------------------------
+
+-- Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's
+-- days_from_civil). Valid for any year in the supported range.
+local function days_from_civil(y, m, d)
+  y = y - (m <= 2 and 1 or 0)
+  local era = math.floor(y / 400)
+  local yoe = y - era * 400
+  local doy = math.floor((153 * (m + (m > 2 and -3 or 9)) + 2) / 5) + d - 1
+  local doe = yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy
+  return era * 146097 + doe - 719468
+end
+
+-- Parse an ISO 8601 timestamp to a Unix epoch, honouring a trailing "Z" or
+-- "+HH:MM" / "-HHMM" offset. Returns nil when the string isn't parseable.
+function M.iso_to_epoch(iso)
+  if type(iso) ~= "string" or iso == "" then return nil end
+  local y, mo, d, h, mi, s = iso:match("^(%d%d%d%d)-(%d%d)-(%d%d)[T ](%d%d):(%d%d):(%d%d)")
+  if not y then return nil end
+  local epoch = days_from_civil(tonumber(y), tonumber(mo), tonumber(d)) * 86400
+    + tonumber(h) * 3600 + tonumber(mi) * 60 + tonumber(s)
+  -- A "-0400" stamp is behind UTC, so its UTC epoch is *later* by the offset.
+  local sign, oh, om = iso:match("([+%-])(%d%d):?(%d%d)%s*$")
+  if sign then
+    local off = tonumber(oh) * 3600 + tonumber(om) * 60
+    epoch = epoch + (sign == "-" and off or -off)
+  end
+  return epoch
+end
+
+-- Coarse age label used by list rows: "3h ago", "2 days ago", "5 months ago".
+function M.time_ago(iso)
+  local ts = M.iso_to_epoch(iso)
+  if not ts then return "?" end
+  local diff = os.time() - ts
+  if diff < 0 then diff = 0 end
+  if diff < 60 then return "just now" end
+  if diff < 3600 then return math.floor(diff / 60) .. "m ago" end
+  if diff < 86400 then return math.floor(diff / 3600) .. "h ago" end
+  local days = math.floor(diff / 86400)
+  if days == 1 then return "1 day ago" end
+  if days < 30 then return days .. " days ago" end
+  return math.floor(days / 30) .. " months ago"
+end
+
+-- Compact age label used by detail cards; falls back to an absolute date once
+-- the timestamp is more than a week old.
+function M.format_time(iso)
+  if not iso or iso == "" then return "" end
+  local ts = M.iso_to_epoch(iso)
+  if not ts then return iso:sub(1, 10) end
+  local diff = os.time() - ts
+  if diff < 0 then diff = 0 end
+  if diff < 60 then return "just now" end
+  if diff < 3600 then return math.floor(diff / 60) .. "m ago" end
+  if diff < 86400 then return math.floor(diff / 3600) .. "h ago" end
+  if diff < 604800 then return math.floor(diff / 86400) .. "d ago" end
+  return os.date("!%Y-%m-%d", ts)
+end
+
 return M
