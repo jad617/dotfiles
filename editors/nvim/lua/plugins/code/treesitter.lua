@@ -58,7 +58,9 @@ return {
     end
 
     if #missing > 0 then
-      require("nvim-treesitter").install(missing)
+      vim.schedule(function()
+        require("nvim-treesitter").install(missing)
+      end)
     end
 
     -- Enable native treesitter highlighting for all buffers.

@@ -136,4 +136,4 @@ vim.o.exrc = true   -- load .nvim.lua from project directories
 -- pip install neovim
 -- pyenv which python
 -------------------------------
-vim.g.python3_host_prog = "~/.pyenv/versions/neovim/bin/python"
+vim.g.python3_host_prog = vim.fn.expand("~/.pyenv/versions/neovim/bin/python")
