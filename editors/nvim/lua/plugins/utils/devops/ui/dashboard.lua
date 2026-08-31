@@ -103,6 +103,14 @@ local function current_section_id()
   return sec and sec.id or ""
 end
 
+-- The sprint/project scope and +Done toggles only feed the "My Issues" query;
+-- the sprint board, epics, and backlog build their own scoped JQL and pin
+-- include_done themselves. Used to gate both the indicator and the keymap so
+-- the chrome never advertises a filter the current section ignores.
+local function section_honours_filters(sec_id)
+  return (sec_id or current_section_id()) == "jira_issues"
+end
+
 local function current_section_label()
   local sec = current_section()
   return sec and sec.label or ""
@@ -195,14 +203,16 @@ local function update_winbar()
   if tab.id == "jira" then
     local parts = {}
     if state.project then parts[#parts + 1] = state.project.key end
-    if state.sprint then
-      if state.scope_override == "project" then
-        parts[#parts + 1] = "project"
-      else
-        parts[#parts + 1] = "sprint"
+    if section_honours_filters() then
+      if state.sprint then
+        if state.scope_override == "project" then
+          parts[#parts + 1] = "project"
+        else
+          parts[#parts + 1] = "sprint"
+        end
       end
+      if state.include_done then parts[#parts + 1] = "+Done" end
     end
-    if state.include_done then parts[#parts + 1] = "+Done" end
     if #parts > 0 then
       bar = bar .. "  ·  " .. table.concat(parts, "  ·  ")
     end
@@ -237,8 +247,10 @@ local function render_sidebar()
   if tab and tab.id == "jira" then
     local parts = {}
     if state.project then parts[#parts + 1] = state.project.key end
-    if state.sprint then parts[#parts + 1] = (state.scope_override == "project") and "project" or "sprint" end
-    if state.include_done then parts[#parts + 1] = "+Done" end
+    if section_honours_filters() then
+      if state.sprint then parts[#parts + 1] = (state.scope_override == "project") and "project" or "sprint" end
+      if state.include_done then parts[#parts + 1] = "+Done" end
+    end
     if #parts > 0 then
       push("   " .. table.concat(parts, " · "), "DevOpsDim")
     end
@@ -608,21 +620,7 @@ local function github_check_status(rollup)
   return "", nil
 end
 
-local function time_ago(iso)
-  if not iso or iso == "" then return "?" end
-  local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return "?" end
-  local ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-    hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local diff = os.time(os.date("!*t")) - ts
-  if diff < 60 then return "just now" end
-  if diff < 3600 then return math.floor(diff / 60) .. "m ago" end
-  if diff < 86400 then return math.floor(diff / 3600) .. "h ago" end
-  local days = math.floor(diff / 86400)
-  if days == 1 then return "1 day ago" end
-  if days < 30 then return days .. " days ago" end
-  return math.floor(days / 30) .. " months ago"
-end
+local time_ago = render.time_ago
 
 local function render_github(prs, title, show_meta)
   stop_spinner()
@@ -1073,8 +1071,12 @@ local function warm_cwd_repo(cwd)
   vim.system({ "git", "-C", cwd, "remote", "get-url", "origin" }, { text = true }, function(res)
     vim.schedule(function()
       local remote = (res.code == 0 and res.stdout or ""):gsub("%s+", "")
-      local owner_repo = remote:match("[:/]([%w%.%-]+/[%w%.%-]+)%.?g?i?t?$")
-      state._cwd_repo[cwd] = (owner_repo and owner_repo:gsub("%.git$", "")) or false
+      -- Strip a trailing ".git" first, then take the last two path segments.
+      -- The character class must include "_" — underscores are legal in both
+      -- owner and repo names and were previously dropped.
+      remote = remote:gsub("%.git$", "")
+      local owner_repo = remote:match("[:/]([%w%._%-]+/[%w%._%-]+)$")
+      state._cwd_repo[cwd] = owner_repo or false
     end)
   end)
 end
@@ -1479,7 +1481,7 @@ local function jira_assign()
   if not item or item.kind ~= "jira" then
     return vim.notify("DevOps: select a Jira issue first", vim.log.levels.INFO)
   end
-  local project_key = state.project and state.project.key or item.key:match("^(%u+)-")
+  local project_key = state.project and state.project.key or item.key:match("^(%u[%u%d_]*)%-")
   -- Use the project's teammates (distinct assignees), not the org-wide assignable
   -- list — short and findable. Me + Unassigned are always offered.
   api.project_assignees(project_key, function(ok, users, err)
@@ -1619,7 +1621,7 @@ local function jira_clone()
   api.get_issue(item.key, function(ok, issue, err)
     if not ok then return vim.notify("DevOps: " .. (err or "fetch failed"), vim.log.levels.ERROR) end
     local f = issue.fields or {}
-    local project_key = item.key:match("^(%u+)-")
+    local project_key = item.key:match("^(%u[%u%d_]*)%-")
     -- Ask for the new title (prefilled), then let the description be edited.
     vim.ui.input({ prompt = "Clone title: ", default = "CLONE - " .. (f.summary or "") }, function(new_summary)
       if not new_summary or new_summary == "" then return end
@@ -1653,7 +1655,7 @@ local function move_to_sprint()
   if not item or item.kind ~= "jira" then
     return vim.notify("DevOps: select a Jira issue to move", vim.log.levels.INFO)
   end
-  local project = item.key:match("^(%u+)-")
+  local project = item.key:match("^(%u[%u%d_]*)%-")
 
   local function pick(sprints)
     if #sprints == 0 then
@@ -1754,6 +1756,7 @@ local function jira_search()
     if closed then return end
     closed = true
     timer:stop()
+    if not timer:is_closing() then timer:close() end
     vim.cmd("stopinsert")
     if vim.api.nvim_win_is_valid(input_win) then vim.api.nvim_win_close(input_win, true) end
     if prev_win and vim.api.nvim_win_is_valid(prev_win) then
@@ -1884,6 +1887,7 @@ local function gh_search()
     if closed then return end
     closed = true
     timer:stop()
+    if not timer:is_closing() then timer:close() end
     vim.cmd("stopinsert")
     if vim.api.nvim_win_is_valid(input_win) then vim.api.nvim_win_close(input_win, true) end
     if prev_win and vim.api.nvim_win_is_valid(prev_win) then
@@ -2158,6 +2162,9 @@ local function toggle_scope()
   end
 
   -- Jira: toggle sprint/project scope
+  if not section_honours_filters(sec_id) then
+    return vim.notify("DevOps: scope toggle only applies to My Issues", vim.log.levels.INFO)
+  end
   if not state.sprint then
     return vim.notify("DevOps: no active sprints — scope toggle N/A", vim.log.levels.INFO)
   end
@@ -2168,14 +2175,19 @@ local function toggle_scope()
   end
   render_sidebar()
   update_winbar()
-  if sec_id == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+  cache_invalidate("jira_issues")
+  load_section(true)
 end
 
 local function toggle_done()
+  if not section_honours_filters() then
+    return vim.notify("DevOps: +Done toggle only applies to My Issues", vim.log.levels.INFO)
+  end
   state.include_done = not state.include_done
   render_sidebar()
   update_winbar()
-  if current_section_id() == "jira_issues" then cache_invalidate("jira_issues"); load_section(true) end
+  cache_invalidate("jira_issues")
+  load_section(true)
 end
 
 ---------------------------------------------------------------------------
@@ -2718,12 +2730,19 @@ end
 
 local function setup_autocmds()
   local grp = vim.api.nvim_create_augroup("DevOpsWin", { clear = true })
-  vim.api.nvim_create_autocmd("WinClosed", {
-    group = grp,
-    pattern = tostring(state.content.win),
-    once = true,
-    callback = close,
-  })
+  -- Any of the three panes closing tears the whole dashboard down; watching only
+  -- the content window left orphaned sidebar/footer windows behind when one of
+  -- those was closed directly (e.g. :q while focused there).
+  for _, w in ipairs({ state.content.win, state.sidebar.win, state.footer.win }) do
+    if w and vim.api.nvim_win_is_valid(w) then
+      vim.api.nvim_create_autocmd("WinClosed", {
+        group = grp,
+        pattern = tostring(w),
+        once = true,
+        callback = close,
+      })
+    end
+  end
   -- Focus guard: when focus escapes to a non-DevOps window, pull it back.
   -- (Only in float layout — tab layout coexists with other windows.)
   if state.layout == "float" then
@@ -2765,10 +2784,17 @@ end
 -- Prefetch — after the initial section loads, silently warm the cache
 -- for all other sections so switching feels instant.
 ---------------------------------------------------------------------------
-local prefetched = false
+-- Keyed on the context the warmed entries belong to, so switching project,
+-- account, or sprint re-warms instead of leaving the caches cold forever.
+local prefetched_ctx = nil
 local function prefetch_other_sections()
-  if prefetched then return end
-  prefetched = true
+  local ctx = table.concat({
+    (state.project and state.project.key) or "-",
+    client.account_id() or "-",
+    (state.sprint and tostring(state.sprint.id or state.sprint.name)) or "-",
+  }, "|")
+  if prefetched_ctx == ctx then return end
+  prefetched_ctx = ctx
 
   -- Jira sections
   if client.configured() then

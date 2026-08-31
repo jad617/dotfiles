@@ -105,6 +105,56 @@ local taligned = true
 for _, l in ipairs(tbl) do if dw(l) > 40 then taligned = false end end
 ok(taligned, "render: table fits width")
 
+-- ── render.iso_to_epoch / time_ago / format_time ───────────────────────────
+-- Regression guard: these used to feed UTC fields straight into os.time(),
+-- which reads them as *local* time and shifted every label by the machine's
+-- UTC offset (and again by an hour under DST).
+eq(render.iso_to_epoch("1970-01-01T00:00:00Z"), 0, "iso_to_epoch: unix epoch")
+eq(render.iso_to_epoch("2000-03-01T00:00:00Z"), 951868800, "iso_to_epoch: leap-year boundary")
+eq(render.iso_to_epoch("2026-06-11T18:12:41Z"), 1781201561, "iso_to_epoch: Z suffix")
+
+-- The same instant written three ways must resolve identically.
+local z = render.iso_to_epoch("2026-06-11T18:12:41Z")
+eq(render.iso_to_epoch("2026-06-11T18:12:41+00:00"), z, "iso_to_epoch: +00:00 == Z")
+eq(render.iso_to_epoch("2026-06-11T14:12:41-0400"), z, "iso_to_epoch: -0400 offset applied")
+eq(render.iso_to_epoch("2026-06-11T23:42:41+05:30"), z, "iso_to_epoch: +05:30 half-hour offset")
+eq(render.iso_to_epoch("2026-06-11T18:12:41.482Z"), z, "iso_to_epoch: fractional seconds ignored")
+
+ok(render.iso_to_epoch("garbage") == nil, "iso_to_epoch: nil on unparseable")
+ok(render.iso_to_epoch("") == nil, "iso_to_epoch: nil on empty")
+ok(render.iso_to_epoch(nil) == nil, "iso_to_epoch: nil on nil")
+
+-- Labels are computed against a real "now", so build inputs from os.time().
+-- os.date("!...") formats as UTC, which is exactly what the parser expects.
+local function ago(seconds)
+  return os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() - seconds)
+end
+eq(render.time_ago(ago(10)), "just now", "time_ago: sub-minute")
+eq(render.time_ago(ago(90)), "1m ago", "time_ago: minutes")
+eq(render.time_ago(ago(3 * 3600)), "3h ago", "time_ago: hours")
+eq(render.time_ago(ago(26 * 3600)), "1 day ago", "time_ago: singular day")
+eq(render.time_ago(ago(5 * 86400)), "5 days ago", "time_ago: plural days")
+eq(render.time_ago("nope"), "?", "time_ago: ? on unparseable")
+
+eq(render.format_time(ago(10)), "just now", "format_time: sub-minute")
+eq(render.format_time(ago(4 * 3600)), "4h ago", "format_time: hours")
+eq(render.format_time(ago(3 * 86400)), "3d ago", "format_time: days")
+eq(render.format_time("2020-01-02T03:04:05Z"), "2020-01-02", "format_time: absolute date when old")
+eq(render.format_time(""), "", "format_time: empty passes through")
+
+-- ── Jira issue-key → project-key parsing ───────────────────────────────────
+-- Regression guard: the old "^(%u+)-" pattern returned nil for any key with a
+-- digit (e.g. MC2-123), which fed a nil project into the assignee lookup.
+local function key_project(k) return k:match("^(%u[%u%d_]*)%-") end
+eq(key_project("ABC-123"), "ABC", "key_project: plain letters")
+eq(key_project("MC2-123"), "MC2", "key_project: digit inside key")
+eq(key_project("X1Y2-99"), "X1Y2", "key_project: mixed letters/digits")
+eq(key_project("PROJ_X-5"), "PROJ_X", "key_project: underscore allowed")
+eq(key_project("A-1"), "A", "key_project: single letter")
+ok(key_project("abc-1") == nil, "key_project: rejects lowercase")
+ok(key_project("123-4") == nil, "key_project: rejects leading digit")
+ok(key_project("NODASH") == nil, "key_project: nil without separator")
+
 -- ── report ─────────────────────────────────────────────────────────────────
 print(("\n%d passed, %d failed"):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

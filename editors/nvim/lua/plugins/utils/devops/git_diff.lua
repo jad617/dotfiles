@@ -171,15 +171,26 @@ local function live_diff(cb, fallback)
       local buf_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
       if vim.bo[bufnr].eol ~= false then buf_lines[#buf_lines + 1] = "" end -- trailing newline
       local base_tmp, buf_tmp = vim.fn.tempname(), vim.fn.tempname()
-      vim.fn.writefile(vim.split(base_content, "\n", { plain = true }), base_tmp, "b")
-      vim.fn.writefile(buf_lines, buf_tmp, "b")
+      local function cleanup()
+        os.remove(base_tmp)
+        os.remove(buf_tmp)
+      end
+      -- A failed write would leave git diffing an empty/missing file and quietly
+      -- render a bogus diff, so fall back to the on-disk diff instead.
+      local wrote = pcall(function()
+        assert(vim.fn.writefile(vim.split(base_content, "\n", { plain = true }), base_tmp, "b") == 0)
+        assert(vim.fn.writefile(buf_lines, buf_tmp, "b") == 0)
+      end)
+      if not wrote then
+        cleanup()
+        return fallback()
+      end
       vim.system(
         { "git", "-C", dir, "--no-pager", "diff", "--no-index", "--unified=3", "--", base_tmp, buf_tmp },
         { text = true },
         function(res2)
           vim.schedule(function()
-            os.remove(base_tmp)
-            os.remove(buf_tmp)
+            cleanup()
             cb(rewrite_headers(res2.stdout or "", rel, base_empty))
           end)
         end)
