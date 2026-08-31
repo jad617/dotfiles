@@ -60,7 +60,10 @@ vim.api.nvim_create_autocmd("BufReadPre", {
     local git_root = vim.fn.systemlist("git -C " .. vim.fn.shellescape(file_dir) .. " rev-parse --show-toplevel")[1]
 
     vim.env.VIRTUAL_ENV = venv
-    vim.env.PATH = venv .. "/bin:" .. vim.env.PATH
+    -- Prepend venv bin only if not already present to avoid PATH bloat
+    if not vim.env.PATH:find(venv .. "/bin", 1, true) then
+      vim.env.PATH = venv .. "/bin:" .. vim.env.PATH
+    end
     if vim.v.shell_error == 0 and git_root ~= "" then vim.env.PYTHONPATH = git_root end
 
     -- Restart basedpyright if already running so it picks up the new env

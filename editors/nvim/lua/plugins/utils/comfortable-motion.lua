@@ -15,7 +15,7 @@ local function smooth_scroll(lines)
       timer:close()
       return
     end
-    vim.api.nvim_feedkeys(key, "n", false)
+    vim.cmd("normal! " .. key)
     remaining = remaining - 1
   end))
   -- stylua: ignore end

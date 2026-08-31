@@ -44,6 +44,7 @@ return {
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "olimorris/codecompanion.nvim",
+    enabled = false,
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-treesitter/nvim-treesitter",
@@ -93,6 +94,7 @@ return {
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "coder/claudecode.nvim",
+    enabled = false,
     event = "VeryLazy",
     config = true,
     keys = {
@@ -114,6 +116,7 @@ return {
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "zbirenbaum/copilot.lua",
+    enabled = false,
     cmd = "Copilot",
     event = "InsertEnter",
     enabled = function() return vim.fn.filereadable(vim.fn.expand("~/.disable_copilot")) == 0 end,
@@ -138,6 +141,7 @@ return {
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "CopilotC-Nvim/CopilotChat.nvim",
+    enabled = false,
     dependencies = {
       { "zbirenbaum/copilot.lua" },
       { "nvim-lua/plenary.nvim" },
@@ -184,6 +188,7 @@ return {
   -- ─────────────────────────────────────────────────────────────────────────
   {
     "folke/sidekick.nvim",
+    enabled = false,
     event = "VeryLazy",
     opts = {
       -- Disable Next Edit Suggestions — causes lag by firing Copilot LSP
