@@ -172,17 +172,32 @@ end
 
 local function show_pending_virt(buf)
   vim.api.nvim_buf_clear_namespace(buf, ns_comments, 0, -1)
+  if #state.pending_comments == 0 then return end
+  -- Index the diff by (path, line) once, so painting N comments is O(diff + N)
+  -- rather than rescanning the whole line_map for every comment.
+  local by_loc = {}
+  for lnum, info in pairs(state.line_map) do
+    local k = (info.path or "") .. "\0" .. tostring(info.line)
+    if by_loc[k] == nil or lnum < by_loc[k] then by_loc[k] = lnum end
+  end
+  local truncate = require("plugins.utils.devops.ui.render").truncate
   for _, c in ipairs(state.pending_comments) do
-    for lnum, info in pairs(state.line_map) do
-      if info.path == c.path and info.line == c.line then
-        local preview = require("plugins.utils.devops.ui.render").truncate((c.body or ""):gsub("\n", " "), 60)
-        pcall(vim.api.nvim_buf_set_extmark, buf, ns_comments, lnum - 1, 0, {
-          virt_text = { { "  💬 " .. preview, "DevOpsWarn" } },
-          virt_text_pos = "eol",
-        })
-        break
-      end
+    local lnum = by_loc[(c.path or "") .. "\0" .. tostring(c.line)]
+    if lnum then
+      local preview = truncate((c.body or ""):gsub("\n", " "), 60)
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns_comments, lnum - 1, 0, {
+        virt_text = { { "  💬 " .. preview, "DevOpsWarn" } },
+        virt_text_pos = "eol",
+      })
     end
+  end
+end
+
+-- Refresh the 💬 markers on every open diff buffer.
+local function refresh_virt_all()
+  for _, key in ipairs({ "unified", "left", "right" }) do
+    local b = state.bufs[key]
+    if b and vim.api.nvim_buf_is_valid(b) then show_pending_virt(b) end
   end
 end
 
@@ -205,11 +220,7 @@ local function add_inline_comment()
     }
     save_pending_store()
     vim.notify(string.format("DevOps: comment queued (%d pending)", #state.pending_comments), vim.log.levels.INFO)
-    -- Show virtual text on all active diff buffers
-    for _, key in ipairs({ "unified", "left", "right" }) do
-      local b = state.bufs[key]
-      if b and vim.api.nvim_buf_is_valid(b) then show_pending_virt(b) end
-    end
+    refresh_virt_all()
   end)
 end
 
@@ -242,6 +253,7 @@ local function submit_review()
           or "commented"
         local count = n_inline > 0 and string.format(" (%d inline comments)", n_inline) or ""
         vim.notify("DevOps: review submitted — " .. label .. count, vim.log.levels.INFO)
+        refresh_virt_all() -- drop the 💬 markers for the comments we just sent
       end)
     end
     if event == "APPROVE" and #pending == 0 then
@@ -252,14 +264,6 @@ local function submit_review()
       end)
     end
   end)
-end
-
--- Refresh the 💬 markers on every open diff buffer.
-local function refresh_virt_all()
-  for _, key in ipairs({ "unified", "left", "right" }) do
-    local b = state.bufs[key]
-    if b and vim.api.nvim_buf_is_valid(b) then show_pending_virt(b) end
-  end
 end
 
 -- Move the diff to a queued comment's file:line.

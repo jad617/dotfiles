@@ -245,10 +245,12 @@ end
 ---------------------------------------------------------------------------
 -- PR write actions (non-JSON runner for operations returning plain text)
 ---------------------------------------------------------------------------
-local function gh_run(args, cb)
+local function gh_run(args, cb, stdin)
   local cmd = { "gh" }
   vim.list_extend(cmd, args)
-  vim.system(cmd, { text = true }, function(res)
+  local sysopts = { text = true }
+  if stdin ~= nil then sysopts.stdin = stdin end
+  vim.system(cmd, sysopts, function(res)
     vim.schedule(function()
       cb(res.code == 0, res.stdout or "", res.stderr or "")
     end)
@@ -344,20 +346,13 @@ function M.pr_review(repo, n, event, body, comments, cb)
       body = (body and body ~= "") and body or " ",
       comments = api_comments,
     })
-    local tmp = vim.fn.tempname()
-    local f = io.open(tmp, "w")
-    if f then
-      f:write(payload)
-      f:close()
-    end
+    -- Stream the payload on stdin ("--input -") instead of staging a temp file:
+    -- nothing to clean up, and no silent no-op when the write fails.
     gh_run({
       "api", "repos/" .. repo .. "/pulls/" .. tostring(n) .. "/reviews",
       "--method", "POST",
-      "--input", tmp,
-    }, function(ok, out, err)
-      os.remove(tmp)
-      cb(ok, out, err)
-    end)
+      "--input", "-",
+    }, cb, payload)
   end
 end
 

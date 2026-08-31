@@ -186,20 +186,7 @@ local function field_path(issue, path, default)
 end
 
 -- Format an ISO 8601 date string to a short relative/absolute label.
-local function format_time(iso)
-  if not iso or iso == "" then return "" end
-  -- parse "2026-06-11T18:12:41Z" or "2026-06-11T18:12:41+00:00"
-  local y, mo, d, h, mi, s = iso:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
-  if not y then return iso:sub(1, 10) end
-  local ts = os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d),
-    hour = tonumber(h), min = tonumber(mi), sec = tonumber(s) })
-  local diff = os.time() - ts
-  if diff < 60 then return "just now"
-  elseif diff < 3600 then return math.floor(diff / 60) .. "m ago"
-  elseif diff < 86400 then return math.floor(diff / 3600) .. "h ago"
-  elseif diff < 604800 then return math.floor(diff / 86400) .. "d ago"
-  else return ("%04d-%02d-%02d"):format(tonumber(y), tonumber(mo), tonumber(d)) end
-end
+local format_time = render.format_time
 
 local function active_sprint_name(f)
   local cf = f.customfield_10020
@@ -598,7 +585,7 @@ local function setup_issue_keys(buf, ctx)
   end, "Edit")
 
   map("a", function()
-    api.assignable_users(ctx.project_key, function(ok, users, err)
+    api.project_assignees(ctx.project_key, function(ok, users, err)
       if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
       local choices = {}
       local me_id = client.account_id()
@@ -607,7 +594,7 @@ local function setup_issue_keys(buf, ctx)
       end
       choices[#choices + 1] = { label = "✗ Unassigned", account_id = nil }
       for _, u in ipairs(users) do
-        if u.accountId and u.accountType ~= "app" then
+        if u.accountId and u.accountType ~= "app" and u.accountId ~= me_id then
           choices[#choices + 1] = { label = u.displayName or u.accountId, account_id = u.accountId }
         end
       end
@@ -632,7 +619,7 @@ function M.open_issue(key)
     if not ok or not issue then
       return vim.notify("DevOps: " .. (err or ("failed to load " .. key)), vim.log.levels.ERROR)
     end
-    local project_key = key:match("^(%u+)-")
+    local project_key = key:match("^(%u[%u%d_]*)%-")
     local function setup_keys(buf)
       setup_issue_keys(buf, {
         key = key,
@@ -811,6 +798,11 @@ local function check_display(ctx)
 end
 
 local active_pr -- the PR currently rendered (enriched), for keymaps like links
+
+-- Bumped every time a PR view is opened. Async enrichment captures the value at
+-- request time and drops its repaint if a different PR has since been opened —
+-- show() reuses the buffer, so a buffer-validity check alone can't detect this.
+local pr_view_gen = 0
 
 -- Collect distinct URLs from a PR's body, comments, reviews, and review threads,
 -- so they stay openable even though the rendered text flattens links to their label.
@@ -1233,6 +1225,7 @@ function M.open_pr(pr)
       gh.pr_approve(repo, n, function(ok, _, err)
         if not ok then return vim.notify("DevOps: " .. (err or "approve failed"), vim.log.levels.ERROR) end
         vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
+        clear_pr_full_cache(repo, n)
         M.open_pr(pr)
       end)
     end, { buffer = buf, desc = "Approve" })
@@ -1244,6 +1237,8 @@ function M.open_pr(pr)
         gh.pr_request_changes(repo, n, body, function(ok, _, err)
           if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
           vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
+          clear_pr_full_cache(repo, n)
+          M.open_pr(pr)
         end)
       end)
     end, { buffer = buf, desc = "Request changes" })
@@ -1255,9 +1250,18 @@ function M.open_pr(pr)
         gh.pr_comment(repo, n, body, function(ok, _, err)
           if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
           vim.notify("DevOps: commented on #" .. n, vim.log.levels.INFO)
+          clear_pr_full_cache(repo, n)
+          M.open_pr(pr)
         end)
       end)
     end, { buffer = buf, desc = "Comment" })
+
+    -- Refresh
+    vim.keymap.set("n", "r", function()
+      clear_pr_full_cache(repo, n)
+      vim.notify("DevOps: refreshing #" .. n .. "…", vim.log.levels.INFO)
+      M.open_pr(pr)
+    end, { buffer = buf, desc = "Refresh" })
 
     -- Diff (original viewer)
     vim.keymap.set("n", "d", function()
@@ -1305,11 +1309,15 @@ function M.open_pr(pr)
   end
 
   -- Show a quick card immediately, then enrich with a full `gh pr view`.
+  pr_view_gen = pr_view_gen + 1
+  local gen = pr_view_gen
   show(title, build_pr(pr), function(buf)
     setup_keys(buf)
     enrich_pr(repo, n, pr,
       function(full) show(title, build_pr(full), setup_keys) end,
-      function() return state.buf and vim.api.nvim_buf_is_valid(state.buf) end)
+      function()
+        return gen == pr_view_gen and state.buf and vim.api.nvim_buf_is_valid(state.buf)
+      end)
   end)
 end
 
@@ -1331,7 +1339,7 @@ function M.load_issue(key, opts)
     if not ok or not issue then
       return vim.notify("DevOps: " .. (err or ("failed to load " .. key)), vim.log.levels.ERROR)
     end
-    local project_key = key:match("^(%u+)-")
+    local project_key = key:match("^(%u[%u%d_]*)%-")
 
     -- Track rows for context-aware edit actions (populated after build)
     local issue_comment_rows = {}
@@ -1501,9 +1509,11 @@ function M.load_pr(pr, opts)
   on_ready(build_pr(pr, pr_w), make_keys)
 
   -- Enrich with full PR data (parallel + cached; see enrich_pr).
+  pr_view_gen = pr_view_gen + 1
+  local gen = pr_view_gen
   enrich_pr(repo, n, pr,
     function(full) on_update(build_pr(full, pr_w), make_keys) end,
-    function() return true end)
+    function() return gen == pr_view_gen end)
 end
 
 return M

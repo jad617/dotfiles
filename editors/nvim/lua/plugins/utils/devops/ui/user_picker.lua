@@ -76,6 +76,7 @@ function M.open(on_select, opts)
   -- State --------------------------------------------------------------------
   local users = {}
   local sel = 1
+  local placeholder -- transient list message: search failure / "no matches"
   local timer = vim.uv.new_timer()
   local closed = false
 
@@ -86,17 +87,17 @@ function M.open(on_select, opts)
     for i, u in ipairs(users) do
       lines[i] = (i == sel and " ▸ " or "   ") .. u.name
     end
-    if #lines == 0 then lines = { "   type to search…" } end
+    if #lines == 0 then lines = { "   " .. (placeholder or "type to search…") } end
     vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, lines)
     vim.bo[list_buf].modifiable = false
     vim.api.nvim_buf_clear_namespace(list_buf, ns, 0, -1)
     for i = 1, #users do
       local hl = (i == sel) and "DevOpsPickerCursorLine" or "DevOpsPickerNormal"
-      vim.api.nvim_buf_add_highlight(list_buf, ns, hl, i - 1, 0, -1)
+      vim.api.nvim_buf_set_extmark(list_buf, ns, i - 1, 0, { end_row = i, hl_group = hl, hl_eol = true })
     end
     -- Dim the placeholder text
     if #users == 0 then
-      vim.api.nvim_buf_add_highlight(list_buf, ns, "DevOpsPickerDim", 0, 0, -1)
+      vim.api.nvim_buf_set_extmark(list_buf, ns, 0, 0, { end_row = 1, hl_group = "DevOpsPickerDim", hl_eol = true })
     end
   end
 
@@ -104,6 +105,7 @@ function M.open(on_select, opts)
     if closed then return end
     closed = true
     timer:stop()
+    if not timer:is_closing() then timer:close() end
     if vim.api.nvim_win_is_valid(input_win) then vim.api.nvim_win_close(input_win, true) end
     if vim.api.nvim_win_is_valid(list_win) then vim.api.nvim_win_close(list_win, true) end
     if prev_win and vim.api.nvim_win_is_valid(prev_win) then
@@ -116,14 +118,22 @@ function M.open(on_select, opts)
     timer:stop()
     timer:start(300, 0, vim.schedule_wrap(function()
       if closed then return end
-      api.search_users(query, function(ok, data)
-        if not ok or closed then return end
+      api.search_users(query, function(ok, data, err)
+        if closed then return end
+        if not ok then
+          -- Don't leave the previous query's results on screen pretending to
+          -- still match what was typed.
+          users = {}
+          placeholder = "⚠ " .. (err or "search failed")
+          return render()
+        end
         users = {}
         for _, u in ipairs(data) do
           if u.accountId and u.accountType ~= "app" then
             users[#users + 1] = { name = u.displayName or u.accountId, id = u.accountId }
           end
         end
+        placeholder = (#users == 0 and query ~= "") and "no matches" or nil
         sel = math.min(sel, math.max(1, #users))
         render()
       end, { project_key = project_key })
