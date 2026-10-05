@@ -6,14 +6,12 @@
 local M = {}
 
 local function push_highlight(highlights, line, col_start, col_end, hl)
-  if col_end > col_start then
-    highlights[#highlights + 1] = {
-      line = line,
-      col_start = col_start,
-      col_end = col_end,
-      hl = hl,
-    }
-  end
+  if col_end > col_start then highlights[#highlights + 1] = {
+    line = line,
+    col_start = col_start,
+    col_end = col_end,
+    hl = hl,
+  } end
 end
 
 local function apply_pattern(highlights, line, text, offset, pattern, hl)
@@ -36,11 +34,24 @@ end
 
 -- Common HTML entities that show up in GitHub/bot comments.
 local ENTITIES = {
-  ["&nbsp;"] = " ", ["&amp;"] = "&", ["&lt;"] = "<", ["&gt;"] = ">",
-  ["&quot;"] = '"', ["&#39;"] = "'", ["&apos;"] = "'", ["&mdash;"] = "—",
-  ["&ndash;"] = "–", ["&hellip;"] = "…", ["&rarr;"] = "→", ["&larr;"] = "←",
-  ["&bull;"] = "•", ["&copy;"] = "©", ["&reg;"] = "®", ["&trade;"] = "™",
-  ["&check;"] = "✓", ["&times;"] = "✕",
+  ["&nbsp;"] = " ",
+  ["&amp;"] = "&",
+  ["&lt;"] = "<",
+  ["&gt;"] = ">",
+  ["&quot;"] = '"',
+  ["&#39;"] = "'",
+  ["&apos;"] = "'",
+  ["&mdash;"] = "—",
+  ["&ndash;"] = "–",
+  ["&hellip;"] = "…",
+  ["&rarr;"] = "→",
+  ["&larr;"] = "←",
+  ["&bull;"] = "•",
+  ["&copy;"] = "©",
+  ["&reg;"] = "®",
+  ["&trade;"] = "™",
+  ["&check;"] = "✓",
+  ["&times;"] = "✕",
 }
 
 --- Strip HTML/markdown noise so bot comments (swarmia, sonarqube, copilot, …)
@@ -50,19 +61,21 @@ local ENTITIES = {
 function M.clean(text)
   if not text or text == "" then return "" end
   local t = text:gsub("\r", "")
-  t = t:gsub("<!%-%-.-%-%->", "")                                   -- HTML comments
-  t = t:gsub("<[bB][rR]%s*/?>", "\n")                              -- <br> → newline
-  t = t:gsub("%[!%[([^%]]*)%]%([^%)]*%)%]%([^%)]*%)", "%1")        -- [![alt](img)](link) → alt
-  t = t:gsub("!%[([^%]]*)%]%([^%)]*%)", "%1")                      -- ![alt](img) → alt
-  t = t:gsub("%[([^%]]*)%]%([^%)]*%)", "%1")                       -- [text](url) → text
-  t = t:gsub('<img[^>]-alt="([^"]*)"[^>]->', "%1")                -- <img alt="x"> → x
-  t = t:gsub("<[^>]->", "")                                        -- remaining HTML tags
-  t = t:gsub("%*%*([^%*]+)%*%*", "%1")                             -- **bold** → bold
-  t = t:gsub("__([^_]+)__", "%1")                                  -- __bold__ → bold
-  for ent, ch in pairs(ENTITIES) do t = t:gsub(ent, ch) end
+  t = t:gsub("<!%-%-.-%-%->", "") -- HTML comments
+  t = t:gsub("<[bB][rR]%s*/?>", "\n") -- <br> → newline
+  t = t:gsub("%[!%[([^%]]*)%]%([^%)]*%)%]%([^%)]*%)", "%1") -- [![alt](img)](link) → alt
+  t = t:gsub("!%[([^%]]*)%]%([^%)]*%)", "%1") -- ![alt](img) → alt
+  t = t:gsub("%[([^%]]*)%]%([^%)]*%)", "%1") -- [text](url) → text
+  t = t:gsub('<img[^>]-alt="([^"]*)"[^>]->', "%1") -- <img alt="x"> → x
+  t = t:gsub("<[^>]->", "") -- remaining HTML tags
+  t = t:gsub("%*%*([^%*]+)%*%*", "%1") -- **bold** → bold
+  t = t:gsub("__([^_]+)__", "%1") -- __bold__ → bold
+  for ent, ch in pairs(ENTITIES) do
+    t = t:gsub(ent, ch)
+  end
   t = t:gsub("&#(%d+);", function(n) return vim.fn.nr2char(tonumber(n)) end)
-  t = t:gsub("[ \t]+\n", "\n")                                    -- trailing spaces
-  t = t:gsub("\n\n\n+", "\n\n")                                   -- collapse blank runs
+  t = t:gsub("[ \t]+\n", "\n") -- trailing spaces
+  t = t:gsub("\n\n\n+", "\n\n") -- collapse blank runs
   return (t:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
@@ -83,7 +96,9 @@ local function wrap_words(text, max)
     end
     while dw(cur) > max do -- a single word longer than the line
       local cut = #cur
-      while cut > 1 and dw(cur:sub(1, cut)) > max do cut = cut - 1 end
+      while cut > 1 and dw(cur:sub(1, cut)) > max do
+        cut = cut - 1
+      end
       -- Prefer breaking after a separator (dotted identifiers, paths, URLs).
       local brk = cur:sub(1, cut):match(".*[%./_:%-]()")
       if brk and brk > math.floor(cut / 2) then cut = brk - 1 end
@@ -106,9 +121,7 @@ local function table_cells(line)
 end
 
 -- A separator row like |:---|---:|:--:| (only pipes/colons/dashes/spaces).
-local function is_table_sep(line)
-  return line:match("^%s*|?[ :|%-]+|?%s*$") ~= nil and line:find("%-") ~= nil
-end
+local function is_table_sep(line) return line:match("^%s*|?[ :|%-]+|?%s*$") ~= nil and line:find("%-") ~= nil end
 
 --- Parse a markdown string into { lines = {}, highlights = {} }
 --- Each highlight: { line = 0-idx, col_start, col_end, hl = "group" }
@@ -125,8 +138,7 @@ function M.render(text, indent, width)
   -- Emit `content` after `prefix` (continuation lines use `hanging`), wrapping to
   -- `width` when set. line_hl spans the whole line; prefix_hl spans the marker.
   local function emit(prefix, hanging, content, line_hl, prefix_hl)
-    local segs = (width and content ~= "")
-      and wrap_words(content, width - dw(prefix)) or { content }
+    local segs = (width and content ~= "") and wrap_words(content, width - dw(prefix)) or { content }
     for si, seg in ipairs(segs) do
       local pfx = (si == 1) and prefix or hanging
       local full = pfx .. seg
@@ -142,22 +154,36 @@ function M.render(text, indent, width)
   -- the whole row fits `width`. A dim underline separates the header.
   local function render_table(rows, aligns)
     local ncol = 0
-    for _, r in ipairs(rows) do ncol = math.max(ncol, #r) end
+    for _, r in ipairs(rows) do
+      ncol = math.max(ncol, #r)
+    end
     if ncol == 0 then return end
     local cw = {}
     for c = 1, ncol do
       local m = 3
-      for _, r in ipairs(rows) do m = math.max(m, dw(r[c] or "")) end
+      for _, r in ipairs(rows) do
+        m = math.max(m, dw(r[c] or ""))
+      end
       cw[c] = m
     end
     local gap = 2
     local avail = (width or 80) - dw(indent)
-    local function total() local t = (ncol - 1) * gap; for c = 1, ncol do t = t + cw[c] end; return t end
+    local function total()
+      local t = (ncol - 1) * gap
+      for c = 1, ncol do
+        t = t + cw[c]
+      end
+      return t
+    end
     local guard = 0
     while total() > avail and guard < 1000 do
       guard = guard + 1
       local wc, wmax = 1, -1
-      for c = 1, ncol do if cw[c] > wmax then wmax, wc = cw[c], c end end
+      for c = 1, ncol do
+        if cw[c] > wmax then
+          wmax, wc = cw[c], c
+        end
+      end
       if cw[wc] <= 6 then break end
       cw[wc] = cw[wc] - 1
     end
@@ -165,7 +191,10 @@ function M.render(text, indent, width)
       local extra = w - dw(seg)
       if extra < 0 then extra = 0 end
       if align == "right" then return string.rep(" ", extra) .. seg end
-      if align == "center" then local l = math.floor(extra / 2); return string.rep(" ", l) .. seg .. string.rep(" ", extra - l) end
+      if align == "center" then
+        local l = math.floor(extra / 2)
+        return string.rep(" ", l) .. seg .. string.rep(" ", extra - l)
+      end
       return seg .. string.rep(" ", extra)
     end
     for ri, r in ipairs(rows) do
@@ -176,14 +205,18 @@ function M.render(text, indent, width)
       end
       for ln = 1, maxln do
         local parts = {}
-        for c = 1, ncol do parts[c] = pad(wrapped[c][ln] or "", cw[c], aligns[c]) end
+        for c = 1, ncol do
+          parts[c] = pad(wrapped[c][ln] or "", cw[c], aligns[c])
+        end
         local full = indent .. table.concat(parts, string.rep(" ", gap))
         lines[#lines + 1] = full
         if ri == 1 then push_highlight(highlights, #lines - 1, 0, #full, "DevOpsMdHeader") end
       end
       if ri == 1 then
         local sep = {}
-        for c = 1, ncol do sep[c] = string.rep("─", cw[c]) end
+        for c = 1, ncol do
+          sep[c] = string.rep("─", cw[c])
+        end
         local full = indent .. table.concat(sep, string.rep(" ", gap))
         lines[#lines + 1] = full
         push_highlight(highlights, #lines - 1, 0, #full, "DevOpsDim")
@@ -227,8 +260,7 @@ function M.render(text, indent, width)
       i = j
     else
       local stripped = line:gsub("%s", "")
-      local hr = #stripped >= 3
-        and (stripped:match("^%-+$") or stripped:match("^%*+$") or stripped:match("^_+$")) ~= nil
+      local hr = #stripped >= 3 and (stripped:match("^%-+$") or stripped:match("^%*+$") or stripped:match("^_+$")) ~= nil
       local quote = line:match("^%s*>+%s?(.*)")
       local hashes, header_text = line:match("^(#+)%s+(.*)")
       local bullet_indent, bullet_text = line:match("^(%s*)[%-%*%+]%s+(.*)")
