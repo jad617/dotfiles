@@ -11,8 +11,10 @@ local function smooth_scroll(lines)
   -- stylua: ignore start
   timer:start(0, 16, vim.schedule_wrap(function()
     if remaining <= 0 then
-      timer:stop()
-      timer:close()
+      if not timer:is_closing() then
+        timer:stop()
+        timer:close()
+      end
       return
     end
     vim.cmd("normal! " .. key)

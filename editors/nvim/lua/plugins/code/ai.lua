@@ -15,7 +15,7 @@ return {
       { "<leader>m", "<cmd>RenderMarkdown toggle<cr>", desc = "Toggle Render Markdown" },
     },
     opts = {
-      enabled = true,
+      enabled = false,
       heading = { enabled = true },
       code = { enabled = true },
       anti_conceal = {
