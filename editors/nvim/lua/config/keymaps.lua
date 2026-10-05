@@ -163,6 +163,14 @@ map("n", "<leader>di", "<cmd>lua vim.diagnostic.config({ virtual_text = false })
 map("n", "<leader>de", "<cmd>lua vim.diagnostic.config({ virtual_text = true })<CR>", options) -- show lsp implementations
 
 ------------------------------------------------------------
+-- [[ DEVOPS ]]
+------------------------------------------------------------
+-- Terraform Docs
+map("n", "<leader>tv", ":TfDocs<CR>", options_silent) -- Open Terraform resource docs in vsplit
+map("n", "<leader>tf", ":TfDocsFloat<CR>", options_silent) -- Open Terraform resource docs in float
+map("n", "<leader>to", ":TfDocsOpen<CR>", options_silent) -- Open Terraform resource docs in browser
+
+------------------------------------------------------------
 -- [[ VIM TROUBLESHOOT ]]
 ------------------------------------------------------------
 -- :verbose imap <Tab>                             " This command can show which config is overwritting a key remap

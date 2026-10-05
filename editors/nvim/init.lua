@@ -10,3 +10,6 @@ require("config.keymaps")
 require("config.functions")
 require("config.colorscheme")
 -- end
+
+-- DevOps
+require("config.devops.terraform").setup()
