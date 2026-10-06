@@ -15,8 +15,9 @@ local options_silent = { noremap = true, silent = true }
 map("n", "<Space>", "", {})
 vim.g.mapleader = " " -- 'vim.g' sets global variables
 
--- Disable recording
-map("n", "q", "<Nop>", options_silent)
+-- Disable recording; q clears multicursors instead (Ctrl-L is taken by workspaces)
+vim.keymap.set("n", "q", "<Cmd>call nvim_buf_clear_namespace(0, nvim_create_namespace('nvim.multicursor'), 0, -1)<CR>", { silent = true, desc = "Clear multicursors" })
+vim.keymap.set("n", "q=", "q=", { desc = "Toggle multicursor follow mode" })
 map("n", "<c-z>", "<Nop>", options_silent)
 
 -- Remove lazyvim default key maps

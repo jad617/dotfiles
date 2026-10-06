@@ -35,14 +35,6 @@ vim.api.nvim_create_autocmd("UiEnter", {
 })
 
 ------------------------------------------------------------
--- [[ Auto Reload if file changed ]]
-------------------------------------------------------------
-vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI", "FocusGained" }, {
-  command = "if mode() != 'c' | checktime | endif",
-  pattern = { "*" },
-})
-
-------------------------------------------------------------
 -- Disable semanticTokensProvider
 -- This messes up the syntax highlight colorscheme
 ------------------------------------------------------------
@@ -278,12 +270,13 @@ vim.api.nvim_create_autocmd("TermClose", {
 })
 
 ------------------------------------------------------------
--- highlight on yank
+-- highlight on yank / put
 ------------------------------------------------------------
 vim.cmd([[
   augroup highlight_yank
   autocmd!
-  au TextYankPost * silent! lua vim.highlight.on_yank({higroup="Visual", timeout=200})
+  au TextYankPost * silent! lua vim.hl.hl_op({higroup="Visual", timeout=200})
+  au TextPutPost  * silent! lua vim.hl.hl_op({higroup="Visual", timeout=200})
   augroup END
 ]])
 
@@ -318,5 +311,28 @@ vim.api.nvim_create_autocmd("VimEnter", {
     if vim.fn.isdirectory(file) == 1 then return end
     local root = require("config.global_functions").project_root(file)
     if root and root ~= vim.fn.getcwd() then vim.fn.chdir(root) end
+  end,
+})
+
+-- Same as Nvim's default "nvim.swapfile" handler (skip the prompt when the swap
+-- file belongs to a running Nvim), but the W325 notice is deferred: notifying
+-- synchronously lets noice/nvim-notify open windows mid-:edit, which aborts the
+-- open with E812 ("Autocommands changed buffer or buffer name").
+vim.api.nvim_create_augroup("nvim.swapfile", { clear = true })
+vim.api.nvim_create_autocmd("SwapExists", {
+  group = vim.api.nvim_create_augroup("swapfile_quiet", { clear = true }),
+  callback = function()
+    local info = vim.fn.swapinfo(vim.v.swapname)
+    local passwd = vim.uv.os_get_passwd()
+    local user = passwd and passwd.username
+    if info.error or info.pid <= 0 or not user or info.user ~= user then
+      vim.v.swapchoice = "" -- show the prompt
+      return
+    end
+    vim.v.swapchoice = "e"
+    local pid = info.pid
+    vim.schedule(function()
+      vim.notify(("W325: Ignoring swapfile from Nvim process %d"):format(pid), vim.log.levels.WARN)
+    end)
   end,
 })

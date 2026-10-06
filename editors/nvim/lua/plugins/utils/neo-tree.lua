@@ -51,6 +51,17 @@ return {
   opts = {
     enable_diagnostics = false,
     close_if_last_window = true,
+    event_handlers = {
+      {
+        -- Pin the tree so :only keeps it open
+        event = "neo_tree_window_after_open",
+        handler = function(args)
+          if args.winid and vim.api.nvim_win_is_valid(args.winid) then
+            vim.wo[args.winid].winpinned = true
+          end
+        end,
+      },
+    },
     window = {
       mappings = {
         ["Z"] = "expand_all_nodes",

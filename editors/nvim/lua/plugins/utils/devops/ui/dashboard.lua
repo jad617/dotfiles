@@ -2634,7 +2634,7 @@ local function open_tab_windows()
   state.sidebar.win = vim.api.nvim_get_current_win()
   state.sidebar.buf = make_buf()
   vim.api.nvim_win_set_buf(state.sidebar.win, state.sidebar.buf)
-  vim.api.nvim_win_set_width(state.sidebar.win, 32)
+  vim.api.nvim_win_resize(state.sidebar.win, 32, -1)
   vim.api.nvim_set_current_win(state.content.win)
   vim.wo[state.content.win].cursorline = true
   vim.wo[state.sidebar.win].cursorline = true

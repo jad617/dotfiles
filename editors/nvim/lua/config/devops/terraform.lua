@@ -55,7 +55,29 @@ local function extract_major_version(version_str)
   return major or nil
 end
 
-local function get_provider_github_url(provider, resource, version_constraint)
+-- Parse a `resource "type"` or `data "type"` declaration on the current line.
+-- Returns kind ("resource"|"data"), the full type, provider and name, or nil.
+local function parse_block(line)
+  local kind, block_type = "resource", line:match('resource%s*"([^"]+)"')
+  if not block_type then
+    kind, block_type = "data", line:match('^%s*data%s*"([^"]+)"')
+  end
+  if not block_type then
+    vim.notify("Not on a terraform resource or data declaration", vim.log.levels.WARN)
+    return nil
+  end
+  local provider, name = block_type:match("^([^_]+)_(.+)$")
+  if not provider or not name then
+    vim.notify("Could not parse resource type: " .. block_type, vim.log.levels.WARN)
+    return nil
+  end
+  return kind, block_type, provider, name
+end
+
+local function get_provider_github_url(provider, resource, version_constraint, kind)
+  -- Docs folders differ for data sources
+  local docs_dir = kind == "data" and "data-sources" or "resources"
+  local website_dir = kind == "data" and "d" or "r"
   -- Map provider names to their GitHub organization/repo names
   local provider_map = {
     aws = "hashicorp/terraform-provider-aws",
@@ -79,35 +101,34 @@ local function get_provider_github_url(provider, resource, version_constraint)
   if major then
     if provider == "cloudflare" then
       table.insert(urls, string.format(
-        "https://raw.githubusercontent.com/%s/v%s.0/docs/resources/%s.md",
-        repo, major, resource
+        "https://raw.githubusercontent.com/%s/v%s.0/docs/%s/%s.md",
+        repo, major, docs_dir, resource
       ))
     else
       table.insert(urls, string.format(
-        "https://raw.githubusercontent.com/%s/release/v%s/docs/resources/%s.md",
-        repo, major, resource
+        "https://raw.githubusercontent.com/%s/release/v%s/docs/%s/%s.md",
+        repo, major, docs_dir, resource
       ))
     end
   end
   
-  -- Try main/master branch
+  -- Try main branch (cloudflare: then the legacy master branch, v4 docs)
+  table.insert(urls, string.format(
+    "https://raw.githubusercontent.com/%s/main/docs/%s/%s.md",
+    repo, docs_dir, resource
+  ))
   if provider == "cloudflare" then
     table.insert(urls, string.format(
-      "https://raw.githubusercontent.com/%s/master/docs/resources/%s.md",
-      repo, resource
-    ))
-  else
-    table.insert(urls, string.format(
-      "https://raw.githubusercontent.com/%s/main/docs/resources/%s.md",
-      repo, resource
+      "https://raw.githubusercontent.com/%s/master/docs/%s/%s.md",
+      repo, docs_dir, resource
     ))
   end
   
   -- Try AWS/Azure website docs
   if provider == "aws" or provider == "azurerm" then
     table.insert(urls, string.format(
-      "https://raw.githubusercontent.com/%s/main/website/docs/r/%s.html.markdown",
-      repo, resource
+      "https://raw.githubusercontent.com/%s/main/website/docs/%s/%s.html.markdown",
+      repo, website_dir, resource
     ))
   end
   
@@ -115,21 +136,9 @@ local function get_provider_github_url(provider, resource, version_constraint)
 end
 
 local function fetch_terraform_docs()
-  local line = vim.api.nvim_get_current_line()
-  local resource_type = line:match('resource%s*"([^"]+)"')
-
-  if not resource_type then
-    vim.notify("Not on a terraform resource declaration", vim.log.levels.WARN)
-    return
-  end
-
-  -- Split resource_type into provider and resource name
-  -- e.g., "aws_ssm_parameter" -> provider="aws", resource="ssm_parameter"
-  local provider, resource = resource_type:match("^([^_]+)_(.+)$")
-  if not provider or not resource then
-    vim.notify("Could not parse resource type: " .. resource_type, vim.log.levels.WARN)
-    return
-  end
+  -- e.g. "aws_ssm_parameter" -> provider="aws", resource="ssm_parameter"
+  local kind, resource_type, provider, resource = parse_block(vim.api.nvim_get_current_line())
+  if not kind then return end
 
   vim.notify("Fetching docs for " .. resource_type .. "...")
 
@@ -138,7 +147,7 @@ local function fetch_terraform_docs()
   local version_constraint = providers[provider] and providers[provider].version or nil
   
   -- Get URLs to try based on provider version
-  local urls = get_provider_github_url(provider, resource, version_constraint)
+  local urls = get_provider_github_url(provider, resource, version_constraint, kind)
 
   local found = false
   local current_url_index = 0
@@ -154,27 +163,19 @@ local function fetch_terraform_docs()
     local url = urls[url_index]
     current_url_index = url_index
     
-    vim.fn.jobstart({ "curl", "-s", url }, {
-      on_stdout = function(_, data, _)
+    -- vim.net.request uses `curl --fail`, so HTTP errors (404) arrive as `err`.
+    vim.net.request(url, { retry = 1 }, function(err, res)
+      vim.schedule(function()
         if found then return end
-        if not data or #data == 0 then
-          try_url(url_index + 1)
-          return
-        end
-        local markdown = table.concat(data, "\n")
-        if markdown and markdown ~= "" and not markdown:match("<html") and not markdown:match("404") then
+        local markdown = not err and res and res.body or ""
+        if markdown ~= "" and not markdown:match("^%s*<") then
           found = true
           M.display_terraform_docs(markdown, resource_type)
         else
           try_url(url_index + 1)
         end
-      end,
-      on_stderr = function(_, data, _)
-        if not found then
-          try_url(url_index + 1)
-        end
-      end,
-    })
+      end)
+    end)
   end
 
   try_url(1)
@@ -266,20 +267,13 @@ function M.setup()
     fetch_terraform_docs()
   end, {})
   vim.api.nvim_create_user_command("TfDocsOpen", function()
-    local line = vim.api.nvim_get_current_line()
-    local resource_type = line:match('resource%s*"([^"]+)"')
-    if not resource_type then
-      vim.notify("Not on a terraform resource declaration", vim.log.levels.WARN)
-      return
-    end
-    local provider, resource = resource_type:match("^([^_]+)_(.+)$")
-    if not provider or not resource then
-      vim.notify("Could not parse resource type: " .. resource_type, vim.log.levels.WARN)
-      return
-    end
+    local kind, resource_type, provider, resource = parse_block(vim.api.nvim_get_current_line())
+    if not kind then return end
     local url = string.format(
-      "https://registry.terraform.io/providers/hashicorp/%s/latest/docs/resources/%s",
+      "https://registry.terraform.io/providers/%s/%s/latest/docs/%s/%s",
+      provider == "cloudflare" and "cloudflare" or "hashicorp",
       provider,
+      kind == "data" and "data-sources" or "resources",
       resource
     )
     os.execute(string.format("open '%s'", url))
