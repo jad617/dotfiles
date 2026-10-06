@@ -536,6 +536,13 @@ config.keys = {
 --------------------------------------------------------------------------------
 -- Copy mode (vim-like scroll + search)
 --------------------------------------------------------------------------------
+-- Close copy/search mode and jump back to the prompt in one keypress
+-- (Close alone leaves the viewport scrolled back in history).
+local close_copy_mode = action.Multiple({
+	action.CopyMode("Close"),
+	action.ScrollToBottom,
+})
+
 config.key_tables = {
 	broadcast_mode = broadcast_keys,
 	move_tab = (function()
@@ -585,11 +592,11 @@ config.key_tables = {
 			action.CopyMode("Close"),
 		}) },
 		-- Exit
-		{ key = "q",      mods = "NONE", action = action.CopyMode("Close") },
-		{ key = "Escape", mods = "NONE", action = action.CopyMode("Close") },
+		{ key = "q",      mods = "NONE", action = close_copy_mode },
+		{ key = "Escape", mods = "NONE", action = close_copy_mode },
 	},
 	search_mode = {
-		{ key = "Escape",    mods = "NONE", action = action.CopyMode("Close") },
+		{ key = "Escape",    mods = "NONE", action = close_copy_mode },
 		{ key = "Enter",     mods = "NONE", action = action.ActivateCopyMode },
 		{ key = "/",         mods = "NONE", action = action.CopyMode("ClearPattern") },
 		{ key = "UpArrow",   mods = "NONE", action = action.CopyMode("PriorMatch") },
