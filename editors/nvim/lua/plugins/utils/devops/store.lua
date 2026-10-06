@@ -28,6 +28,28 @@ function M.save(tbl)
   return true
 end
 
+-- Default diff theme (by name). Kept out of state.json, which persist_prefs
+-- rewrites wholesale.
+function M.diff_theme_file() return auth.dir() .. "/diff_theme.json" end
+
+function M.load_diff_theme()
+  local f = io.open(M.diff_theme_file(), "r")
+  if not f then return nil end
+  local content = f:read("*a")
+  f:close()
+  local ok, data = pcall(vim.json.decode, content)
+  return ok and type(data) == "table" and data.name or nil
+end
+
+function M.save_diff_theme(name)
+  vim.fn.mkdir(auth.dir(), "p", tonumber("700", 8))
+  local f = io.open(M.diff_theme_file(), "w")
+  if not f then return false end
+  f:write(vim.json.encode({ name = name }))
+  f:close()
+  return true
+end
+
 function M.bookmarks_file() return auth.dir() .. "/bookmarks.json" end
 
 function M.load_bookmarks()

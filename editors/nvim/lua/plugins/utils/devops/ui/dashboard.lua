@@ -2550,12 +2550,17 @@ local function is_hidden()
     and not is_open()
 end
 
-local function open_float_windows()
+-- Float layout geometry, derived from the current editor size.
+local function float_geometry()
   local total = vim.o.columns - 2
   local footer_h = 2
   local height = vim.o.lines - 2 - footer_h - 2 -- room for footer + gap
   local sw = 32
-  local cw = total - sw - 3
+  return total, footer_h, height, sw, total - sw - 3
+end
+
+local function open_float_windows()
+  local total, footer_h, height, sw, cw = float_geometry()
   local row = 0
   local col0 = 0
 
@@ -2588,11 +2593,7 @@ end
 
 -- Restore hidden float windows with existing buffers (preserves content).
 local function restore_float_windows()
-  local total = vim.o.columns - 2
-  local footer_h = 2
-  local height = vim.o.lines - 2 - footer_h - 2
-  local sw = 32
-  local cw = total - sw - 3
+  local total, footer_h, height, sw, cw = float_geometry()
   local row = 0
   local col0 = 0
 
@@ -2728,8 +2729,42 @@ local function setup_sidebar_keymaps()
   end, "select section")
 end
 
+-- Re-fit the dashboard to a new editor size (e.g. a terminal split opened or
+-- closed): resize the floats and re-render the width-dependent list + footer.
+local function relayout()
+  if not is_open() then return end
+  if state.layout == "float" then
+    local total, footer_h, height, sw, cw = float_geometry()
+    local function fit(win, cfg)
+      if win and vim.api.nvim_win_is_valid(win) then
+        cfg.relative = "editor"
+        pcall(vim.api.nvim_win_set_config, win, cfg)
+      end
+    end
+    fit(state.sidebar.win, { row = 0, col = 0, width = sw, height = height })
+    fit(state.content.win, { row = 0, col = sw + 3, width = cw, height = height })
+    fit(state.footer.win, { row = height + 2, col = 0, width = total, height = footer_h })
+  end
+  if not state.in_detail then
+    local cursor = vim.api.nvim_win_get_cursor(state.content.win)
+    load_section(false, true)
+    pcall(vim.api.nvim_win_set_cursor, state.content.win, cursor)
+  end
+  render_footer()
+end
+
 local function setup_autocmds()
   local grp = vim.api.nvim_create_augroup("DevOpsWin", { clear = true })
+  local resize_timer
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = grp,
+    callback = function()
+      if not is_open() then return end
+      resize_timer = resize_timer or vim.uv.new_timer()
+      resize_timer:stop()
+      resize_timer:start(50, 0, vim.schedule_wrap(relayout))
+    end,
+  })
   -- Any of the three panes closing tears the whole dashboard down; watching only
   -- the content window left orphaned sidebar/footer windows behind when one of
   -- those was closed directly (e.g. :q while focused there).

@@ -365,10 +365,8 @@ local function keymaps(buf)
   end, "Toggle follow scrolling")
   m("T", function()
     -- Extmarks reference the hl groups by name, so recoloring updates live.
-    local name = render.cycle_diff_theme(1)
-    set_winbar(state.win)
-    vim.notify("Diff theme: " .. name, vim.log.levels.INFO, { title = "DevOps" })
-  end, "Cycle diff theme")
+    render.pick_diff_theme(function() set_winbar(state.win) end)
+  end, "Pick diff theme")
   m("R", refresh, "Refresh diff")
 end
 
