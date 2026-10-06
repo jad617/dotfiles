@@ -112,7 +112,7 @@ return {
         },
       },
       follow_current_file = {
-        enabled = false,
+        enabled = true, -- reveal and focus the active buffer's file in the tree
         leave_dirs_open = true,
       },
     },

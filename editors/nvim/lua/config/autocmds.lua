@@ -306,3 +306,17 @@ vim.api.nvim_create_user_command("WinInfo", function()
   end
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end, {})
+
+-- On `nvim path/to/file`, cd to the root of the project the file belongs to
+-- (see project_root in config.global_functions). Cwd is left alone if none.
+vim.api.nvim_create_autocmd("VimEnter", {
+  group = vim.api.nvim_create_augroup("startup_root_cd", { clear = true }),
+  once = true,
+  callback = function()
+    if vim.fn.argc() == 0 then return end
+    local file = vim.fn.fnamemodify(vim.fn.argv(0), ":p")
+    if vim.fn.isdirectory(file) == 1 then return end
+    local root = require("config.global_functions").project_root(file)
+    if root and root ~= vim.fn.getcwd() then vim.fn.chdir(root) end
+  end,
+})
