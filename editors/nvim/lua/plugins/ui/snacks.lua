@@ -285,17 +285,7 @@ return {
                 -- In explorer, <S-Left> should jump to the WezTerm pane on the left.
                 ["<S-Right>"] = function() vim.cmd("wincmd l") end,
                 ["<S-Left>"] = function()
-                  local pane_id = vim.env.WEZTERM_PANE
-                  local cmd = { "wezterm", "cli", "activate-pane-direction" }
-                  if pane_id and pane_id ~= "" then
-                    table.insert(cmd, "--pane-id")
-                    table.insert(cmd, pane_id)
-                  end
-                  table.insert(cmd, "Left")
-                  vim.fn.system(cmd)
-                  if vim.v.shell_error ~= 0 then
-                    vim.notify("WezTerm pane handoff failed for <S-Left> (check :messages)", vim.log.levels.WARN)
-                  end
+                  require("config.global_functions").wezterm_pane("Left")
                 end,
                 ["<S-Up>"] = function() vim.cmd("wincmd k") end,
                 ["<S-Down>"] = function() vim.cmd("wincmd j") end,

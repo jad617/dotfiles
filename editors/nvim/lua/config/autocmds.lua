@@ -143,7 +143,7 @@ vim.api.nvim_create_autocmd("TermOpen", {
         local cfg = vim.api.nvim_win_get_config(0)
         if cfg.relative ~= "" then
           -- floating window: go straight to WezTerm, ignore Neovim splits
-          vim.fn.jobstart({ "wezterm", "cli", "activate-pane-direction", dirs.wez }, { detach = true })
+          require("config.global_functions").wezterm_pane(dirs.wez)
         else
           require("smart-splits")[dirs.ss]()
         end

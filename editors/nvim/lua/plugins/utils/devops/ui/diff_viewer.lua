@@ -52,7 +52,14 @@ local function close_windows()
   pcall(vim.api.nvim_clear_autocmds, { group = augroup })
 end
 
+-- Separate group: close_windows() clears `augroup` on every re-render, but the
+-- resize handler must survive those.
+local resize_group = vim.api.nvim_create_augroup("DevOpsDiffViewerResize", { clear = true })
+local resize_timer
+
 local function close()
+  pcall(vim.api.nvim_clear_autocmds, { group = resize_group })
+  if resize_timer then resize_timer:stop() end
   close_windows()
   state.mode = "split"
   state.pr = nil
@@ -105,6 +112,43 @@ end
 
 local function map_buf(buf, lhs, rhs, desc)
   vim.keymap.set("n", lhs, rhs, { buffer = buf, nowait = true, silent = true, desc = desc })
+end
+
+-- Shift+Arrow pane navigation. The viewer is all floats, which smart-splits
+-- can't traverse, so move between the diff panes (tree · left/unified · right)
+-- here and hand off to the adjacent WezTerm pane at the edges.
+local function wezterm_pane(dir)
+  pcall(require("config.global_functions").wezterm_pane, dir)
+end
+
+local function pane_order()
+  local order = {}
+  for _, key in ipairs({ "tree", "unified", "left", "right" }) do
+    local w = state.wins[key]
+    if w and vim.api.nvim_win_is_valid(w) then order[#order + 1] = w end
+  end
+  return order
+end
+
+local function nav_pane(dir)
+  if dir == "Left" or dir == "Right" then
+    local order = pane_order()
+    local cur = vim.api.nvim_get_current_win()
+    for i, w in ipairs(order) do
+      if w == cur then
+        local target = order[i + (dir == "Left" and -1 or 1)]
+        if target then return vim.api.nvim_set_current_win(target) end
+        break
+      end
+    end
+  end
+  wezterm_pane(dir)
+end
+
+local function map_pane_nav(buf)
+  for _, dir in ipairs({ "Left", "Right", "Up", "Down" }) do
+    map_buf(buf, "<S-" .. dir .. ">", function() nav_pane(dir) end, "Pane / WezTerm " .. dir:lower())
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -467,18 +511,10 @@ local function setup_keymaps(buf)
     state.mode = state.mode == "unified" and "split" or "unified"
     M.open(state.diff_text, state.title)
   end, "Toggle diff mode")
-  map_buf(buf, "T", function()
-    local render = require("plugins.utils.devops.ui.render")
-    local name = render.cycle_diff_theme(1)
-    vim.notify("Diff theme: " .. name, vim.log.levels.INFO, { title = "DevOps" })
-    M.open(state.diff_text, state.title)
-  end, "Cycle diff theme")
+  map_buf(buf, "T", function() render.pick_diff_theme() end, "Pick diff theme")
   map_buf(buf, "B", toggle_blame, "Toggle blame")
   map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
-  map_buf(buf, "<S-Left>", function()
-    local w = state.wins.tree
-    if w and vim.api.nvim_win_is_valid(w) then vim.api.nvim_set_current_win(w) end
-  end, "Focus file tree")
+  map_pane_nav(buf)
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
   -- Open in browser at current file/line position
@@ -691,14 +727,18 @@ local function build_unified(files, total_w)
 
   for fi, file in ipairs(files) do
     if fi > 1 then
-      -- 3 dark blank lines, then the rule, to separate files before the header.
+      -- 3 dark blank lines to separate files.
       for _ = 1, 3 do
         lines[#lines + 1] = ""
         marks[#marks + 1] = { line = #lines - 1, type = "filegap" }
       end
+    end
+    do -- 2 rules above the header (matching the 2 below)
       local rule = sep_rule(total_w)
-      lines[#lines + 1] = rule
-      marks[#marks + 1] = { line = #lines - 1, type = "sep" }
+      for _ = 1, 2 do
+        lines[#lines + 1] = rule
+        marks[#marks + 1] = { line = #lines - 1, type = "sep" }
+      end
     end
     local title = file.new_path or file.old_path or "unknown"
     local fpath = file.new_path or file.old_path or ""
@@ -811,11 +851,14 @@ local function build_split_data(files, pane_width)
 
   for fi, file in ipairs(files) do
     if fi > 1 then
-      -- 3 dark blank lines, then the rule, to separate files before the header.
+      -- 3 dark blank lines to separate files.
       add(nil, "", "", "filegap", "filegap")
       add(nil, "", "", "filegap", "filegap")
       add(nil, "", "", "filegap", "filegap")
+    end
+    do -- 2 rules above the header (matching the 2 below)
       local rule = sep_rule(pane_width)
+      add(nil, rule, rule, "sep", "sep")
       add(nil, rule, rule, "sep", "sep")
     end
     local title = file.new_path or file.old_path or "unknown"
@@ -1113,7 +1156,10 @@ render_tree_pane = function(total_h)
   map_buf(buf, "<C-d>", close, "Close diff")
   map_buf(buf, "<Esc>", close, "Close diff")
   map_buf(buf, "f", function() toggle_tree() end, "Toggle file tree")
-  map_buf(buf, "<S-Right>", focus_diff, "Focus diff")
+  -- Themes only redefine highlight groups, so they preview live without a
+  -- re-render (which would reset the tree cursor and focus).
+  map_buf(buf, "T", function() render.pick_diff_theme() end, "Pick diff theme")
+  map_pane_nav(buf)
   map_buf(buf, "<CR>", function()
     local r = current()
     if not r then return end
@@ -1166,6 +1212,54 @@ toggle_tree = function()
   if state.mode == "split" then render_split() else render_unified() end
 end
 
+-- Re-render at the new editor size, keeping the current file, scroll position
+-- and focused pane.
+local function rerender_on_resize()
+  local diff_win = state.wins.left or state.wins.unified
+  if not (diff_win and vim.api.nvim_win_is_valid(diff_win)) then return end
+  local cur = vim.api.nvim_get_current_win()
+  local focus_key
+  for k, w in pairs(state.wins) do
+    if w == cur then focus_key = k end
+  end
+  local view = vim.api.nvim_win_call(diff_win, vim.fn.winsaveview)
+  local file_idx
+  for i, pos in ipairs(state.file_positions) do
+    if pos + 1 <= view.lnum then file_idx = i end
+  end
+
+  M.open(state.diff_text, state.title, { focus_file = file_idx })
+  refresh_virt_all()
+
+  local function restore()
+    for _, key in ipairs({ "unified", "left", "right" }) do
+      local w = state.wins[key]
+      if w and vim.api.nvim_win_is_valid(w) then
+        pcall(vim.api.nvim_win_call, w, function() vim.fn.winrestview(view) end)
+      end
+    end
+    local fw = focus_key and state.wins[focus_key]
+    if fw and vim.api.nvim_win_is_valid(fw) and vim.api.nvim_get_current_win() ~= fw then
+      vim.api.nvim_set_current_win(fw)
+    end
+  end
+  restore()
+  -- The tree's deferred CursorMoved can snap the diff back to the file top.
+  vim.defer_fn(restore, 30)
+end
+
+local function watch_resize()
+  vim.api.nvim_clear_autocmds({ group = resize_group })
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = resize_group,
+    callback = function()
+      resize_timer = resize_timer or vim.uv.new_timer()
+      resize_timer:stop()
+      resize_timer:start(50, 0, vim.schedule_wrap(rerender_on_resize))
+    end,
+  })
+end
+
 ---------------------------------------------------------------------------
 -- Public
 ---------------------------------------------------------------------------
@@ -1214,6 +1308,7 @@ function M.open(diff_text, title, opts)
     end
     state.pending_focus = nil
   end
+  watch_resize()
 end
 
 --- Render a unified diff into an existing buffer using the shared diff styling
