@@ -238,6 +238,9 @@ config.inactive_pane_hsb = {
 -- Leader key (Ctrl+a, tmux-style)
 --------------------------------------------------------------------------------
 config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1500 }
+-- A zoomed pane (LEADER+z) stays full screen: pane navigation is ignored until
+-- you unzoom. Neovim's Shift+Arrow handoff checks zoom state to match.
+config.unzoom_on_switch_pane = false
 
 --------------------------------------------------------------------------------
 -- Tab naming: show only current app, but allow renaming
