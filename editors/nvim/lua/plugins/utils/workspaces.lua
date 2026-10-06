@@ -203,13 +203,18 @@ local function open_workspace_picker()
         return
       end
       vim.fn.chdir(item.path)
-      -- Open neo-tree once the user picks and opens a file from this project
+      -- Once a file is picked from this project: cd to the file's project root
+      -- (Terraform → Helm → git; stays on the workspace dir if none), then
+      -- show neo-tree there.
       vim.api.nvim_create_autocmd("BufReadPost", {
         group = vim.api.nvim_create_augroup("WorkspaceNeoTree", { clear = true }),
         once = true,
-        callback = function()
+        callback = function(ev)
+          local file = vim.api.nvim_buf_get_name(ev.buf)
+          local root = file ~= "" and require("config.global_functions").project_root(file) or nil
+          if root and root ~= vim.fn.getcwd() then vim.fn.chdir(root) end
           vim.schedule(function()
-            require("neo-tree.command").execute({ action = "show", dir = item.path })
+            require("neo-tree.command").execute({ action = "show", dir = root or item.path })
           end)
         end,
       })
