@@ -43,8 +43,8 @@ if vim.fn.has("wsl") == 1 then
 end
 
 -- [[ global options ]]
-opt.autoread = true
-opt.updatetime = 500 -- ms idle before CursorHold fires (also controls autoread check frequency)
+opt.autoread = true -- 0.13: file watchers reload externally changed buffers in real time
+opt.updatetime = 500 -- ms idle before CursorHold fires
 opt.spell = true
 o.swapfile = true -- Toggle swapfile
 o.dir = "/tmp" -- Swapfile location
@@ -63,6 +63,7 @@ o.equalalways = false
 o.linebreak = true -- Wrap on word boundary
 o.textwidth = 0
 o.scrolloff = 15 -- Minimal number to keep above and below cursor: Set to 999 for cursor to always be in the middle
+o.scrolloffpad = 1 -- Keep the scrolloff margin at end of file too
 vim.opt.guicursor = "n-v-c:block-NvimCursorGreen,i-ci-ve:ver25-NvimCursorGreen,r-cr:hor20-NvimCursorGreen,o:hor50-NvimCursorGreen,a:blinkon0"
 o.foldenable = false
 
