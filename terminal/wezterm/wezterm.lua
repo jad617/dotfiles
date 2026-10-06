@@ -387,6 +387,9 @@ end
 -- Keys
 --------------------------------------------------------------------------------
 config.keys = {
+	-- Disable Cmd+M (minimize window)
+	{ key = "m", mods = "SUPER", action = action.DisableDefaultAssignment },
+
 	-- Reload config
 	{ key = "0", mods = "LEADER", action = action.ReloadConfiguration },
 
