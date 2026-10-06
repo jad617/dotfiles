@@ -1,7 +1,7 @@
 return {
   {
     "iamcco/markdown-preview.nvim",
-    enabled = false,
+    enabled = true,
     build = "cd app && npm install",
     ft = { "markdown" },
     init = function()
@@ -10,7 +10,9 @@ return {
 
       local function run_mkdp(autofunc)
         local ok_lazy, lazy = pcall(require, "lazy")
-        if ok_lazy then lazy.load({ plugins = { "markdown-preview.nvim" } }) end
+        if ok_lazy then
+          lazy.load({ plugins = { "markdown-preview.nvim" } })
+        end
 
         local fn = vim.fn[autofunc]
         if type(fn) ~= "function" then
