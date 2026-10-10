@@ -10,6 +10,7 @@
 ---------------------------------------------------------------------------
 
 local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
+local errors = require("plugins.utils.devops.ui.errors")
 
 local M = {}
 
@@ -69,7 +70,7 @@ end
 --- @param diff_text string  Raw unified diff (as from `gh pr diff`)
 function M.open(repo, n, diff_text)
   if not (Snacks and Snacks.picker) then
-    return vim.notify("DevOps: Snacks.picker not available", vim.log.levels.ERROR)
+    return errors.show("DevOps: Snacks.picker not available")
   end
 
   local files = {}

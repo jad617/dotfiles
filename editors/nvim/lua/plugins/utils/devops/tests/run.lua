@@ -155,6 +155,69 @@ ok(key_project("abc-1") == nil, "key_project: rejects lowercase")
 ok(key_project("123-4") == nil, "key_project: rejects leading digit")
 ok(key_project("NODASH") == nil, "key_project: nil without separator")
 
+-- ── github threads: reply-to-me detection ──────────────────────────────────
+local threads = dofile(here .. "../github/threads.lua")
+local function th(resolved, ...)
+  local nodes = {}
+  for _, l in ipairs({ ... }) do nodes[#nodes + 1] = { author = { login = l } } end
+  return { isResolved = resolved, comments = { nodes = nodes } }
+end
+local st, inf = threads.comment_status({ th(false, "me", "alice") }, "me")
+eq(st, "replied", "threads: reply after my comment")
+eq(table.concat(inf.repliers, ","), "alice", "threads: replier recorded")
+eq(threads.reply_label(inf), "↩ Reply to your comment · alice", "threads: single label")
+st, inf = threads.comment_status({ th(false, "bob", "me", "bob", "carol"), th(false, "me", "alice"), th(false, "me") }, "me")
+eq(st, "replied", "threads: replied wins over awaiting")
+eq(inf.reply_threads, 2, "threads: counts reply threads")
+eq(threads.reply_label(inf), "↩ 2 replies to your comments · alice, bob, carol", "threads: multi label sorted")
+st = threads.comment_status({ th(false, "alice", "me") }, "me")
+eq(st, "awaiting_reply", "threads: my comment last")
+st = threads.comment_status({ th(true, "me", "alice"), th(false, "alice", "bob") }, "me")
+eq(st, nil, "threads: resolved / not mine ignored")
+st = threads.comment_status({ th(false, "me", "alice", "me") }, "me")
+eq(st, "awaiting_reply", "threads: I answered the reply")
+
+-- ── github reviews: effective verdict per reviewer ─────────────────────────
+local function rv(login, state, ts) return { author = { login = login }, state = state, submittedAt = ts } end
+local v = threads.review_verdicts({ rv("me", "APPROVED", "1"), rv("me", "COMMENTED", "2") })
+eq(v.me, "APPROVED", "verdicts: thread reply keeps approval")
+v = threads.review_verdicts({ rv("me", "CHANGES_REQUESTED", "1"), rv("me", "COMMENTED", "2"), rv("me", "APPROVED", "3") })
+eq(v.me, "APPROVED", "verdicts: later approval wins")
+v = threads.review_verdicts({ rv("me", "APPROVED", "1"), rv("me", "DISMISSED", "2") })
+eq(v.me, "COMMENTED", "verdicts: dismissal clears approval")
+v = threads.review_verdicts({ rv("a", "COMMENTED", "1") })
+eq(v.a, "COMMENTED", "verdicts: comment-only reviewer")
+
+-- merge readiness
+local txt, lvl = threads.merge_readiness({ decision = "REVIEW_REQUIRED", required = 2, me = "me", author = "x",
+  verdicts = { me = "APPROVED", x = "APPROVED" }, owner_pending = { "o" } })
+eq(txt, "review required · ✓ you approved · 1/2 approvals · needs 1 more · code owner: o", "readiness: text")
+eq(lvl, "warn", "readiness: warn level")
+txt, lvl = threads.merge_readiness({ decision = "APPROVED", verdicts = { a = "APPROVED" } })
+eq(txt, "approved · 1 approval", "readiness: approved")
+eq(lvl, "ok", "readiness: ok level")
+txt, lvl = threads.merge_readiness({ verdicts = { a = "CHANGES_REQUESTED" } })
+eq(lvl, "err", "readiness: changes requested is err")
+eq(threads.merge_readiness({ verdicts = {} }), nil, "readiness: nothing to say")
+
+-- my last verdict (thread replies don't count)
+local function rvc(login, st, at, oid) return { author = { login = login }, state = st, submittedAt = at, commit = { oid = oid } } end
+local mv = threads.my_last_verdict({ rvc("me", "APPROVED", "1", "a"), rvc("me", "COMMENTED", "2", "b"), rvc("x", "APPROVED", "3", "c") }, "me")
+eq(mv and mv.commit, "a", "last verdict: skips COMMENTED and others")
+eq(threads.my_last_verdict({ rvc("me", "COMMENTED", "1", "a") }, "me"), nil, "last verdict: none")
+
+-- review node id → REST review id; comments grouped under their review
+eq(threads.review_db_id("PRR_kwDOEMG6hM8AAAABRBJAQQ"), 5437014081, "review id: decodes msgpack node id")
+eq(threads.review_db_id("MDE3OlB1bGxSZXF1ZXN0UmV2aWV3"), nil, "review id: legacy id → nil")
+local revA = { id = "PRR_kwDOEMG6hM8AAAABRBJAQQ", author = { login = "me" }, submittedAt = "2026-10-07T02:44:30Z" }
+local revB = { id = "legacy", author = { login = "bob" }, submittedAt = "2026-10-08T00:00:00Z" }
+local grp = threads.review_comment_groups({ revA, revB }, {
+  { id = 1, pull_request_review_id = 5437014081, user = { login = "me" }, created_at = "2026-10-07T02:44:15Z" },
+  { id = 2, pull_request_review_id = 99, user = { login = "bob" }, created_at = "2026-10-07T23:00:00Z" },
+})
+eq(grp[revA] and grp[revA][1].id, 1, "review groups: by decoded id")
+eq(grp[revB] and grp[revB][1].id, 2, "review groups: author/time fallback")
+
 -- ── report ─────────────────────────────────────────────────────────────────
 print(("\n%d passed, %d failed"):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

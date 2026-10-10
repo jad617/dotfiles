@@ -4,6 +4,7 @@
 ---------------------------------------------------------------------------
 
 local config = require("plugins.utils.devops.config")
+local errors = require("plugins.utils.devops.ui.errors")
 local client = require("plugins.utils.devops.jira.client")
 local api = require("plugins.utils.devops.jira.api")
 local adf = require("plugins.utils.devops.jira.adf")
@@ -322,43 +323,43 @@ local function render_footer()
     else
       groups = {
         { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
-        { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files" } },
-        { "PR",       { "r refresh", "D ready", "x checkout", "m merge", "o browser", "gx links" } },
+        { "Actions",  { "a approve", "C changes", "c comment", "r reply", "d diff", "F files", "U since review" } },
+        { "PR",       { "R refresh", "D ready", "x checkout", "m merge", "o browser", "gx links" } },
         { "Window",   { "? help", "Q close" } },
       }
     end
   elseif sec_id == "jira_issues" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "m move", "+ new", "y clone", "V sprint", "S search", "* pin" } },
-      { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "r refresh" } },
+      { "Actions",  { "c comment", "e edit", "a assign", "m move", "> / < column", "+ new", "y clone", "V sprint", "S search", "* pin" } },
+      { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "R refresh" } },
       { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "m move", "c comment", "a assign", "S search", "* pin" } },
-      { "Jira",     { "u user", "v sprint", "p project", "b board", "r refresh" } },
+      { "Actions",  { "m move", "> / < column", "c comment", "a assign", "S search", "* pin" } },
+      { "Jira",     { "u user", "v sprint", "p project", "b board", "R refresh" } },
       { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "* unpin", "o browser", "r refresh" } },
+      { "Actions",  { "* unpin", "o browser", "R refresh" } },
       { "Window",   { "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "gh_reviews" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
-      { "PR",       { "s sort", "D ready", "x checkout", "r refresh" } },
+      { "Actions",  { "a approve", "C changes", "c comment", "d diff", "F files", "U since review", "m merge", "S search", "* pin" } },
+      { "PR",       { "s sort", "D ready", "x checkout", "R refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   else
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "R changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
-      { "PR",       { "D ready", "x checkout", "+ new", "r refresh" } },
+      { "Actions",  { "a approve", "C changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
+      { "PR",       { "D ready", "x checkout", "+ new", "R refresh" } },
       { "Window",   { "o browser", "? help", "q hide", "Q close" } },
     }
   end
@@ -486,6 +487,18 @@ local function render_jira(issues, assignee_name, columns, title_override)
   local scope = state.sprint and "Active sprints" or (state.project and state.project.key or "no project")
   local subtitle = scope .. "  ·  " .. assignee_name .. "  ·  " .. #issues .. " issue" .. (#issues == 1 and "" or "s")
   local lines, hls = header(title_override or "Jira  ·  My Issues", subtitle)
+  -- Say why the list is flat/unscoped instead of silently falling back.
+  local warn
+  if title_override then -- other sections have their own scoping/messages
+  elseif state.project and not state.board then
+    warn = "⚠ No board selected: press b to pick one (status columns + active-sprint filter)"
+  elseif state.board and not columns then
+    warn = "⚠ Couldn't load columns for board " .. (state.board.name or state.board.id) .. ": R to retry, b to change"
+  end
+  if warn then
+    table.insert(lines, 3, "  " .. warn)
+    hls[#hls + 1] = { line = 2, col_start = 0, col_end = #lines[3], hl = "DevOpsWarn" }
+  end
   local rows = {}
   local w = content_width()
 
@@ -531,6 +544,7 @@ local function render_jira(issues, assignee_name, columns, title_override)
       key = issue.key,
       id = issue.id,
       status = f.status and f.status.name or nil,
+      status_id = f.status and f.status.id and tostring(f.status.id) or nil,
       title = f.summary or "",
       type_name = f.issuetype and f.issuetype.name or "",
     }
@@ -715,6 +729,18 @@ local function render_github(prs, title, show_meta)
         hls[#hls + 1] = { line = apl, col_start = #indent + #lbl_ap, col_end = #indent + #lbl_ap + #approvers, hl = "DevOpsOk" }
       end
 
+      -- Pushed since my verdict → re-review
+      if pr.updatedSinceReview then
+        local lbl_up = pad_lbl("Updated:")
+        local txt = "↻ New commits since your "
+          .. (pr.updatedSinceReview == "APPROVED" and "approval" or "change request")
+        lines[#lines + 1] = indent .. lbl_up .. txt
+        rows[#lines] = { kind = "pr", pr = pr }
+        local ul = #lines - 1
+        hls[#hls + 1] = { line = ul, col_start = #indent, col_end = #indent + #lbl_up, hl = "DevOpsDim" }
+        hls[#hls + 1] = { line = ul, col_start = #indent + #lbl_up, col_end = #indent + #lbl_up + #txt, hl = "DevOpsWarn" }
+      end
+
       -- Comments line (awaiting reply / new reply)
       if pr.commentStatus == "awaiting_reply" then
         local lbl_cm = pad_lbl("Comments:")
@@ -726,7 +752,8 @@ local function render_github(prs, title, show_meta)
         hls[#hls + 1] = { line = cl, col_start = #indent + #lbl_cm, col_end = #indent + #lbl_cm + #txt, hl = "DevOpsWarn" }
       elseif pr.commentStatus == "replied" then
         local lbl_cm = pad_lbl("Comments:")
-        local txt = " New reply"
+        local txt = pr.commentInfo and require("plugins.utils.devops.github.threads").reply_label(pr.commentInfo)
+          or "↩ Reply to your comment"
         lines[#lines + 1] = indent .. lbl_cm .. txt
         rows[#lines] = { kind = "pr", pr = pr }
         local cl = #lines - 1
@@ -1102,7 +1129,16 @@ local function nav_push()
     rows = state.rows,
     in_detail = state.in_detail,
     detail_kind = state.detail_kind,
+    reopen = state.in_detail and state.detail_reopen or nil,
   }
+end
+
+-- Keys a detail view maps on the content buffer (cleared when switching views).
+local DETAIL_ACTION_KEYS = { "c", "e", "a", "r", "o", "R", "C", "d", "D", "m", "x", "+", "y", "V", "t", "U" }
+local function clear_action_keys()
+  for _, k in ipairs(DETAIL_ACTION_KEYS) do
+    pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
+  end
 end
 
 local function nav_render_detail(b, make_keys, preserve_cursor)
@@ -1110,11 +1146,7 @@ local function nav_render_detail(b, make_keys, preserve_cursor)
   state.in_detail = true
   state.rows = {}
   detail.write_to_buf(state.content.buf, b)
-  -- Clear old keymaps by resetting buffer-local keymaps for action keys
-  local action_keys = { "c", "e", "a", "r", "o", "R", "d", "D", "m", "x", "+", "y", "V", "t" }
-  for _, k in ipairs(action_keys) do
-    pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
-  end
+  clear_action_keys()
   if make_keys then make_keys(state.content.buf) end
   if not preserve_cursor then
     pcall(vim.api.nvim_win_set_cursor, state.content.win, { 1, 0 })
@@ -1132,6 +1164,7 @@ local function nav_pop()
     -- Restore the list view from cache (no re-fetch of the list we just left).
     -- Re-apply the list keymaps: opening a detail deleted the list action maps
     -- (e.g. 'y' clone) and they're not otherwise restored on the way back.
+    clear_action_keys() -- drop detail-only maps (e.g. 'r' reply)
     if setup_keymaps then setup_keymaps() end
     load_section(false, true)
     vim.schedule(function()
@@ -1139,9 +1172,10 @@ local function nav_pop()
         pcall(vim.api.nvim_win_set_cursor, state.content.win, entry.cursor)
       end
     end)
-  else
-    -- Restore a previous detail (nested nav)
-    -- This case is handled by the caller re-rendering
+  elseif entry.reopen then
+    -- Back from a linked item to the detail we came from.
+    state.detail_reopen = entry.reopen
+    entry.reopen(entry.cursor)
   end
   render_footer()
   return true
@@ -1151,27 +1185,42 @@ local function nav_back()
   if not nav_pop() then return end
 end
 
+-- Render the detail of a Jira key or PR in the content pane. `cursor` (optional)
+-- restores a position once rendered (used when navigating back).
+local function show_detail(kind, target, cursor)
+  local function ready(b, make_keys)
+    nav_render_detail(b, make_keys)
+    if cursor then pcall(vim.api.nvim_win_set_cursor, state.content.win, cursor) end
+  end
+  local function update(b, make_keys)
+    if state.in_detail then nav_render_detail(b, make_keys, true) end
+  end
+  state.detail_kind = kind
+  state.detail_reopen = function(c) show_detail(kind, target, c) end
+  if kind == "jira" then
+    detail.load_issue(target, { content_win = state.content.win, on_ready = ready, on_update = update })
+  else
+    detail.load_pr(target, { on_ready = ready, on_update = update })
+  end
+end
+
 local function open_detail()
+  if state.in_detail then
+    -- Follow a Linked PR / Linked Jira Issue row; Back returns here.
+    local row = vim.api.nvim_win_get_cursor(state.content.win)[1]
+    local link = detail.link_at(state.content.buf, row)
+    if not link then return end
+    nav_push()
+    if link.kind == "jira_link" then show_detail("jira", link.key) else show_detail("pr", link.pr) end
+    return
+  end
   local item = current_item()
   if not item then return end
   nav_push()
   if item.kind == "jira" then
-    state.detail_kind = "jira"
-    detail.load_issue(item.key, {
-      content_win = state.content.win,
-      on_ready = nav_render_detail,
-      on_update = function(b, make_keys)
-        if state.in_detail then nav_render_detail(b, make_keys, true) end
-      end,
-    })
+    show_detail("jira", item.key)
   elseif item.kind == "pr" then
-    state.detail_kind = "pr"
-    detail.load_pr(item.pr, {
-      on_ready = nav_render_detail,
-      on_update = function(b, make_keys)
-        if state.in_detail then nav_render_detail(b, make_keys, true) end
-      end,
-    })
+    show_detail("pr", item.pr)
   end
 end
 
@@ -1221,7 +1270,7 @@ end
 -- cached issue's status and re-render from cache, keeping the cursor on the same
 -- issue. This avoids the reload flicker on every transition, and keeps an issue
 -- visible after it's moved to Done (which the server-side query would otherwise
--- filter out). A real refresh ('r') re-applies the server filter.
+-- filter out). A real refresh ('R') re-applies the server filter.
 local function apply_transition_locally(key, to)
   local sec_id = current_section_id()
   local entry = cache[sec_id]
@@ -1287,7 +1336,7 @@ local function select_user()
     return
   end
   api.project_assignees(state.project.key, function(ok, users, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "user lookup failed")) end
     local me_id = client.account_id()
     local choices = { { label = "● Me" .. (client.display_name() and (" (" .. client.display_name() .. ")") or ""), account_id = me_id, me = true } }
     choices[#choices + 1] = { label = "○ Unassigned", unassigned = true }
@@ -1333,7 +1382,7 @@ local function transition()
     return
   end
   api.transitions(item.key, function(ok, trs, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "no transitions"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "no transitions")) end
     local current_status = item.status or "?"
 
     -- Order destinations the way the board reads (To Do → In Progress → Done),
@@ -1361,12 +1410,53 @@ local function transition()
     }, function(choice)
       if not choice then return end
       api.do_transition(item.key, choice.id, function(ok2, _, err2)
-        if not ok2 then return vim.notify("DevOps: " .. (err2 or "transition failed"), vim.log.levels.ERROR) end
+        if not ok2 then return errors.show("DevOps: " .. (err2 or "transition failed")) end
         vim.notify("DevOps: " .. item.key .. " → " .. choice.name, vim.log.levels.INFO)
         -- Optimistic local update: no refetch, no flicker, issue stays visible.
         apply_transition_locally(item.key, choice.to)
       end)
     end)
+  end)
+end
+
+-- '>' / '<': move the issue to the next / previous board column in one key
+-- (the nearest column it has a transition into). Falls back to the 'm' picker.
+local function advance(delta)
+  local item = current_item()
+  if not item or item.kind ~= "jira" then
+    return vim.notify("DevOps: select a Jira issue first", vim.log.levels.INFO)
+  end
+  local cols = state.columns
+  if not cols or #cols == 0 then
+    return vim.notify("DevOps: no board columns: pick a board with 'b' (or use 'm')", vim.log.levels.INFO)
+  end
+  local function col_of(sid)
+    for i, col in ipairs(cols) do
+      for _, s in ipairs(col.statuses or {}) do
+        if s == tostring(sid) then return i end
+      end
+    end
+  end
+  local cur = item.status_id and col_of(item.status_id)
+  if not cur then return transition() end
+  api.transitions(item.key, function(ok, trs, err)
+    if not ok then return errors.show("DevOps: " .. (err or "no transitions")) end
+    local i = cur + delta
+    while i >= 1 and i <= #cols do
+      for _, tr in ipairs(trs) do
+        if tr.to and tr.to.id and col_of(tr.to.id) == i then
+          return api.do_transition(item.key, tr.id, function(ok2, _, err2)
+            if not ok2 then return errors.show("DevOps: " .. (err2 or "transition failed")) end
+            vim.notify(("DevOps: %s  %s → %s"):format(item.key, item.status or "?", tr.to.name or tr.name),
+              vim.log.levels.INFO)
+            apply_transition_locally(item.key, tr.to)
+          end)
+        end
+      end
+      i = i + delta
+    end
+    vim.notify("DevOps: " .. item.key .. " can't move " .. (delta > 0 and "forward" or "back")
+      .. " from " .. (item.status or "?") .. " (m for all transitions)", vim.log.levels.INFO)
   end)
 end
 
@@ -1414,7 +1504,7 @@ local function jira_comment()
           input.open("Comment " .. item.key, "", function(text)
             if text == "" then return end
             api.add_comment(item.key, text, function(ok, _, err)
-              if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+              if not ok then return errors.show("DevOps: " .. (err or "comment failed")) end
               vim.notify("DevOps: comment added to " .. item.key, vim.log.levels.INFO)
               -- Refresh the detail view
               detail.load_issue(item.key, {
@@ -1442,7 +1532,7 @@ local function jira_comment()
   input.open("Comment " .. item.key, "", function(text)
     if text == "" then return end
     api.add_comment(item.key, text, function(ok, _, err)
-      if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+      if not ok then return errors.show("DevOps: " .. (err or "comment failed")) end
       vim.notify("DevOps: comment added to " .. item.key, vim.log.levels.INFO)
       refresh_current_jira_section()
     end)
@@ -1455,7 +1545,7 @@ local function jira_edit()
     return vim.notify("DevOps: select a Jira issue first", vim.log.levels.INFO)
   end
   api.get_issue(item.key, function(ok, issue, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "fetch failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "fetch failed")) end
     local f = issue.fields or {}
     -- Edit summary first (single line)
     vim.ui.input({ prompt = "Summary: ", default = f.summary or "" }, function(new_summary)
@@ -1467,7 +1557,7 @@ local function jira_edit()
         if new_summary ~= (f.summary or "") then fields.summary = new_summary end
         fields.description = adf.text_to_adf(new_desc)
         api.update_issue(item.key, fields, function(ok2, _, err2)
-          if not ok2 then return vim.notify("DevOps: " .. (err2 or "update failed"), vim.log.levels.ERROR) end
+          if not ok2 then return errors.show("DevOps: " .. (err2 or "update failed")) end
           vim.notify("DevOps: " .. item.key .. " updated", vim.log.levels.INFO)
           refresh_current_jira_section()
         end)
@@ -1485,7 +1575,7 @@ local function jira_assign()
   -- Use the project's teammates (distinct assignees), not the org-wide assignable
   -- list — short and findable. Me + Unassigned are always offered.
   api.project_assignees(project_key, function(ok, users, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "user lookup failed")) end
     local choices = {}
     local me_id = client.account_id()
     if me_id then
@@ -1503,7 +1593,7 @@ local function jira_assign()
     }, function(choice)
       if not choice then return end
       api.assign(item.key, choice.account_id, function(ok2, _, err2)
-        if not ok2 then return vim.notify("DevOps: " .. (err2 or "assign failed"), vim.log.levels.ERROR) end
+        if not ok2 then return errors.show("DevOps: " .. (err2 or "assign failed")) end
         vim.notify("DevOps: " .. item.key .. " assigned to " .. choice.label, vim.log.levels.INFO)
         refresh_current_jira_section()
       end)
@@ -1517,7 +1607,7 @@ local function jira_create()
   end
   -- Step 1: project (default to current)
   api.list_projects(nil, function(ok, projects, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "project list failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "project list failed")) end
     vim.ui.select(projects, {
       prompt = "Project:",
       format_item = function(p) return p.key .. "  —  " .. (p.name or "") end,
@@ -1525,7 +1615,7 @@ local function jira_create()
       if not proj then return end
       -- Step 2: issue type
       api.issue_types(proj.key, function(ok2, types, err2)
-        if not ok2 then return vim.notify("DevOps: " .. (err2 or "types failed"), vim.log.levels.ERROR) end
+        if not ok2 then return errors.show("DevOps: " .. (err2 or "types failed")) end
         vim.ui.select(types, {
           prompt = "Issue type:",
           format_item = function(t) return t.name end,
@@ -1546,7 +1636,7 @@ local function jira_create()
               local me_id = client.account_id()
               if me_id then fields.assignee = { accountId = me_id } end
               api.create_issue(fields, function(ok3, data, err3)
-                if not ok3 then return vim.notify("DevOps: " .. (err3 or "create failed"), vim.log.levels.ERROR) end
+                if not ok3 then return errors.show("DevOps: " .. (err3 or "create failed")) end
                 local new_key = data and data.key or "?"
                 vim.notify("DevOps: created " .. new_key, vim.log.levels.INFO)
                 refresh_current_jira_section()
@@ -1619,7 +1709,7 @@ local function jira_clone()
     return vim.notify("DevOps: select a Jira issue to clone", vim.log.levels.INFO)
   end
   api.get_issue(item.key, function(ok, issue, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "fetch failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "fetch failed")) end
     local f = issue.fields or {}
     local project_key = item.key:match("^(%u[%u%d_]*)%-")
     -- Ask for the new title (prefilled), then let the description be edited.
@@ -1636,7 +1726,7 @@ local function jira_clone()
         local me_id = client.account_id()
         if me_id then fields.assignee = { accountId = me_id } end
         api.create_issue(fields, function(ok2, data, err2)
-          if not ok2 then return vim.notify("DevOps: " .. (err2 or "clone failed"), vim.log.levels.ERROR) end
+          if not ok2 then return errors.show("DevOps: " .. (err2 or "clone failed")) end
           local new_key = data and data.key or "?"
           refresh_current_jira_section()
           show_clone_popup(item.key, new_key)
@@ -1676,7 +1766,7 @@ local function move_to_sprint()
     }, function(choice)
       if not choice then return end
       local function done(ok2, _, err2)
-        if not ok2 then return vim.notify("DevOps: move failed — " .. (err2 or "?"), vim.log.levels.ERROR) end
+        if not ok2 then return errors.show("DevOps: move failed — " .. (err2 or "?")) end
         vim.notify("DevOps: moved " .. item.key .. " → " .. (choice.name or "?"), vim.log.levels.INFO)
         refresh_current_jira_section()
       end
@@ -1717,7 +1807,7 @@ end
 
 local function jira_search()
   if not client.configured() then
-    vim.notify("DevOps: Jira not configured — run :JiraAuth", vim.log.levels.ERROR)
+    errors.show("DevOps: Jira not configured — run :JiraAuth")
     return
   end
   local prev_win = vim.api.nvim_get_current_win()
@@ -1841,7 +1931,7 @@ end
 
 local function gh_search()
   if not gh.available() then
-    vim.notify("DevOps: gh CLI not found", vim.log.levels.ERROR)
+    errors.show("DevOps: gh CLI not found")
     return
   end
   local prev_win = vim.api.nvim_get_current_win()
@@ -1978,7 +2068,7 @@ local function pr_item()
   local repo = item.pr.repository and item.pr.repository.nameWithOwner
   local n = item.pr.number
   if not repo or not n then
-    vim.notify("DevOps: PR missing repo/number", vim.log.levels.ERROR)
+    errors.show("DevOps: PR missing repo/number")
     return nil, nil, nil
   end
   return item, repo, n
@@ -1988,7 +2078,7 @@ local function gh_approve()
   local item, repo, n = pr_item()
   if not item then return end
   gh.pr_approve(repo, n, function(ok, _, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "approve failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "approve failed")) end
     vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
     cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
   end)
@@ -2000,11 +2090,11 @@ local function gh_request_changes()
   input.open("Request changes #" .. n, "", function(body)
     if body == "" then return end
     gh.pr_request_changes(repo, n, body, function(ok, _, err)
-      if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
+      if not ok then return errors.show("DevOps: " .. (err or "review failed")) end
       vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
       cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
     end)
-  end)
+  end, detail.pr_comment_preview(item.pr, "Requesting changes on"))
 end
 
 local function gh_comment()
@@ -2013,17 +2103,17 @@ local function gh_comment()
   input.open("Comment #" .. n, "", function(body)
     if body == "" then return end
     gh.pr_comment(repo, n, body, function(ok, _, err)
-      if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+      if not ok then return errors.show("DevOps: " .. (err or "comment failed")) end
       vim.notify("DevOps: commented on #" .. n, vim.log.levels.INFO)
     end)
-  end)
+  end, detail.pr_comment_preview(item.pr, "Commenting on"))
 end
 
 local function gh_ready()
   local item, repo, n = pr_item()
   if not item then return end
   gh.pr_ready(repo, n, function(ok, _, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "ready failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "ready failed")) end
     vim.notify("DevOps: #" .. n .. " marked ready for review", vim.log.levels.INFO)
     cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
   end)
@@ -2035,7 +2125,7 @@ local function gh_merge()
   vim.ui.select({ "Yes, squash merge", "Cancel" }, { prompt = "Merge #" .. n .. "?" }, function(choice)
     if not choice or choice:match("^Cancel") then return end
     gh.pr_merge(repo, n, function(ok, _, err)
-      if not ok then return vim.notify("DevOps: " .. (err or "merge failed"), vim.log.levels.ERROR) end
+      if not ok then return errors.show("DevOps: " .. (err or "merge failed")) end
       vim.notify("DevOps: #" .. n .. " merged!", vim.log.levels.INFO)
       cache_invalidate("gh_prs"); cache_invalidate("gh_reviews"); if is_open() then load_section(true) end
     end)
@@ -2046,16 +2136,22 @@ local function gh_diff()
   local item, repo, n = pr_item()
   if not item then return end
   gh.pr_diff(repo, n, function(ok, diff_text, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "diff failed")) end
     require("plugins.utils.devops.ui.diff_viewer").open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
   end)
+end
+
+local function gh_since_review()
+  local item, repo, n = pr_item()
+  if not item then return end
+  detail.diff_since_review(repo, n)
 end
 
 local function gh_files()
   local item, repo, n = pr_item()
   if not item then return end
   gh.pr_diff(repo, n, function(ok, diff_text, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "diff failed")) end
     require("plugins.utils.devops.ui.pr_files_picker").open(repo, n, diff_text)
   end)
 end
@@ -2064,7 +2160,7 @@ local function gh_checkout()
   local item, repo, n = pr_item()
   if not item then return end
   gh.pr_checkout(repo, n, function(ok, _, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "checkout failed — cwd must be the repo"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "checkout failed — cwd must be the repo")) end
     vim.notify("DevOps: checked out #" .. n, vim.log.levels.INFO)
   end)
 end
@@ -2075,12 +2171,12 @@ local function gh_create_pr()
     vim.notify("DevOps: switch to a GitHub section first", vim.log.levels.INFO)
     return
   end
-  if not gh.available() then return vim.notify("DevOps: gh CLI not found", vim.log.levels.ERROR) end
+  if not gh.available() then return errors.show("DevOps: gh CLI not found") end
   input.open("PR Title", "", function(title)
     if not title or title == "" then return end
     input.open("PR Body (optional)", "", function(body)
       gh.pr_create(title, body or "", nil, function(ok, out, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "PR creation failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "PR creation failed")) end
         vim.notify("DevOps: PR created", vim.log.levels.INFO)
         cache_invalidate("gh_prs")
         cache_invalidate("gh_reviews")
@@ -2209,13 +2305,14 @@ local function show_help()
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "m",     "Move (change status)" },
+      { "> / <", "Move to next / previous board column" },
       { "u",     "Filter by user (colleague)" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
       { "v",     "Pick sprint (incl. past)" },
       { "s",     "Toggle scope (sprint/project)" },
       { "h",     "Toggle show Done issues" },
-      { "r",     "Refresh" },
+      { "R",     "Refresh" },
       { "o",     "Open issue in browser" },
       { "O",     "Open board in browser" },
       { "Tab",   "Next section" },
@@ -2231,13 +2328,14 @@ local function show_help()
       { "c",     "Add comment" },
       { "a",     "Assign issue" },
       { "m",     "Move (change status)" },
+      { "> / <", "Move to next / previous board column" },
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
       { "u",     "Filter by user (colleague)" },
       { "v",     "Pick sprint (incl. past)" },
       { "p",     "Switch project" },
       { "b",     "Switch board" },
-      { "r",     "Refresh" },
+      { "R",     "Refresh" },
       { "o",     "Open issue in browser" },
       { "O",     "Open board in browser" },
       { "Tab",   "Next section" },
@@ -2251,17 +2349,19 @@ local function show_help()
     keys = {
       { "↵",     "Open PR detail" },
       { "a",     "Approve PR" },
-      { "R",     "Request changes" },
+      { "C",     "Request changes" },
       { "c",     "Comment on PR" },
+      { "r",     "Reply to comment under cursor (PR detail)" },
       { "d",     "View diff" },
       { "F",     "Changed-files tree (↵ opens diff at file)" },
+      { "U",     "Diff of new commits since your review" },
       { "D",     "Mark ready for review" },
       { "m",     "Merge (squash)" },
       { "x",     "Checkout branch" },
       { "+",     "Create new PR" },
       { "S",     "Search GitHub" },
       { "*",     "Pin/unpin selected item" },
-      { "r",     "Refresh" },
+      { "R",     "Refresh" },
       { "o",     "Open in browser" },
       { "Tab",   "Next section" },
       { "S-Tab", "Prev section" },
@@ -2347,6 +2447,19 @@ local function focus_sidebar()
   if line then pcall(vim.api.nvim_win_set_cursor, state.sidebar.win, { line, 0 }) end
 end
 
+-- Shift+Arrow: sidebar · content, then the adjacent WezTerm pane. Uses the
+-- focus helpers so the sidebar/content cursors are restored.
+local function pane_move(dir)
+  local cur = vim.api.nvim_get_current_win()
+  if dir == "Left" and cur == state.content.win
+    and state.sidebar.win and vim.api.nvim_win_is_valid(state.sidebar.win) then
+    return focus_sidebar()
+  elseif dir == "Right" and cur == state.sidebar.win and is_open() then
+    return focus_content()
+  end
+  require("plugins.utils.devops.ui.pane_nav").move(dir)
+end
+
 -- Move the sidebar cursor only between selectable section rows.
 local function sidebar_move(dir)
   if not (state.sidebar.win and vim.api.nvim_win_is_valid(state.sidebar.win)) then return end
@@ -2393,13 +2506,25 @@ end
 -- Resolve which board to use for the project (prompt if more than one),
 -- load its columns, persist, then cb().
 local function resolve_board_then(cb)
+  -- Keep the current board if it still belongs to this project and the fetch
+  -- fails or the prompt is cancelled — never persist a wiped board on a hiccup.
+  local prev = state.board
   state.board, state.columns = nil, nil
   api.list_boards(state.project.key, function(ok, boards)
     local function finalize()
       persist_prefs()
       load_board_columns(cb)
     end
-    if not ok or #boards == 0 then return finalize() end
+    if not ok then
+      state.board = prev
+      return load_board_columns(cb)
+    end
+    if prev then
+      for _, b in ipairs(boards) do
+        if b.id == prev.id then state.board = prev end
+      end
+    end
+    if #boards == 0 then return finalize() end
     if #boards == 1 then
       state.board = { id = boards[1].id, name = boards[1].name }
       return finalize()
@@ -2438,7 +2563,7 @@ local function pick_sprint()
     return vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
   end
   api.list_sprints(state.board.id, function(ok, sprints, err)
-    if not ok then return vim.notify("DevOps: " .. (err or "sprint list failed"), vim.log.levels.ERROR) end
+    if not ok then return errors.show("DevOps: " .. (err or "sprint list failed")) end
     if #sprints == 0 then return vim.notify("DevOps: no sprints on this board", vim.log.levels.INFO) end
     local rank = { active = 0, future = 1, closed = 2 }
     table.sort(sprints, function(a, b)
@@ -2480,7 +2605,7 @@ local function pick_project(cb)
   end
   api.list_projects(nil, function(ok, projects, err)
     if not ok then
-      vim.notify("DevOps: " .. (err or "project list failed"), vim.log.levels.ERROR)
+      errors.show("DevOps: " .. (err or "project list failed"))
       return cb and cb()
     end
     vim.ui.select(projects, {
@@ -2665,14 +2790,16 @@ function setup_keymaps()
   map("{", function() switch_tab(-1) end, "previous tab")
   map("}", function() switch_tab(1) end, "next tab")
   map("<CR>", open_detail, "open")
-  map("r", function() gh.clear_diff_cache(); load_section(true); refresh_notifications() end, "refresh")
+  map("R", function() gh.clear_diff_cache(); load_section(true); refresh_notifications() end, "refresh")
   map("o", open_browser, "open in browser")
   map("O", open_board_in_browser, "open board in browser")
   map("u", select_user, "select user")
   map("p", function() pick_project(function() switch_section(1, tab_index_by_id("jira")) end) end, "pick project")
   map("b", pick_board, "pick board")
   map("v", pick_sprint, "pick sprint")
-  map("<S-Left>", focus_sidebar, "focus sidebar")
+  for _, d in ipairs({ "Left", "Right", "Up", "Down" }) do
+    map("<S-" .. d .. ">", function() pane_move(d) end, "pane / WezTerm " .. d:lower())
+  end
   -- Write actions (dispatched by item kind for c/a)
   map("c", dispatch_comment, "comment")
   map("a", dispatch_action_a, "assign/approve")
@@ -2688,11 +2815,14 @@ function setup_keymaps()
   map("S", dispatch_search, "search")
   map("*", toggle_bookmark, "bookmark")
   -- GitHub PR actions
-  map("R", gh_request_changes, "request changes")
+  map("C", gh_request_changes, "request changes")
   map("D", gh_ready, "mark ready")
   map("m", dispatch_m, "move issue / merge PR")
+  map(">", function() advance(1) end, "issue → next column")
+  map("<", function() advance(-1) end, "issue → previous column")
   map("d", gh_diff, "view diff")
   map("F", gh_files, "changed files tree")
+  map("U", gh_since_review, "diff since my review")
   map("x", gh_checkout, "checkout PR")
   -- Toggles
   map("s", toggle_scope, "toggle scope")
@@ -2710,7 +2840,9 @@ local function setup_sidebar_keymaps()
   smap("<C-d>", hide, "hide (toggle off)")
   smap("<Esc>", hide, "hide (toggle off)")
   smap("Q", close, "close (destroy)")
-  smap("<S-Right>", focus_content, "focus list")
+  for _, d in ipairs({ "Left", "Right", "Up", "Down" }) do
+    smap("<S-" .. d .. ">", function() pane_move(d) end, "pane / WezTerm " .. d:lower())
+  end
   smap("<Right>", focus_content, "focus list")
   smap("l", focus_content, "focus list")
   smap("j", function() sidebar_move(1) end, "next view")
