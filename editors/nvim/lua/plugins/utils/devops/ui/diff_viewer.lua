@@ -28,6 +28,7 @@ local state = {
 }
 
 local render = require("plugins.utils.devops.ui.render")
+local errors = require("plugins.utils.devops.ui.errors")
 local TREE_W = 38 -- file-tree pane content width
 local render_tree_pane, toggle_tree -- forward declarations (defined below)
 -- Horizontal space the tree reserves on the left (pane width + its border).
@@ -64,6 +65,7 @@ local function close()
   state.mode = "split"
   state.pr = nil
   state.pending_comments = {}
+  state.threads, state.thread_at, state.thread_rows = nil, nil, nil
   state.blame_visible = false
   state.blame_data = {}
   if state.prev_win and vim.api.nvim_win_is_valid(state.prev_win) then
@@ -114,41 +116,17 @@ local function map_buf(buf, lhs, rhs, desc)
   vim.keymap.set("n", lhs, rhs, { buffer = buf, nowait = true, silent = true, desc = desc })
 end
 
--- Shift+Arrow pane navigation. The viewer is all floats, which smart-splits
--- can't traverse, so move between the diff panes (tree · left/unified · right)
--- here and hand off to the adjacent WezTerm pane at the edges.
-local function wezterm_pane(dir)
-  pcall(require("config.global_functions").wezterm_pane, dir)
-end
-
+-- Shift+Arrow: tree · left/unified · right, then the adjacent WezTerm pane.
 local function pane_order()
   local order = {}
   for _, key in ipairs({ "tree", "unified", "left", "right" }) do
-    local w = state.wins[key]
-    if w and vim.api.nvim_win_is_valid(w) then order[#order + 1] = w end
+    order[#order + 1] = state.wins[key]
   end
   return order
 end
 
-local function nav_pane(dir)
-  if dir == "Left" or dir == "Right" then
-    local order = pane_order()
-    local cur = vim.api.nvim_get_current_win()
-    for i, w in ipairs(order) do
-      if w == cur then
-        local target = order[i + (dir == "Left" and -1 or 1)]
-        if target then return vim.api.nvim_set_current_win(target) end
-        break
-      end
-    end
-  end
-  wezterm_pane(dir)
-end
-
 local function map_pane_nav(buf)
-  for _, dir in ipairs({ "Left", "Right", "Up", "Down" }) do
-    map_buf(buf, "<S-" .. dir .. ">", function() nav_pane(dir) end, "Pane / WezTerm " .. dir:lower())
-  end
+  require("plugins.utils.devops.ui.pane_nav").map(buf, { h = pane_order })
 end
 
 ---------------------------------------------------------------------------
@@ -214,6 +192,245 @@ local function get_line_info()
   return state.line_map[line]
 end
 
+-- Diff lines around `row` (1-based, current window) for the comment preview,
+-- staying within the same file and keeping the diff highlights.
+local CONTEXT = 6
+local function comment_preview(row, path, title)
+  local buf = vim.api.nvim_get_current_buf()
+  local total = vim.api.nvim_buf_line_count(buf)
+  local function same_file(r)
+    local m = state.line_map[r]
+    return not m or m.path == path
+  end
+  local first, last = row, row
+  while first > 1 and row - first < CONTEXT and same_file(first - 1) do first = first - 1 end
+  while last < total and last - row < CONTEXT and same_file(last + 1) do last = last + 1 end
+  return {
+    title = title,
+    lines = vim.api.nvim_buf_get_lines(buf, first - 1, last, false),
+    extmarks = input.extmarks_from(buf, ns, first - 1, last - 1),
+    focus = row - first + 1,
+    wrap = false,
+  }
+end
+
+-- Preview for an existing pending comment: find its row in the open diff.
+local function pending_preview(c)
+  for _, key in ipairs({ "unified", "right" }) do
+    local w = state.wins[key]
+    if w and vim.api.nvim_win_is_valid(w) then
+      for r, m in pairs(state.line_map) do
+        if m.path == c.path and m.line == c.line then
+          return vim.api.nvim_win_call(w, function()
+            return comment_preview(r, c.path, c.path .. ":" .. c.line)
+          end)
+        end
+      end
+    end
+  end
+end
+
+---------------------------------------------------------------------------
+-- Existing review threads, shown as virtual lines under the line they're on
+-- (split: on the commented side, padded on the other so scrollbind stays aligned).
+---------------------------------------------------------------------------
+local ns_threads = vim.api.nvim_create_namespace("DevOpsDiffThreads")
+vim.api.nvim_set_hl(0, "DevOpsThreadText", { link = "Normal", default = true })
+local MAX_BODY = 8
+
+local function wrap_text(text, width)
+  local out = {}
+  for _, para in ipairs(vim.split(text or "", "\n", { plain = true })) do
+    para = para:gsub("\r", "")
+    if not para:match("%S") then
+      if #out > 0 and out[#out] ~= "" then out[#out + 1] = "" end
+    else
+      local indent = para:match("^%s*")
+      local line = ""
+      for word in para:gmatch("%S+") do
+        if line == "" then
+          line = indent .. word
+        elseif vim.fn.strdisplaywidth(line) + 1 + vim.fn.strdisplaywidth(word) > width then
+          out[#out + 1] = line
+          line = indent .. word
+        else
+          line = line .. " " .. word
+        end
+      end
+      out[#out + 1] = line
+    end
+  end
+  while #out > 0 and out[#out] == "" do table.remove(out) end
+  return out
+end
+
+-- Plain-text lines (with highlight) for one thread.
+local function thread_lines(t, width)
+  local me = gh.current_user_login()
+  local clean = require("plugins.utils.devops.ui.markdown").clean
+  local w = math.max(30, math.min(width - 8, 110))
+  local out = {}
+  local all = { t.root }
+  vim.list_extend(all, t.replies)
+  for i, c in ipairs(all) do
+    local who = c.user and c.user.login or "?"
+    out[#out + 1] = { (i == 1 and "┌ 💬 @" or "├ ↳ @") .. who .. "  " .. (c.created_at or ""):sub(1, 10),
+      who == me and "DevOpsOk" or "DevOpsKey" }
+    local ok, cleaned = pcall(clean, c.body or "")
+    for j, l in ipairs(wrap_text(ok and cleaned or (c.body or ""), w)) do
+      if j > MAX_BODY then out[#out + 1] = { "│   …", "DevOpsDim" } break end
+      out[#out + 1] = { "│   " .. l, "DevOpsThreadText" }
+    end
+  end
+  out[#out + 1] = { ("└ r reply · ]c/[c threads · %d comment%s"):format(#all, #all == 1 and "" or "s"), "DevOpsDim" }
+  return out
+end
+
+local function paint_threads()
+  for _, key in ipairs({ "unified", "left", "right" }) do
+    local b = state.bufs[key]
+    if b and vim.api.nvim_buf_is_valid(b) then vim.api.nvim_buf_clear_namespace(b, ns_threads, 0, -1) end
+  end
+  state.thread_at, state.thread_rows = {}, {}
+  if not state.threads or #state.threads == 0 then return end
+  local split = state.bufs.right ~= nil
+  -- (path, line, side) → first diff row. Unified rows know their side; split
+  -- rows carry one line number per row.
+  local by_loc = {}
+  for lnum, info in pairs(state.line_map) do
+    local side = split and "ANY" or (info.kind == "del" and "LEFT" or "RIGHT")
+    local k = (info.path or "") .. "\0" .. tostring(info.line) .. "\0" .. side
+    if not by_loc[k] or lnum < by_loc[k] then by_loc[k] = lnum end
+  end
+  for _, t in ipairs(state.threads) do
+    local c = t.root
+    if c.line and c.path then
+      local side = c.side == "LEFT" and "LEFT" or "RIGHT"
+      local lnum = by_loc[c.path .. "\0" .. tostring(c.line) .. "\0" .. (split and "ANY" or side)]
+      if lnum then
+        if not state.thread_at[lnum] then
+          state.thread_at[lnum] = {}
+          state.thread_rows[#state.thread_rows + 1] = lnum
+        end
+        t.side = side
+        table.insert(state.thread_at[lnum], t)
+      end
+    end
+  end
+  table.sort(state.thread_rows)
+  for lnum, list in pairs(state.thread_at) do
+    local target = split and (list[1].side == "LEFT" and "left" or "right") or "unified"
+    local tw = state.wins[target]
+    local width = (tw and vim.api.nvim_win_is_valid(tw)) and vim.api.nvim_win_get_width(tw) or 80
+    local vl = {}
+    for _, t in ipairs(list) do
+      for _, l in ipairs(thread_lines(t, width)) do
+        vl[#vl + 1] = { { "  " .. l[1], l[2] } }
+      end
+    end
+    pcall(vim.api.nvim_buf_set_extmark, state.bufs[target], ns_threads, lnum - 1, 0, { virt_lines = vl })
+    if split then
+      local other = target == "left" and "right" or "left"
+      local pad = {}
+      for i = 1, #vl do pad[i] = { { " ", "DevOpsDim" } } end
+      pcall(vim.api.nvim_buf_set_extmark, state.bufs[other], ns_threads, lnum - 1, 0, { virt_lines = pad })
+    end
+  end
+end
+
+local function load_threads()
+  local pr = state.pr
+  if not pr then return end
+  gh.pr_review_comments(pr.repo, pr.number, function(ok, list)
+    if state.pr ~= pr or not ok or type(list) ~= "table" then return end
+    table.sort(list, function(a, b) return (a.created_at or "") < (b.created_at or "") end)
+    local roots, by_id = {}, {}
+    for _, c in ipairs(list) do
+      if not c.in_reply_to_id then
+        by_id[c.id] = { root = c, replies = {} }
+        roots[#roots + 1] = by_id[c.id]
+      end
+    end
+    for _, c in ipairs(list) do
+      local t = c.in_reply_to_id and by_id[c.in_reply_to_id]
+      if t then t.replies[#t.replies + 1] = c end
+    end
+    state.threads = roots
+    paint_threads()
+  end)
+end
+
+local function jump_thread(delta)
+  local rows = state.thread_rows or {}
+  if #rows == 0 then return vim.notify("DevOps: no review threads in this diff", vim.log.levels.INFO) end
+  -- Works from the file tree too: act on (and focus) the diff pane.
+  local cur_win = vim.api.nvim_get_current_win()
+  local focus
+  for _, key in ipairs({ "left", "right", "unified" }) do
+    if state.wins[key] == cur_win then focus = cur_win end
+  end
+  if not focus then
+    for _, key in ipairs({ "left", "unified" }) do
+      local w = state.wins[key]
+      if not focus and w and vim.api.nvim_win_is_valid(w) then focus = w end
+    end
+  end
+  if not focus then return end
+  local cur = vim.api.nvim_win_get_cursor(focus)[1]
+  local target
+  if delta > 0 then
+    for _, r in ipairs(rows) do if r > cur then target = r break end end
+    target = target or rows[1]
+  else
+    for i = #rows, 1, -1 do if rows[i] < cur then target = rows[i] break end end
+    target = target or rows[#rows]
+  end
+  vim.api.nvim_set_current_win(focus)
+  for _, key in ipairs({ "unified", "left", "right" }) do
+    local w = state.wins[key]
+    if w and vim.api.nvim_win_is_valid(w) then
+      pcall(vim.api.nvim_win_set_cursor, w, { target, 0 })
+      pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zz") end)
+    end
+  end
+end
+
+local function reply_thread()
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  local list = state.thread_at and state.thread_at[row]
+  if not list then
+    return vim.notify("DevOps: no review thread on this line (]c / [c to jump to one)", vim.log.levels.INFO)
+  end
+  local pr = state.pr
+  local function reply(t)
+    local lines, marks = {}, {}
+    for _, l in ipairs(thread_lines(t, 100)) do
+      lines[#lines + 1] = l[1]
+      marks[#marks + 1] = { #lines - 1, 0, { end_col = #l[1], hl_group = l[2] } }
+    end
+    table.remove(lines); table.remove(marks) -- drop the key-hint footer
+    local where = t.root.path .. ":" .. tostring(t.root.line)
+    input.open("Reply on " .. where, "", function(body)
+      if body == "" then return end
+      gh.pr_review_reply(pr.repo, pr.number, t.root.id, body, function(ok, _, err)
+        if not ok then return errors.show("DevOps: reply failed — " .. (err ~= "" and err or "?")) end
+        vim.notify("DevOps: replied on " .. where, vim.log.levels.INFO)
+        load_threads()
+      end)
+    end, {
+      draft_key = pr.repo .. "#" .. pr.number .. " thread " .. tostring(t.root.id),
+      preview = { title = "Thread · " .. where, lines = lines, extmarks = marks, focus = #lines },
+    })
+  end
+  if #list == 1 then return reply(list[1]) end
+  vim.ui.select(list, {
+    prompt = "Reply to which thread?",
+    format_item = function(t)
+      return "@" .. (t.root.user and t.root.user.login or "?") .. ": " .. (t.root.body or ""):gsub("\n", " "):sub(1, 60)
+    end,
+  }, function(t) if t then reply(t) end end)
+end
+
 local function show_pending_virt(buf)
   vim.api.nvim_buf_clear_namespace(buf, ns_comments, 0, -1)
   if #state.pending_comments == 0 then return end
@@ -243,6 +460,7 @@ local function refresh_virt_all()
     local b = state.bufs[key]
     if b and vim.api.nvim_buf_is_valid(b) then show_pending_virt(b) end
   end
+  paint_threads()
 end
 
 local function add_inline_comment()
@@ -255,6 +473,8 @@ local function add_inline_comment()
     vim.notify("DevOps: cursor not on a diff line", vim.log.levels.WARN)
     return
   end
+  local row = vim.api.nvim_win_get_cursor(0)[1]
+  local preview = comment_preview(row, info.path, "Commenting on " .. info.path .. ":" .. info.line)
   input.open("Comment on " .. info.path .. ":" .. info.line, nil, function(body)
     if not body or body:match("^%s*$") then return end
     state.pending_comments[#state.pending_comments + 1] = {
@@ -265,7 +485,8 @@ local function add_inline_comment()
     save_pending_store()
     vim.notify(string.format("DevOps: comment queued (%d pending)", #state.pending_comments), vim.log.levels.INFO)
     refresh_virt_all()
-  end)
+  end, { preview = preview, draft_key = state.pr
+    and (state.pr.repo .. "#" .. state.pr.number .. " " .. info.path .. ":" .. info.line) or nil })
 end
 
 local function submit_review()
@@ -287,7 +508,7 @@ local function submit_review()
     local function do_submit(body)
       gh.pr_review(state.pr.repo, state.pr.number, event, body, pending, function(ok, _, err)
         if not ok then
-          return vim.notify("DevOps: review failed — " .. (err or "unknown"), vim.log.levels.ERROR)
+          return errors.show("DevOps: review failed — " .. (err or "unknown"))
         end
         local n_inline = #pending
         for i = #pending, 1, -1 do pending[i] = nil end -- clear in place (keeps the persisted ref)
@@ -393,7 +614,7 @@ local function open_pending_panel()
     input.open("Edit comment on " .. c.path .. ":" .. c.line, c.body, function(nb)
       if nb and not nb:match("^%s*$") then c.body = nb; save_pending_store(); refresh_virt_all() end
       if win and vim.api.nvim_win_is_valid(win) then rerender() end
-    end)
+    end, { preview = pending_preview(c) })
   end)
   map("dd", function()
     local i = cur(); if not i then return end
@@ -535,6 +756,9 @@ local function setup_keymaps(buf)
     map_buf(buf, "c", add_inline_comment, "Inline comment")
     map_buf(buf, "gc", open_pending_panel, "Pending review comments")
     map_buf(buf, "S", submit_review, "Submit review")
+    map_buf(buf, "r", reply_thread, "Reply to review thread")
+    map_buf(buf, "]c", function() jump_thread(1) end, "Next review thread")
+    map_buf(buf, "[c", function() jump_thread(-1) end, "Prev review thread")
   end
 end
 
@@ -668,6 +892,8 @@ local function render_footer(total_width, footer_row)
       { "gc ", "DevOpsKey" }, { "list" .. badge, "DevOpsAction" },
       { "  ", nil },
       { "S ", "DevOpsKey" }, { "submit review", "DevOpsAction" },
+      { "  ", nil },
+      { "]c ", "DevOpsKey" }, { "[c ", "DevOpsKey" }, { "r ", "DevOpsKey" }, { "threads", "DevOpsAction" },
     })
   end
   vim.list_extend(parts, {
@@ -1159,6 +1385,10 @@ render_tree_pane = function(total_h)
   -- Themes only redefine highlight groups, so they preview live without a
   -- re-render (which would reset the tree cursor and focus).
   map_buf(buf, "T", function() render.pick_diff_theme() end, "Pick diff theme")
+  if state.pr then
+    map_buf(buf, "]c", function() jump_thread(1) end, "Next review thread")
+    map_buf(buf, "[c", function() jump_thread(-1) end, "Prev review thread")
+  end
   map_pane_nav(buf)
   map_buf(buf, "<CR>", function()
     local r = current()
@@ -1281,6 +1511,9 @@ function M.open(diff_text, title, opts)
   -- render_tree_pane consumes this (parks + jumps); otherwise we position below.
   state.pending_focus = opts.focus_file
   if opts.pr then
+    if not (state.pr and state.pr.repo == opts.pr.repo and state.pr.number == opts.pr.number) then
+      state.threads = nil
+    end
     state.pr = opts.pr
     bind_pending() -- restore this PR's persisted draft review comments
   end
@@ -1308,6 +1541,8 @@ function M.open(diff_text, title, opts)
     end
     state.pending_focus = nil
   end
+  refresh_virt_all() -- pending 💬 markers + review threads (also after Tab/resize)
+  if opts.pr then load_threads() end
   watch_resize()
 end
 

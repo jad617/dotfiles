@@ -34,6 +34,8 @@ local function load_workspaces()
 end
 
 local function save_workspaces(workspaces)
+  local ro = vim.env.NVIM_READONLY_STATE
+  if ro and ro ~= "" and ro ~= "0" then return end -- scripted/test runs
   vim.fn.mkdir(vim.fn.fnamemodify(DATA_FILE, ":h"), "p")
   local f = io.open(DATA_FILE, "w")
   if not f then return end

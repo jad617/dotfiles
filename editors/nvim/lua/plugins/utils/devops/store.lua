@@ -7,6 +7,13 @@ local auth = require("plugins.utils.devops.jira.auth")
 
 local M = {}
 
+-- NVIM_READONLY_STATE=1 (scripted/headless test runs) turns every save into a
+-- no-op, so automation can't overwrite the saved project/board, bookmarks, etc.
+function M.readonly()
+  local v = vim.env.NVIM_READONLY_STATE
+  return v ~= nil and v ~= "" and v ~= "0"
+end
+
 function M.file() return auth.dir() .. "/state.json" end
 
 function M.load()
@@ -20,6 +27,7 @@ function M.load()
 end
 
 function M.save(tbl)
+  if M.readonly() then return true end
   vim.fn.mkdir(auth.dir(), "p", tonumber("700", 8))
   local f = io.open(M.file(), "w")
   if not f then return false end
@@ -42,6 +50,7 @@ function M.load_diff_theme()
 end
 
 function M.save_diff_theme(name)
+  if M.readonly() then return true end
   vim.fn.mkdir(auth.dir(), "p", tonumber("700", 8))
   local f = io.open(M.diff_theme_file(), "w")
   if not f then return false end
@@ -65,6 +74,7 @@ function M.load_bookmarks()
 end
 
 function M.save_bookmarks(bookmarks)
+  if M.readonly() then return true end
   vim.fn.mkdir(auth.dir(), "p", tonumber("700", 8))
   local f = io.open(M.bookmarks_file(), "w")
   if not f then return false end
@@ -90,6 +100,7 @@ function M.load_pending()
 end
 
 function M.save_pending(map)
+  if M.readonly() then return true end
   vim.fn.mkdir(auth.dir(), "p", tonumber("700", 8))
   local f = io.open(M.pending_file(), "w")
   if not f then return false end
@@ -124,6 +135,7 @@ function M.load_section_cache()
 end
 
 function M.save_section_cache(cache_map)
+  if M.readonly() then return true end
   vim.fn.mkdir(auth.dir(), "p", tonumber("700", 8))
   local f = io.open(M.cache_file(), "w")
   if not f then return false end
@@ -137,6 +149,38 @@ function M.save_section_cache(cache_map)
   f:write(vim.json.encode(out))
   f:close()
   return true
+end
+
+---------------------------------------------------------------------------
+-- Comment drafts: text of a cancelled comment/reply input, keyed by target
+-- (e.g. "Comment #754"), restored the next time that input opens.
+---------------------------------------------------------------------------
+function M.drafts_file() return auth.dir() .. "/drafts.json" end
+
+function M.load_drafts()
+  local f = io.open(M.drafts_file(), "r")
+  if not f then return {} end
+  local content = f:read("*a")
+  f:close()
+  local ok, data = pcall(vim.json.decode, content)
+  return (ok and type(data) == "table") and data or {}
+end
+
+function M.set_draft(key, text)
+  if M.readonly() or not key then return end
+  local drafts = M.load_drafts()
+  if text and text:match("%S") then
+    drafts[key] = { text = text, ts = os.time() }
+  elseif drafts[key] == nil then
+    return
+  else
+    drafts[key] = nil
+  end
+  vim.fn.mkdir(auth.dir(), "p", tonumber("700", 8))
+  local f = io.open(M.drafts_file(), "w")
+  if not f then return end
+  f:write(vim.json.encode(drafts))
+  f:close()
 end
 
 return M
