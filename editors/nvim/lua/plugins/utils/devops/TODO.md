@@ -24,6 +24,8 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
 - [x] **`O` opens the full team board on the Sprint Board** (no `?assignee`); personal /
       filtered view on the other sections.
 - [x] **Empty filtered list** now reads "(no issues for <user>)".
+- [x] **`>` / `<` quick advance** to the next / previous board column.
+- [x] **No-board warning** on My Issues (no board, or columns failed to load).
 
 ## 🟡 GitHub
 - [~] **Inline review comments hardened** — line fallback (`line`/`original_line`/
@@ -34,6 +36,19 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
 - [x] **PR changed-files tree in the diff viewer** — a left tree pane (grouped by dir) is
       shown by default inside `d`; j/k live-jumps the diff to that file, ↵ focuses the
       diff, `f` toggles the pane. Works in both unified and split modes.
+- [x] **Review threads inline in the diff** — threads render under their line (split:
+      commented side, padded opposite); `]c`/`[c` jump (also from the tree), `r` replies.
+- [x] **Merge readiness** — Review field shows approvals vs required, your verdict, and
+      pending code owners (branch protection via GraphQL).
+- [x] **Re-review flag + `U`** — Reviews list marks PRs with new commits since your
+      approval; `U` diffs only what changed since your last verdict.
+- [x] **Comment drafts** — cancelled comments are kept in `drafts.json` and restored.
+- [x] **Jira ↔ PR links** — keys from PR branch/title/body; `↵` on a linked row opens it,
+      `BS` goes back.
+
+## ⚪ Polish
+- [x] **Error float** — failures open a red float instead of a fleeting notify.
+- [x] **`NVIM_READONLY_STATE=1`** — test runs never write state/drafts/workspaces.
 
 ## 🟢 Performance
 - [x] **Section-cache read warmed at idle** — `dashboard.preload_cache` is scheduled from

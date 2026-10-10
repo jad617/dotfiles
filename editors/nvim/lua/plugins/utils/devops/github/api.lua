@@ -69,17 +69,18 @@ function M.search_prs(query, opts, cb)
   gh_json(args, cb)
 end
 
--- Open PRs the current user is involved in (review-requested, author, assignee,
--- mentioned, or commenter). Uses GraphQL to include reviewRequests (user/team).
+-- Open PRs by others that the current user is involved in (review-requested,
+-- assignee, mentioned, or commenter); own PRs live in My PRs. Uses GraphQL to
+-- include reviewRequests (user/team).
 function M.my_reviews(cb)
   local n = config.options.github.pr_limit or 30
   local function do_fetch()
     local query = [[
 query($n: Int!) {
-  search(query: "is:pr is:open involves:@me", type: ISSUE, first: $n) {
+  search(query: "is:pr is:open involves:@me -author:@me", type: ISSUE, first: $n) {
     nodes {
       ... on PullRequest {
-        number title url state isDraft headRefName
+        number title url state isDraft headRefName headRefOid
         repository { nameWithOwner name }
         author { login }
         createdAt updatedAt
@@ -96,6 +97,7 @@ query($n: Int!) {
             author { login }
             state
             submittedAt
+            commit { oid }
           }
         }
         reviewThreads(first: 60) {
@@ -131,62 +133,26 @@ query($n: Int!) {
         end
         pr.reviewReason = #reasons > 0 and table.concat(reasons, ", ") or nil
 
-        -- Derive approvedBy: list of users whose latest review is APPROVED
+        -- Derive approvedBy: users whose effective review is APPROVED
+        -- (a later thread reply doesn't cancel an approval).
         pr.approvedBy = {}
         if pr.reviews and pr.reviews.nodes then
-          -- Track latest review state per user
-          local user_state = {} -- login → { state, ts }
-          for _, rev in ipairs(pr.reviews.nodes) do
-            local login = rev.author and rev.author.login
-            if login then
-              local ts = rev.submittedAt or ""
-              if not user_state[login] or ts > user_state[login].ts then
-                user_state[login] = { state = rev.state, ts = ts }
-              end
-            end
-          end
-          for login, info in pairs(user_state) do
-            if info.state == "APPROVED" then
-              pr.approvedBy[#pr.approvedBy + 1] = login
-            end
+          local verdicts = require("plugins.utils.devops.github.threads").review_verdicts(pr.reviews.nodes)
+          for login, st in pairs(verdicts) do
+            if st == "APPROVED" then pr.approvedBy[#pr.approvedBy + 1] = login end
           end
           table.sort(pr.approvedBy)
+          -- Pushed since my approval / change request → needs another look.
+          local mine = require("plugins.utils.devops.github.threads").my_last_verdict(pr.reviews.nodes, me)
+          if mine and mine.commit and pr.headRefOid and mine.commit ~= pr.headRefOid then
+            pr.updatedSinceReview = mine.state
+          end
         end
 
-        -- Derive comment/reply status from review threads
-        -- awaiting_reply: I left a comment and no one replied after it
-        -- replied: someone replied after my latest comment in a thread
-        pr.commentStatus = nil -- nil | "awaiting_reply" | "replied"
-        if me and pr.reviewThreads and pr.reviewThreads.nodes then
-          local has_awaiting = false
-          local has_replied = false
-          for _, thread in ipairs(pr.reviewThreads.nodes) do
-            if not thread.isResolved and thread.comments and thread.comments.nodes then
-              local comments = thread.comments.nodes
-              -- Find if I participated and what the last comment state is
-              local my_last_idx = nil
-              for i, c in ipairs(comments) do
-                if c.author and c.author.login == me then
-                  my_last_idx = i
-                end
-              end
-              if my_last_idx then
-                if my_last_idx == #comments then
-                  -- My comment is the last one → awaiting reply
-                  has_awaiting = true
-                else
-                  -- Someone commented after me → replied
-                  has_replied = true
-                end
-              end
-            end
-          end
-          if has_replied then
-            pr.commentStatus = "replied"
-          elseif has_awaiting then
-            pr.commentStatus = "awaiting_reply"
-          end
-        end
+        -- Derive comment/reply status from review threads:
+        -- replied (someone answered my comment) > awaiting_reply > nil.
+        pr.commentStatus, pr.commentInfo = require("plugins.utils.devops.github.threads")
+          .comment_status(pr.reviewThreads and pr.reviewThreads.nodes, me)
       end
       cb(true, nodes, nil)
     end)
@@ -217,6 +183,47 @@ end
 -- commits, reviews, comments }, err)
 function M.pr_view_extra(repo, number, cb)
   gh_json({ "pr", "view", tostring(number), "--repo", repo, "--json", PR_VIEW_EXTRA }, cb)
+end
+
+-- Base-branch review rules + pending code-owner requests (for merge readiness).
+-- cb(ok, { required = n, code_owners = bool, owner_pending = {names} })
+function M.pr_merge_rules(repo, number, cb)
+  local owner, name = repo:match("^([^/]+)/(.+)$")
+  if not owner then return vim.schedule(function() cb(false) end) end
+  local query = [[
+query($o: String!, $r: String!, $n: Int!) {
+  repository(owner: $o, name: $r) {
+    pullRequest(number: $n) {
+      reviewRequests(first: 20) {
+        nodes { asCodeOwner requestedReviewer { ... on User { login } ... on Team { name } } }
+      }
+      baseRef {
+        refUpdateRule { requiredApprovingReviewCount requiresCodeOwnerReviews }
+        branchProtectionRule { requiredApprovingReviewCount requiresCodeOwnerReviews }
+      }
+    }
+  }
+}]]
+  gh_json({ "api", "graphql", "-f", "o=" .. owner, "-f", "r=" .. name, "-F", "n=" .. tostring(number),
+    "-f", "query=" .. query }, function(ok, data)
+    local pr = ok and data and data.data and data.data.repository and data.data.repository.pullRequest
+    if not pr then return cb(false) end
+    local out = { required = 0, code_owners = false, owner_pending = {} }
+    local base = pr.baseRef or {}
+    for _, rule in ipairs({ base.refUpdateRule or {}, base.branchProtectionRule or {} }) do
+      if type(rule) == "table" then
+        out.required = math.max(out.required, tonumber(rule.requiredApprovingReviewCount) or 0)
+        out.code_owners = out.code_owners or rule.requiresCodeOwnerReviews == true
+      end
+    end
+    for _, rr in ipairs(pr.reviewRequests and pr.reviewRequests.nodes or {}) do
+      local who = rr.requestedReviewer
+      if rr.asCodeOwner and type(who) == "table" then
+        out.owner_pending[#out.owner_pending + 1] = who.login or who.name
+      end
+    end
+    cb(true, out)
+  end)
 end
 
 -- Inline review (code-thread) comments. cb(ok, comments[], err)
@@ -269,6 +276,13 @@ function M.pr_comment(repo, n, body, cb)
   gh_run({ "pr", "comment", tostring(n), "--repo", repo, "--body", body }, cb)
 end
 
+-- Reply inside a review-comment thread (comment_id = the thread's root comment).
+function M.pr_review_reply(repo, n, comment_id, body, cb)
+  gh_run({ "api", "-X", "POST",
+    "repos/" .. repo .. "/pulls/" .. tostring(n) .. "/comments/" .. tostring(comment_id) .. "/replies",
+    "-f", "body=" .. body }, cb)
+end
+
 function M.pr_ready(repo, n, cb)
   gh_run({ "pr", "ready", tostring(n), "--repo", repo }, cb)
 end
@@ -288,10 +302,23 @@ function M.pr_diff(repo, n, cb)
   if e and (os.time() - e.ts) < DIFF_TTL then
     return vim.schedule(function() cb(true, e.text, "") end)
   end
-  gh_run({ "pr", "diff", tostring(n), "--repo", repo }, function(ok, text, err)
+  -- gh refuses (exit 1) diffs it thinks contain terminal escapes; we render
+  -- into a buffer, not a terminal, so they're harmless.
+  gh_run({ "pr", "diff", tostring(n), "--repo", repo, "--allow-escape-sequences" }, function(ok, text, err)
     if ok then diff_cache[key] = { text = text, ts = os.time() } end
     cb(ok, text, err)
   end)
+end
+
+-- Raw diff between two commits (e.g. my last reviewed commit → PR head).
+function M.compare_diff(repo, base, head, cb)
+  gh_run({ "api", "-H", "Accept: application/vnd.github.diff",
+    "repos/" .. repo .. "/compare/" .. base .. "..." .. head }, cb)
+end
+
+-- PR head + reviews (with commit oids), for "since my review". cb(ok, data, err)
+function M.pr_reviews_head(repo, n, cb)
+  gh_json({ "pr", "view", tostring(n), "--repo", repo, "--json", "headRefOid,reviews" }, cb)
 end
 
 -- Drop cached diffs (all, or one repo#n) — e.g. on manual refresh.

@@ -4,9 +4,11 @@
 ---------------------------------------------------------------------------
 
 local client = require("plugins.utils.devops.jira.client")
+local errors = require("plugins.utils.devops.ui.errors")
 local api = require("plugins.utils.devops.jira.api")
 local adf = require("plugins.utils.devops.jira.adf")
 local gh = require("plugins.utils.devops.github.api")
+local threads = require("plugins.utils.devops.github.threads")
 local input = require("plugins.utils.devops.ui.input")
 local diff_viewer = require("plugins.utils.devops.ui.diff_viewer")
 local pr_files_picker = require("plugins.utils.devops.ui.pr_files_picker")
@@ -54,7 +56,10 @@ end
 -- Render builder output into an external buffer (for inline/nav-stack use).
 -- Returns the highlight data for the caller to apply.
 ---------------------------------------------------------------------------
+local tags_by_buf = setmetatable({}, { __mode = "k" })
+
 function M.write_to_buf(buf, b)
+  tags_by_buf[buf] = b.tags and b.tags() or nil
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, b.lines())
   vim.bo[buf].modifiable = false
@@ -107,8 +112,14 @@ local function builder()
       b.hl(line, 0, #t, "DevOpsSectionHead")
     end
   end
+  -- Tag lines [from, to] (1-based) with data the keymaps can look up (e.g. 'r').
+  local T = {}
+  function b.tag(from, to, data)
+    for l = from, to do T[l] = data end
+  end
   function b.lines() return L end
   function b.highlights() return H end
+  function b.tags() return T end
   return b
 end
 
@@ -135,6 +146,7 @@ local function show(title, b, on_open)
     vim.bo[state.buf].bufhidden = "wipe"
   end
   local buf = state.buf
+  tags_by_buf[buf] = b.tags and b.tags() or nil
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
@@ -170,6 +182,12 @@ local function show(title, b, on_open)
     for _, k in ipairs({ "q", "<C-d>", "<Esc>" }) do
       vim.keymap.set("n", k, close, { buffer = buf, nowait = true, desc = "Close" })
     end
+    require("plugins.utils.devops.ui.pane_nav").map(buf)
+    vim.keymap.set("n", "<CR>", function()
+      local t = M.link_at(buf, vim.api.nvim_win_get_cursor(0)[1])
+      if not t then return end
+      if t.kind == "jira_link" then M.open_issue(t.key) else M.open_pr(t.pr) end
+    end, { buffer = buf, nowait = true, desc = "Open linked item" })
   end
   if on_open then on_open(buf) end
 end
@@ -213,16 +231,35 @@ local function active_sprint_name(f)
   return name
 end
 
-local function branch_issue_keys(branch_name)
+-- Jira keys mentioned in any of the given strings (branch, title, body), in order.
+local function branch_issue_keys(...)
   local keys, seen = {}, {}
-  if not branch_name or branch_name == "" then return keys end
-  for key in branch_name:gmatch("([A-Z][A-Z0-9_]+%-%d+)") do
-    if not seen[key] then
-      seen[key] = true
-      keys[#keys + 1] = key
+  for i = 1, select("#", ...) do
+    local text = select(i, ...)
+    if type(text) == "string" and text ~= "" then
+      for key in text:gmatch("%f[%w]([A-Z][A-Z0-9_]+%-%d+)%f[^%w]") do
+        if not seen[key] then
+          seen[key] = true
+          keys[#keys + 1] = key
+        end
+      end
     end
   end
   return keys
+end
+
+-- PR identity from a github.com/<owner>/<repo>/pull/<n> URL.
+local function pr_from_url(url)
+  local repo, n = (url or ""):match("github%.com/([^/]+/[^/]+)/pull/(%d+)")
+  if not repo then return nil end
+  return { repository = { nameWithOwner = repo }, number = tonumber(n), url = url }
+end
+
+-- Link tag (Linked PRs / Linked Jira Issues row) under `row` in `buf`, or nil.
+function M.link_at(buf, row)
+  local tags = tags_by_buf[buf]
+  local t = tags and tags[row]
+  if t and (t.kind == "jira_link" or t.kind == "pr_link") then return t end
 end
 
 local function merge_issue_prs(dev_prs, gh_prs)
@@ -295,10 +332,13 @@ local function build_issue(issue, prs, comments, width)
       local l = b.add(("   %s  %s  [%s]"):format(pr.id or "", pr.name or pr.title or "", stt))
       b.hl(l, 3, 3 + #(pr.id or ""), "DevOpsId")
       b.hl(l, #b.lines()[l] - #stt - 1, #b.lines()[l], ok and "DevOpsOk" or "DevOpsWarn")
+      local last = l
       if pr.url then
-        local u = b.add("       " .. pr.url)
-        b.hl(u, 0, #b.lines()[u], "DevOpsDim")
+        last = b.add("       " .. pr.url)
+        b.hl(last, 0, #b.lines()[last], "DevOpsDim")
       end
+      local target = pr_from_url(pr.url)
+      if target then b.tag(l, last, { kind = "pr_link", pr = target }) end
     end
   end
 
@@ -498,6 +538,17 @@ local function setup_comment_cursorline(win, buf, comment_rows_fn)
   })
 end
 
+-- Stacked preview of the Jira comment being replied to / edited.
+local function comment_preview(cmt, verb)
+  local author = cmt.author and cmt.author.displayName or "?"
+  local when = (cmt.created or ""):sub(1, 16):gsub("T", " ")
+  return { preview = {
+    title = verb .. " " .. author .. (when ~= "" and (" · " .. when) or ""),
+    lines = adf.adf_to_lines(cmt.body),
+    filetype = "markdown",
+  } }
+end
+
 local function setup_issue_keys(buf, ctx)
   local browse = client.base_url() .. "/browse/" .. ctx.key
   local keymap_opts = { buffer = buf }
@@ -513,10 +564,27 @@ local function setup_issue_keys(buf, ctx)
   map("c", function()
     local iopts = ctx.input_opts()
     iopts.compact = true
+    -- Preview the latest comments so the new one has context.
+    local seen, cmts = {}, {}
+    for _, cm in pairs(ctx.comment_rows() or {}) do
+      if not seen[cm] then seen[cm] = true; cmts[#cmts + 1] = cm end
+    end
+    table.sort(cmts, function(a, b2) return (a.created or "") < (b2.created or "") end)
+    if #cmts > 0 then
+      local lines = {}
+      for i = math.max(1, #cmts - 2), #cmts do
+        local cm = cmts[i]
+        if #lines > 0 then lines[#lines + 1] = "" end
+        lines[#lines + 1] = "**" .. (cm.author and cm.author.displayName or "?") .. "** · "
+          .. (cm.created or ""):sub(1, 16):gsub("T", " ")
+        vim.list_extend(lines, adf.adf_to_lines(cm.body))
+      end
+      iopts.preview = { title = "Latest comments · " .. ctx.key, lines = lines, filetype = "markdown", focus = #lines }
+    end
     input.open("Comment " .. ctx.key, "", function(text)
       if text == "" then return end
       api.add_comment(ctx.key, text, function(ok, _, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "comment failed")) end
         vim.notify("DevOps: comment added to " .. ctx.key, vim.log.levels.INFO)
         detail_cache_invalidate(ctx.key, "comments")
         ctx.refresh()
@@ -538,12 +606,12 @@ local function setup_issue_keys(buf, ctx)
         local stripped = text:gsub("@%[.-%]%{.-%}", ""):gsub("^%s+", ""):gsub("%s+$", "")
         if stripped == "" then return end
         api.add_comment(ctx.key, text, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "reply failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "reply failed")) end
           vim.notify("DevOps: reply added to " .. ctx.key, vim.log.levels.INFO)
           detail_cache_invalidate(ctx.key, "comments")
           ctx.refresh()
         end)
-      end, ctx.input_opts())
+      end, vim.tbl_extend("force", ctx.input_opts(), comment_preview(cmt, "Replying to")))
     else
       vim.notify("DevOps: move cursor to a comment to reply", vim.log.levels.INFO)
     end
@@ -559,20 +627,20 @@ local function setup_issue_keys(buf, ctx)
       input.open("Edit Comment " .. ctx.key, body_text, function(new_text)
         if new_text == "" then return end
         api.update_comment(ctx.key, cmt.id, new_text, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "edit failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "edit failed")) end
           vim.notify("DevOps: comment updated", vim.log.levels.INFO)
           detail_cache_invalidate(ctx.key, "comments")
           ctx.refresh()
         end)
-      end, ctx.input_opts())
+      end, vim.tbl_extend("force", ctx.input_opts(), comment_preview(cmt, "Editing comment by")))
     elseif dr and row >= dr[1] and row <= dr[2] then
       api.get_issue(ctx.key, function(ok, iss, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "fetch failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "fetch failed")) end
         local f = iss.fields or {}
         local desc_text = table.concat(adf.adf_to_lines(f.description), "\n")
         input.open("Description " .. ctx.key, desc_text, function(new_desc)
           api.update_issue(ctx.key, { description = adf.text_to_adf(new_desc) }, function(ok2, _, err2)
-            if not ok2 then return vim.notify("DevOps: " .. (err2 or "update failed"), vim.log.levels.ERROR) end
+            if not ok2 then return errors.show("DevOps: " .. (err2 or "update failed")) end
             vim.notify("DevOps: description updated", vim.log.levels.INFO)
             detail_cache_invalidate(ctx.key)
             ctx.refresh()
@@ -581,12 +649,12 @@ local function setup_issue_keys(buf, ctx)
       end)
     else
       api.get_issue(ctx.key, function(ok, iss, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "fetch failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "fetch failed")) end
         local f = iss.fields or {}
         vim.ui.input({ prompt = "Summary: ", default = f.summary or "" }, function(new_summary)
           if not new_summary or new_summary == (f.summary or "") then return end
           api.update_issue(ctx.key, { summary = new_summary }, function(ok2, _, err2)
-            if not ok2 then return vim.notify("DevOps: " .. (err2 or "update failed"), vim.log.levels.ERROR) end
+            if not ok2 then return errors.show("DevOps: " .. (err2 or "update failed")) end
             vim.notify("DevOps: summary updated", vim.log.levels.INFO)
             detail_cache_invalidate(ctx.key)
             ctx.refresh()
@@ -598,7 +666,7 @@ local function setup_issue_keys(buf, ctx)
 
   map("a", function()
     api.project_assignees(ctx.project_key, function(ok, users, err)
-      if not ok then return vim.notify("DevOps: " .. (err or "user lookup failed"), vim.log.levels.ERROR) end
+      if not ok then return errors.show("DevOps: " .. (err or "user lookup failed")) end
       local choices = {}
       local me_id = client.account_id()
       if me_id then
@@ -616,7 +684,7 @@ local function setup_issue_keys(buf, ctx)
       }, function(choice)
         if not choice then return end
         api.assign(ctx.key, choice.account_id, function(ok2, _, err2)
-          if not ok2 then return vim.notify("DevOps: " .. (err2 or "assign failed"), vim.log.levels.ERROR) end
+          if not ok2 then return errors.show("DevOps: " .. (err2 or "assign failed")) end
           vim.notify("DevOps: " .. ctx.key .. " assigned to " .. choice.label, vim.log.levels.INFO)
           detail_cache_invalidate(ctx.key)
           ctx.refresh()
@@ -629,7 +697,7 @@ end
 function M.open_issue(key)
   api.get_issue(key, function(ok, issue, err)
     if not ok or not issue then
-      return vim.notify("DevOps: " .. (err or ("failed to load " .. key)), vim.log.levels.ERROR)
+      return errors.show("DevOps: " .. (err or ("failed to load " .. key)))
     end
     local project_key = key:match("^(%u[%u%d_]*)%-")
     local function setup_keys(buf)
@@ -736,7 +804,22 @@ local function review_rows(pr)
   end
 
   local author_key = gh_person_key(pr.author)
+  -- A COMMENTED review (e.g. a thread reply) doesn't override an earlier
+  -- verdict; only a new verdict or a dismissal does (GitHub semantics).
+  local reviews, verdict = {}, {}
   for i, review in ipairs(pr.reviews or {}) do
+    local key = gh_person_key(review.author)
+    local state = review.state or ""
+    if key and state == "DISMISSED" then
+      verdict[key] = nil
+    elseif key and state == "COMMENTED" and verdict[key] then
+      review = vim.tbl_extend("force", review, { state = verdict[key] })
+    elseif key and (state == "APPROVED" or state == "CHANGES_REQUESTED") then
+      verdict[key] = state
+    end
+    reviews[i] = review
+  end
+  for i, review in ipairs(reviews) do
     local author = gh_person_name(review.author)
     local key = gh_person_key(review.author)
     local is_me = (review.author and review.author.login and review.author.login == me) or false
@@ -857,7 +940,24 @@ local function build_pr(pr, width)
 
   local stateStr = draft and "DRAFT" or (pr.state or "?")
   b.field("State", stateStr, draft and "DevOpsPrDraft" or "DevOpsPrOpen")
-  if pr.reviewDecision and pr.reviewDecision ~= "" then
+  -- Review: GitHub's decision plus why (your verdict, approvals vs required,
+  -- pending code owners) once reviews/rules have loaded.
+  local readiness, level
+  if pr.reviews ~= nil then
+    local rules = pr.mergeRules or {}
+    readiness, level = threads.merge_readiness({
+      decision = pr.reviewDecision,
+      verdicts = threads.review_verdicts(pr.reviews),
+      author = pr.author and pr.author.login,
+      me = gh.current_user_login(),
+      required = rules.required,
+      code_owners = rules.code_owners,
+      owner_pending = rules.owner_pending,
+    })
+  end
+  if readiness then
+    b.field("Review", readiness, ({ ok = "DevOpsOk", err = "DevOpsErr" })[level] or "DevOpsWarn")
+  elseif pr.reviewDecision and pr.reviewDecision ~= "" then
     local rd = REVIEW_LABEL[pr.reviewDecision] or pr.reviewDecision
     b.field("Review", rd, pr.reviewDecision == "APPROVED" and "DevOpsOk"
       or (pr.reviewDecision == "CHANGES_REQUESTED" and "DevOpsErr" or "DevOpsWarn"))
@@ -907,12 +1007,13 @@ local function build_pr(pr, width)
     b.field("Labels", table.concat(names, "  "), "DevOpsLabel")
   end
 
-  local linked_keys = branch_issue_keys(pr.headRefName)
+  local linked_keys = branch_issue_keys(pr.headRefName, pr.title, pr.body)
   if #linked_keys > 0 then
-    b.divider("Linked Jira Issues")
+    b.divider("Linked Jira Issues  (↵ open)")
     for _, key in ipairs(linked_keys) do
       local l = b.add("  🔗  " .. key)
       b.hl(l, #"  🔗  ", #"  🔗  " + #key, "DevOpsId")
+      b.tag(l, l, { kind = "jira_link", key = key })
     end
   end
 
@@ -1029,12 +1130,14 @@ local function build_pr(pr, width)
       local pl = b.add("  " .. render.truncate(p, W - 4))
       b.hl(pl, 2, #b.lines()[pl], "DevOpsId")
       for _, c in ipairs(groups[p]) do
+        local first = #b.lines() + 1
         local thread = comment_header(c, "    ")
         add_body(c, "      ")
         for _, r in ipairs(thread) do
           comment_header(r, "      ", "↳ ")
           add_body(r, "         ")
         end
+        b.tag(first, #b.lines(), { kind = "thread", root = c, replies = thread })
       end
     end
   end
@@ -1062,6 +1165,10 @@ local function build_pr(pr, width)
       time = c.createdAt or "",
     }
   end
+  -- A review's message often lives in its inline comments (empty review body).
+  local review_groups = threads.review_comment_groups(pr.reviews, pr.reviewComments)
+  local rc_by_id = {}
+  for _, c in ipairs(pr.reviewComments or {}) do rc_by_id[c.id] = c end
   for _, r in ipairs(pr.reviews or {}) do
     local rev_body = r.body or ""
     if rev_body ~= "" or (r.state and r.state ~= "PENDING") then
@@ -1071,6 +1178,7 @@ local function build_pr(pr, width)
         body = rev_body,
         state = r.state or "",
         time = r.createdAt or r.submittedAt or "",
+        comments = review_groups[r],
       }
     end
   end
@@ -1113,6 +1221,7 @@ local function build_pr(pr, width)
         icon, action, action_hl, border_hl = "⊙", "pushed " .. ev.oid:sub(1, 7), "DevOpsId", "DevOpsBorder"
       end
 
+      local card_first = #b.lines() + 1
       -- ╭─ <icon> <author> <action> · <time>
       local head = PAD .. "╭─ " .. icon .. " "
       local author_start = #head
@@ -1143,9 +1252,42 @@ local function build_pr(pr, width)
         end
       end
 
+      -- Inline comments submitted with this review.
+      for ci, c in ipairs(ev.comments or {}) do
+        if body ~= "" or ci > 1 then
+          local sep = b.add(PAD .. "│")
+          b.hl(sep, #PAD, #PAD + #"│", border_hl)
+        end
+        local ln = c.line or c.original_line
+        local loc = (c.in_reply_to_id and "↳ reply on " or "📄 ") .. (c.path or "?") .. (ln and (":" .. ln) or "")
+        local ll = b.add(rail .. render.truncate(loc, W - 7))
+        b.hl(ll, #PAD, #PAD + #"│", border_hl)
+        b.hl(ll, #rail, #b.lines()[ll], "DevOpsId")
+        local cmd = markdown.render(markdown.clean(c.body or ""), "  ", W - 9)
+        for i, bl in ipairs(cmd.lines) do
+          local li = b.add(rail .. bl)
+          b.hl(li, #PAD, #PAD + #"│", border_hl)
+          for _, h in ipairs(cmd.highlights) do
+            if h.line == i - 1 then b.hl(li, #rail + h.col_start, #rail + h.col_end, h.hl) end
+          end
+        end
+      end
+
       -- ╰─
       local bot = b.add(PAD .. "╰─")
       b.hl(bot, #PAD, #(PAD .. "╰─"), border_hl)
+      local first_c = ev.comments and ev.comments[1]
+      if first_c and body == "" then
+        -- 'r' replies in the comment's thread (a review body can't be replied to).
+        local root = (first_c.in_reply_to_id and rc_by_id[first_c.in_reply_to_id]) or first_c
+        local replies = {}
+        for _, c in ipairs(pr.reviewComments or {}) do
+          if c.in_reply_to_id == root.id then replies[#replies + 1] = c end
+        end
+        b.tag(card_first, bot, { kind = "thread", root = root, replies = replies })
+      elseif ev.kind ~= "commit" then
+        b.tag(card_first, bot, { kind = "conversation", ev = ev })
+      end
     end
   end
 
@@ -1157,9 +1299,163 @@ end
 local pr_full_cache = {}
 
 -- Drop the cached enrichment for a PR so the next load refetches from scratch
--- (used by a manual 'r' refresh and after write actions like commenting).
+-- (used by a manual 'R' refresh and after write actions like commenting).
 local function clear_pr_full_cache(repo, n)
   if repo and n then pr_full_cache[repo .. "#" .. n] = nil end
+end
+
+-- 'r' in a PR view: reply to the review thread / conversation comment under
+-- the cursor, with the thread shown in the stacked preview. Returns false when
+-- the cursor isn't on a comment.
+local function pr_reply(buf, repo, n, on_done)
+  local tags = tags_by_buf[buf]
+  local t = tags and tags[vim.api.nvim_win_get_cursor(0)[1]]
+  if not t then return false end
+  local me = gh.current_user_login()
+  local lines, marks = {}, {}
+  local function add(text, hl)
+    lines[#lines + 1] = text
+    if hl then marks[#marks + 1] = { #lines - 1, 0, { end_col = #text, hl_group = hl } } end
+  end
+  local function add_comment(who, time, body)
+    if #lines > 0 then add("") end
+    add("@" .. (who or "?") .. "  " .. (time or ""):sub(1, 16):gsub("T", " "),
+      who == me and "DevOpsOk" or "DevOpsKey")
+    for _, l in ipairs(vim.split(markdown.clean(body or ""), "\n", { plain = true, trimempty = true })) do
+      add("  " .. l)
+    end
+  end
+  local function done(ok, err, what)
+    if not ok then return errors.show("DevOps: " .. (err or "reply failed")) end
+    vim.notify("DevOps: " .. what, vim.log.levels.INFO)
+    clear_pr_full_cache(repo, n)
+    on_done()
+  end
+
+  if t.kind == "thread" then
+    local root = t.root
+    local ln = root.line or root.original_line
+    local where = (root.path or "?") .. (ln and (":" .. ln) or "")
+    -- Code context: the last lines of the diff hunk the thread is anchored to.
+    local hunk = vim.split(root.diff_hunk or "", "\n", { plain = true, trimempty = true })
+    for i = math.max(2, #hunk - 3), #hunk do
+      local l = hunk[i]
+      add(l, l:sub(1, 1) == "+" and "DevOpsOk" or (l:sub(1, 1) == "-" and "DevOpsErr" or "DevOpsDim"))
+    end
+    if #lines > 0 then add(string.rep("─", 40), "DevOpsDim") end
+    for _, c in ipairs({ root, unpack(t.replies or {}) }) do
+      add_comment(c.user and c.user.login, c.created_at, c.body)
+    end
+    input.open("Reply on " .. where, "", function(body)
+      if body == "" then return end
+      gh.pr_review_reply(repo, n, root.id, body, function(ok, _, err)
+        done(ok, err, "replied on " .. where)
+      end)
+    end, { draft_key = repo .. "#" .. n .. " thread " .. tostring(root.id),
+      preview = { title = "Thread · " .. where, lines = lines, extmarks = marks, focus = #lines } })
+    return true
+  end
+
+  local ev = t.ev
+  add_comment(ev.author, ev.time, ev.body ~= "" and ev.body or ("(" .. (ev.state or "review"):lower() .. ")"))
+  input.open("Reply to @" .. ev.author .. " on #" .. n, "@" .. ev.author .. " ", function(body)
+    if body:gsub("^@%S+%s*", "") == "" then return end
+    -- Conversation comments aren't threaded on GitHub: quote-reply like the web UI.
+    local quote = {}
+    for _, l in ipairs(vim.split(markdown.clean(ev.body or ""), "\n", { plain = true, trimempty = true })) do
+      quote[#quote + 1] = "> " .. l
+    end
+    local full = (#quote > 0 and (table.concat(quote, "\n") .. "\n\n") or "") .. body
+    gh.pr_comment(repo, n, full, function(ok, _, err) done(ok, err, "replied to @" .. ev.author) end)
+  end, { draft_key = repo .. "#" .. n .. " reply " .. tostring(ev.author) .. " " .. tostring(ev.time),
+    preview = { title = "Replying to @" .. ev.author, lines = lines, extmarks = marks, focus = 1 } })
+  return true
+end
+
+-- Input-float preview for a general PR comment / review: title, author and
+-- the latest conversation, so you see what you're responding to.
+local PREVIEW_ENTRIES = 4
+function M.pr_comment_preview(pr, verb)
+  local repo = pr.repository and pr.repository.nameWithOwner
+  local data = (repo and pr.number and pr_full_cache[repo .. "#" .. pr.number])
+    or (active_pr and active_pr.number == pr.number and active_pr) or pr
+  local lines, marks = {}, {}
+  local function add(text, hl)
+    lines[#lines + 1] = text
+    if hl then marks[#marks + 1] = { #lines - 1, 0, { end_col = #text, hl_group = hl } } end
+  end
+  add("#" .. (data.number or "?") .. "  " .. (data.title or ""), "DevOpsTitle")
+  local author = data.author and data.author.login
+  local branch = data.headRefName
+  if author or branch then
+    add("@" .. (author or "?") .. (branch and ("  ·  " .. branch) or ""), "DevOpsDim")
+  end
+
+  local entries = {}
+  for _, c in ipairs(data.comments or {}) do
+    entries[#entries + 1] = { who = c.author and c.author.login, body = c.body, time = c.createdAt }
+  end
+  for _, r in ipairs(data.reviews or {}) do
+    if (r.body or "") ~= "" or (r.state and r.state ~= "PENDING" and r.state ~= "COMMENTED") then
+      entries[#entries + 1] = { who = r.author and r.author.login, body = r.body, state = r.state,
+        time = r.submittedAt or r.createdAt }
+    end
+  end
+  table.sort(entries, function(a, b) return (a.time or "") < (b.time or "") end)
+
+  local function body_lines(text, max)
+    local out = vim.split(markdown.clean(text or ""), "\n", { plain = true, trimempty = true })
+    if #out > max then out = vim.list_slice(out, 1, max); out[#out + 1] = "…" end
+    return out
+  end
+
+  if #entries == 0 then
+    add("")
+    add("No conversation yet — description:", "DevOpsDim")
+    local desc = body_lines(data.body, 6)
+    if #desc == 0 then desc = { "(no description)" } end
+    for _, l in ipairs(desc) do add("  " .. l) end
+  else
+    local from = math.max(1, #entries - PREVIEW_ENTRIES + 1)
+    if from > 1 then add(""); add(("… %d earlier"):format(from - 1), "DevOpsDim") end
+    for i = from, #entries do
+      local e = entries[i]
+      add("")
+      local hdr = "@" .. (e.who or "?") .. "  " .. (e.time or ""):sub(1, 16):gsub("T", " ")
+        .. (e.state and ("  [" .. e.state:lower():gsub("_", " ") .. "]") or "")
+      add(hdr, e.who == gh.current_user_login() and "DevOpsOk" or "DevOpsKey")
+      for _, l in ipairs(body_lines(e.body, 4)) do add("  " .. l) end
+    end
+  end
+  return { draft_key = (repo or "?") .. "#" .. tostring(pr.number) .. " " .. (verb or "Commenting on"), preview = {
+    title = (verb or "Commenting on") .. " #" .. (data.number or "?"),
+    lines = lines,
+    extmarks = marks,
+    focus = #lines,
+  } }
+end
+
+-- Diff of only what was pushed since my last approval / change request.
+function M.diff_since_review(repo, n)
+  gh.pr_reviews_head(repo, n, function(ok, d, err)
+    if not ok or type(d) ~= "table" then return errors.show("DevOps: " .. (err or "couldn't load reviews")) end
+    local mine = threads.my_last_verdict(d.reviews, gh.current_user_login())
+    if not (mine and mine.commit) then
+      return vim.notify("DevOps: you haven't approved or requested changes on #" .. n .. " yet (d = full diff)",
+        vim.log.levels.INFO)
+    end
+    if mine.commit == d.headRefOid then
+      return vim.notify("DevOps: no new commits on #" .. n .. " since your review", vim.log.levels.INFO)
+    end
+    gh.compare_diff(repo, mine.commit, d.headRefOid, function(ok2, text, err2)
+      if not ok2 then return errors.show("DevOps: " .. (err2 ~= "" and err2 or "compare failed")) end
+      if not text:match("%S") then
+        return vim.notify("DevOps: no file changes on #" .. n .. " since your review", vim.log.levels.INFO)
+      end
+      diff_viewer.open(text, ("Diff #%d since your review (%s → %s)"):format(n, mine.commit:sub(1, 7),
+        d.headRefOid:sub(1, 7)), { pr = { repo = repo, number = n } })
+    end)
+  end)
 end
 
 -- Two-phase, parallel PR enrichment:
@@ -1177,8 +1473,8 @@ local function enrich_pr(repo, n, base, render, still_valid)
   local cached = pr_full_cache[key]
   if cached and still_valid() then render(cached) end
 
-  local core, extra, rc = nil, nil, nil
-  local pending_extra = 2 -- pr_view_extra + review comments
+  local core, extra, rc, rules = nil, nil, nil, nil
+  local pending_extra = 3 -- pr_view_extra + review comments + merge rules
   local painted_core = cached ~= nil -- cached already shows everything
 
   local function paint(full)
@@ -1190,6 +1486,7 @@ local function enrich_pr(repo, n, base, render, still_valid)
       data.reviews, data.comments = extra.reviews, extra.comments
     end
     data.reviewComments = rc or {}
+    data.mergeRules = rules or (cached and cached.mergeRules)
     if full then
       local same = cached and cached.updatedAt and cached.updatedAt == data.updatedAt
         and #(cached.reviewComments or {}) == #(rc or {})
@@ -1219,6 +1516,11 @@ local function enrich_pr(repo, n, base, render, still_valid)
     pending_extra = pending_extra - 1
     maybe_paint()
   end)
+  gh.pr_merge_rules(repo, n, function(ok, d)
+    rules = ok and d or nil
+    pending_extra = pending_extra - 1
+    maybe_paint()
+  end)
 end
 
 function M.open_pr(pr)
@@ -1235,7 +1537,7 @@ function M.open_pr(pr)
     -- Approve
     vim.keymap.set("n", "a", function()
       gh.pr_approve(repo, n, function(ok, _, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "approve failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "approve failed")) end
         vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
         clear_pr_full_cache(repo, n)
         M.open_pr(pr)
@@ -1243,16 +1545,16 @@ function M.open_pr(pr)
     end, { buffer = buf, desc = "Approve" })
 
     -- Request changes
-    vim.keymap.set("n", "R", function()
+    vim.keymap.set("n", "C", function()
       input.open("Request changes #" .. n, "", function(body)
         if body == "" then return end
         gh.pr_request_changes(repo, n, body, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "review failed")) end
           vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
           clear_pr_full_cache(repo, n)
           M.open_pr(pr)
         end)
-      end)
+      end, M.pr_comment_preview(pr, "Requesting changes on"))
     end, { buffer = buf, desc = "Request changes" })
 
     -- Comment
@@ -1260,16 +1562,21 @@ function M.open_pr(pr)
       input.open("Comment #" .. n, "", function(body)
         if body == "" then return end
         gh.pr_comment(repo, n, body, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "comment failed")) end
           vim.notify("DevOps: commented on #" .. n, vim.log.levels.INFO)
           clear_pr_full_cache(repo, n)
           M.open_pr(pr)
         end)
-      end)
+      end, M.pr_comment_preview(pr, "Commenting on"))
     end, { buffer = buf, desc = "Comment" })
 
-    -- Refresh
+    -- Reply / refresh
     vim.keymap.set("n", "r", function()
+      if not pr_reply(buf, repo, n, function() M.open_pr(pr) end) then
+        vim.notify("DevOps: no comment under the cursor to reply to (c = new comment)", vim.log.levels.INFO)
+      end
+    end, { buffer = buf, desc = "Reply to comment" })
+    vim.keymap.set("n", "R", function()
       clear_pr_full_cache(repo, n)
       vim.notify("DevOps: refreshing #" .. n .. "…", vim.log.levels.INFO)
       M.open_pr(pr)
@@ -1278,15 +1585,17 @@ function M.open_pr(pr)
     -- Diff (original viewer)
     vim.keymap.set("n", "d", function()
       gh.pr_diff(repo, n, function(ok, diff_text, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "diff failed")) end
         diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
       end)
     end, { buffer = buf, desc = "Diff" })
+    vim.keymap.set("n", "U", function() M.diff_since_review(repo, n) end,
+      { buffer = buf, desc = "Diff since my review" })
 
     -- Changed-files tree (snacks) → ↵ opens the diff viewer at that file
     vim.keymap.set("n", "F", function()
       gh.pr_diff(repo, n, function(ok, diff_text, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "diff failed")) end
         pr_files_picker.open(repo, n, diff_text)
       end)
     end, { buffer = buf, desc = "Changed files tree" })
@@ -1294,7 +1603,7 @@ function M.open_pr(pr)
     -- Mark ready
     vim.keymap.set("n", "D", function()
       gh.pr_ready(repo, n, function(ok, _, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "ready failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "ready failed")) end
         vim.notify("DevOps: #" .. n .. " marked ready", vim.log.levels.INFO)
         M.open_pr(pr)
       end)
@@ -1305,7 +1614,7 @@ function M.open_pr(pr)
       vim.ui.select({ "Yes, squash merge", "Cancel" }, { prompt = "Merge #" .. n .. "?" }, function(choice)
         if not choice or choice:match("^Cancel") then return end
         gh.pr_merge(repo, n, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "merge failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "merge failed")) end
           vim.notify("DevOps: #" .. n .. " merged!", vim.log.levels.INFO)
         end)
       end)
@@ -1314,7 +1623,7 @@ function M.open_pr(pr)
     -- Checkout
     vim.keymap.set("n", "x", function()
       gh.pr_checkout(repo, n, function(ok, _, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "checkout failed — cwd must be the repo"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "checkout failed — cwd must be the repo")) end
         vim.notify("DevOps: checked out #" .. n, vim.log.levels.INFO)
       end)
     end, { buffer = buf, desc = "Checkout" })
@@ -1349,7 +1658,7 @@ function M.load_issue(key, opts)
 
   api.get_issue(key, function(ok, issue, err)
     if not ok or not issue then
-      return vim.notify("DevOps: " .. (err or ("failed to load " .. key)), vim.log.levels.ERROR)
+      return errors.show("DevOps: " .. (err or ("failed to load " .. key)))
     end
     local project_key = key:match("^(%u[%u%d_]*)%-")
 
@@ -1450,53 +1759,60 @@ function M.load_pr(pr, opts)
     if not repo or not n then return end
     vim.keymap.set("n", "a", function()
       gh.pr_approve(repo, n, function(ok, _, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "approve failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "approve failed")) end
         vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
         M.load_pr(pr, opts)
       end)
     end, { buffer = buf, nowait = true, desc = "Approve" })
-    vim.keymap.set("n", "R", function()
+    vim.keymap.set("n", "C", function()
       input.open("Request changes #" .. n, "", function(body)
         if body == "" then return end
         gh.pr_request_changes(repo, n, body, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "review failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "review failed")) end
           vim.notify("DevOps: requested changes on #" .. n, vim.log.levels.INFO)
           clear_pr_full_cache(repo, n)
           M.load_pr(pr, opts)
         end)
-      end)
+      end, M.pr_comment_preview(pr, "Requesting changes on"))
     end, { buffer = buf, nowait = true, desc = "Request changes" })
     vim.keymap.set("n", "c", function()
       input.open("Comment #" .. n, "", function(body)
         if body == "" then return end
         gh.pr_comment(repo, n, body, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "comment failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "comment failed")) end
           vim.notify("DevOps: commented on #" .. n, vim.log.levels.INFO)
           clear_pr_full_cache(repo, n)
           M.load_pr(pr, opts)
         end)
-      end)
+      end, M.pr_comment_preview(pr, "Commenting on"))
     end, { buffer = buf, nowait = true, desc = "Comment" })
     vim.keymap.set("n", "r", function()
+      if not pr_reply(buf, repo, n, function() M.load_pr(pr, opts) end) then
+        vim.notify("DevOps: no comment under the cursor to reply to (c = new comment)", vim.log.levels.INFO)
+      end
+    end, { buffer = buf, nowait = true, desc = "Reply to comment" })
+    vim.keymap.set("n", "R", function()
       clear_pr_full_cache(repo, n)
       vim.notify("DevOps: refreshing #" .. n .. "…", vim.log.levels.INFO)
       M.load_pr(pr, opts)
     end, { buffer = buf, nowait = true, desc = "Refresh" })
     vim.keymap.set("n", "d", function()
       gh.pr_diff(repo, n, function(ok, diff_text, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "diff failed")) end
         diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n } })
       end)
     end, { buffer = buf, nowait = true, desc = "Diff" })
+    vim.keymap.set("n", "U", function() M.diff_since_review(repo, n) end,
+      { buffer = buf, nowait = true, desc = "Diff since my review" })
     vim.keymap.set("n", "F", function()
       gh.pr_diff(repo, n, function(ok, diff_text, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "diff failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "diff failed")) end
         pr_files_picker.open(repo, n, diff_text)
       end)
     end, { buffer = buf, nowait = true, desc = "Changed files tree" })
     vim.keymap.set("n", "D", function()
       gh.pr_ready(repo, n, function(ok, _, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "ready failed"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "ready failed")) end
         vim.notify("DevOps: #" .. n .. " marked ready for review", vim.log.levels.INFO)
         M.load_pr(pr, opts)
       end)
@@ -1505,14 +1821,14 @@ function M.load_pr(pr, opts)
       vim.ui.select({ "Yes, squash merge", "Cancel" }, { prompt = "Merge #" .. n .. "?" }, function(choice)
         if not choice or choice:match("^Cancel") then return end
         gh.pr_merge(repo, n, function(ok, _, err)
-          if not ok then return vim.notify("DevOps: " .. (err or "merge failed"), vim.log.levels.ERROR) end
+          if not ok then return errors.show("DevOps: " .. (err or "merge failed")) end
           vim.notify("DevOps: #" .. n .. " merged!", vim.log.levels.INFO)
         end)
       end)
     end, { buffer = buf, nowait = true, desc = "Merge" })
     vim.keymap.set("n", "x", function()
       gh.pr_checkout(repo, n, function(ok, _, err)
-        if not ok then return vim.notify("DevOps: " .. (err or "checkout failed — cwd must be the repo"), vim.log.levels.ERROR) end
+        if not ok then return errors.show("DevOps: " .. (err or "checkout failed — cwd must be the repo")) end
         vim.notify("DevOps: checked out #" .. n, vim.log.levels.INFO)
       end)
     end, { buffer = buf, nowait = true, desc = "Checkout" })
