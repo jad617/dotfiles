@@ -44,6 +44,14 @@ return {
       end
     end
 
+    -- Silence MD013 (line-length): long prose lines are fine in markdown.
+    lint.linters["markdownlint"].args = { "--disable", "MD013", "--stdin" }
+
+    -- proselint check toggles live in proselintrc.json (e.g. lexical_illusions off).
+    -- --config must come after the `check` subcommand or proselint ignores it.
+    local proselint_config = vim.fn.stdpath("config") .. "/proselintrc.json"
+    lint.linters["proselint"].args = { "check", "--config", proselint_config, "--output-format=json" }
+
     -- Run golangci-lint from the directory containing go.mod/go.work so it
     -- can resolve module dependencies regardless of Neovim's cwd.
     local golangcilint_base = lint.linters["golangcilint"]
