@@ -64,8 +64,25 @@ map("v", "<C-Right>", "e", {})
 map("v", "<C-Left>", "ge", {})
 
 -- Exit without saving: C-d
-map("n", "<C-d>", "<cmd>q!<cr>", {})
-map("i", "<C-d>", "<cmd>q!<cr>", {})
+-- When only neo-tree would remain, quit everything: a plain :q! leaves the
+-- modified buffer hidden and neo-tree's close_if_last_window refuses to exit.
+local function quit_discard()
+  local real_wins = 0
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if vim.api.nvim_win_get_config(win).relative == "" and vim.bo[buf].filetype ~= "neo-tree" then
+      real_wins = real_wins + 1
+    end
+  end
+  if real_wins > 1 then
+    vim.cmd("q!")
+  elseif #vim.api.nvim_list_tabpages() > 1 then
+    vim.cmd("tabclose!")
+  else
+    vim.cmd("qa!")
+  end
+end
+vim.keymap.set({ "n", "i" }, "<C-d>", quit_discard, { desc = "Quit without saving" })
 
 -- Save only: C-x
 map("n", "<C-x>", ":w<CR>", options_silent)
