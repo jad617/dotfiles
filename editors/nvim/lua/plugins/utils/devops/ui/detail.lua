@@ -262,6 +262,26 @@ function M.link_at(buf, row)
   if t and (t.kind == "jira_link" or t.kind == "pr_link") then return t end
 end
 
+-- The Parent link of the issue rendered in `buf` (wherever the cursor is), or nil.
+function M.parent_link(buf)
+  for _, t in pairs(tags_by_buf[buf] or {}) do
+    if t.kind == "jira_link" and t.parent then return t end
+  end
+end
+
+local function is_epic_type(issuetype)
+  if type(issuetype) ~= "table" then return false end
+  return issuetype.name == "Epic" or (tonumber(issuetype.hierarchyLevel) or 0) >= 1
+end
+M.is_epic_type = is_epic_type
+
+-- Epics always get a Child issues panel (even when empty, like the web UI);
+-- other issues only when they actually have sub-tasks.
+local function has_children_panel(issue)
+  local f = issue.fields or {}
+  return is_epic_type(f.issuetype) or (type(f.subtasks) == "table" and #f.subtasks > 0)
+end
+
 local function merge_issue_prs(dev_prs, gh_prs)
   if dev_prs == nil and gh_prs == nil then return nil end
   local merged, seen = {}, {}
@@ -287,7 +307,140 @@ local function merge_issue_prs(dev_prs, gh_prs)
   return merged
 end
 
-local function build_issue(issue, prs, comments, width)
+-- JSON nulls decode to vim.NIL (truthy), so guard field access with these.
+local function tbl(x) return type(x) == "table" and x or {} end
+local function str(x) return type(x) == "string" and x or nil end
+
+-- Per-epic child-issue filter ('F'): { label, match = fn(issue) }. Survives
+-- re-renders; `last_children` feeds the picker with what's on screen.
+local child_filters, last_children = {}, {}
+
+-- "Child issues" panel: tri-colour progress bar + one openable row per child.
+-- `children` nil = still loading. The bar always covers all children; `filter`
+-- only narrows the rows.
+local function add_children_section(b, children, width, filter)
+  b.divider(filter and ("Child issues  (↵ open · F filter: " .. filter.label .. ")") or "Child issues  (↵ open · F filter)")
+  if children == nil then
+    local l = b.add("   loading…")
+    b.hl(l, 0, #b.lines()[l], "DevOpsDim")
+    return
+  end
+  if #children == 0 then
+    local l = b.add("   no child issues")
+    b.hl(l, 0, #b.lines()[l], "DevOpsDim")
+    return
+  end
+
+  local function cat_of(it)
+    return str(tbl(tbl(tbl(it.fields).status).statusCategory).key) or "new"
+  end
+  local n_done, n_prog = 0, 0
+  for _, it in ipairs(children) do
+    local c = cat_of(it)
+    if c == "done" then n_done = n_done + 1 elseif c == "indeterminate" then n_prog = n_prog + 1 end
+  end
+  local total = #children
+  local n_todo = total - n_done - n_prog
+
+  -- Progress bar, sized like the web one (done | in progress | to do).
+  local BAR = 30
+  local w_done = math.floor(BAR * n_done / total + 0.5)
+  local w_prog = math.min(BAR - w_done, math.floor(BAR * n_prog / total + 0.5))
+  local w_todo = BAR - w_done - w_prog
+  local seg_done, seg_prog, seg_todo = string.rep("█", w_done), string.rep("█", w_prog), string.rep("░", w_todo)
+  local pct = math.floor(100 * n_done / total + 0.5)
+  local stats = ("  %d%% done   ·   %d done  ·  %d in progress  ·  %d to do"):format(pct, n_done, n_prog, n_todo)
+  local l = b.add("   " .. seg_done .. seg_prog .. seg_todo .. stats)
+  local c0 = 3
+  b.hl(l, c0, c0 + #seg_done, "DevOpsStatusDone")
+  b.hl(l, c0 + #seg_done, c0 + #seg_done + #seg_prog, "DevOpsStatusProgress")
+  b.hl(l, c0 + #seg_done + #seg_prog, c0 + #seg_done + #seg_prog + #seg_todo, "DevOpsDim")
+  b.hl(l, #b.lines()[l] - #stats, #b.lines()[l], "DevOpsDim")
+  b.add("")
+
+  if filter then
+    local shown = {}
+    for _, it in ipairs(children) do
+      if filter.match(it) then shown[#shown + 1] = it end
+    end
+    children = shown
+    if #children == 0 then
+      local e = b.add("   no child issues match '" .. filter.label .. "'  (F to change)")
+      b.hl(e, 0, #b.lines()[e], "DevOpsDim")
+      return
+    end
+  end
+
+  local max_key = 6
+  for _, it in ipairs(children) do max_key = math.max(max_key, #(str(it.key) or "")) end
+  local avail = width or math.max(60, math.floor(vim.o.columns * 0.75))
+
+  for _, it in ipairs(children) do
+    local cf = tbl(it.fields)
+    local icon = render.issue_icon(str(tbl(cf.issuetype).name))
+    local key = str(it.key) or "?"
+    local status = render.fit(str(tbl(cf.status).name) or "", 14)
+    local assignee = render.fit(str(tbl(cf.assignee).displayName) or "Unassigned", 18)
+    local prefix = "   " .. icon .. "  "
+    local head = prefix .. render.pad(key, max_key) .. "  " .. status .. "  " .. assignee .. "  "
+    local summary = render.truncate(str(cf.summary) or "", math.max(10, avail - vim.fn.strdisplaywidth(head) - 2))
+    local row = b.add(head .. summary)
+    b.hl(row, 3, 3 + #icon, "DevOpsIcon")
+    b.hl(row, #prefix, #prefix + #key, "DevOpsId")
+    local s_start = #prefix + #render.pad(key, max_key) + 2
+    b.hl(row, s_start, s_start + #status, render.status_hl(cat_of(it)))
+    local a_start = s_start + #status + 2
+    b.hl(row, a_start, a_start + #assignee, "DevOpsDim")
+    b.tag(row, row, { kind = "jira_link", key = key })
+  end
+end
+
+--- Pick a filter for an epic's child issues (status category or assignee),
+--- then call `rerender()`.
+function M.pick_children_filter(parent_key, children, rerender)
+  local function cat(it) return str(tbl(tbl(tbl(it.fields).status).statusCategory).key) or "new" end
+  local function who(it) return tbl(tbl(it.fields).assignee) end
+  local cats = { new = 0, indeterminate = 0, done = 0 }
+  local people, n_unassigned = {}, 0
+  for _, it in ipairs(children) do
+    local c = cat(it)
+    cats[c] = (cats[c] or 0) + 1
+    local a = who(it)
+    if a.accountId then
+      local p = people[a.accountId] or { id = a.accountId, name = str(a.displayName) or a.accountId, n = 0 }
+      p.n = p.n + 1
+      people[a.accountId] = p
+    else
+      n_unassigned = n_unassigned + 1
+    end
+  end
+  local choices = { { label = "● All  (" .. #children .. ")", clear = true } }
+  local function add(label, n, match)
+    if n > 0 then choices[#choices + 1] = { label = label .. "  (" .. n .. ")", name = label, match = match } end
+  end
+  add("Not done", cats.new + cats.indeterminate, function(it) return cat(it) ~= "done" end)
+  add("To do", cats.new, function(it) return cat(it) == "new" end)
+  add("In progress", cats.indeterminate, function(it) return cat(it) == "indeterminate" end)
+  add("Done", cats.done, function(it) return cat(it) == "done" end)
+  local list = {}
+  for _, p in pairs(people) do list[#list + 1] = p end
+  table.sort(list, function(x, y) return x.name:lower() < y.name:lower() end)
+  for _, p in ipairs(list) do
+    add("👤 " .. p.name, p.n, function(it) return who(it).accountId == p.id end)
+  end
+  add("👤 Unassigned", n_unassigned, function(it) return who(it).accountId == nil end)
+
+  vim.ui.select(choices, {
+    prompt = "Filter " .. parent_key .. " child issues:",
+    format_item = function(c) return c.label end,
+  }, function(choice)
+    if not choice then return end
+    child_filters[parent_key] = (not choice.clear) and { label = choice.name, match = choice.match } or nil
+    if rerender then rerender() end
+  end)
+end
+
+local function build_issue(issue, prs, comments, width, children)
   local f = issue.fields or {}
   local b = builder()
 
@@ -309,8 +462,17 @@ local function build_issue(issue, prs, comments, width)
   b.field("Reporter", field_path(issue, "reporter.displayName", nil))
   b.field("Priority", field_path(issue, "priority.name", nil))
   b.field("Sprint", active_sprint_name(f), "DevOpsWarn")
-  if f.parent then
-    b.field("Parent", (f.parent.key or "") .. "  " .. field_path(issue, "parent.fields.summary", ""))
+  if type(f.parent) == "table" and str(f.parent.key) then
+    local pf = tbl(f.parent.fields)
+    local picon = render.issue_icon(str(tbl(pf.issuetype).name))
+    local hint = "   (↵ / P open)"
+    local pfx = picon ~= "" and (picon .. "  ") or ""
+    local line = b.field("Parent", pfx .. f.parent.key .. "  " .. (str(pf.summary) or "") .. hint)
+    local vstart = #("  " .. render.pad("Parent", 11) .. " ")
+    b.hl(line, vstart, vstart + #picon, "DevOpsIcon")
+    b.hl(line, vstart + #pfx, vstart + #pfx + #f.parent.key, "DevOpsId")
+    b.hl(line, #b.lines()[line] - #hint, #b.lines()[line], "DevOpsDim")
+    b.tag(line, line, { kind = "jira_link", key = f.parent.key, parent = true, epic = is_epic_type(pf.issuetype) })
   end
   if type(f.labels) == "table" and #f.labels > 0 then
     b.field("Labels", table.concat(f.labels, "  "), "DevOpsLabel")
@@ -347,6 +509,11 @@ local function build_issue(issue, prs, comments, width)
   local desc_start = #b.lines() + 1
   for _, line in ipairs(adf.adf_to_lines(f.description)) do b.add("  " .. (line:gsub("\r", ""))) end
   local desc_end = #b.lines()
+
+  if has_children_panel(issue) then
+    if children then last_children[issue.key] = children end
+    add_children_section(b, children, width, child_filters[issue.key])
+  end
 
   -- Comments.
   local comment_rows = {} -- 1-based line → comment object
@@ -561,6 +728,24 @@ local function setup_issue_keys(buf, ctx)
 
   map("o", function() vim.ui.open(browse) end, "Open in browser")
 
+  map("P", function()
+    local link = M.parent_link(buf)
+    if not link then
+      return vim.notify("DevOps: " .. ctx.key .. " has no parent", vim.log.levels.INFO)
+    end
+    if ctx.open_parent then ctx.open_parent(link) else M.open_issue(link.key) end
+  end, "Open parent (epic)")
+  map("R", function()
+    detail_cache_invalidate(ctx.key)
+    ctx.refresh()
+  end, "Refresh (comments, PRs, child issues)")
+  map("F", function()
+    local kids = last_children[ctx.key]
+    if not kids then
+      return vim.notify("DevOps: " .. ctx.key .. " has no child issues (yet)", vim.log.levels.INFO)
+    end
+    M.pick_children_filter(ctx.key, kids, ctx.rerender or ctx.refresh)
+  end, "Filter child issues")
   map("c", function()
     local iopts = ctx.input_opts()
     iopts.compact = true
@@ -718,14 +903,20 @@ function M.open_issue(key)
     show("Jira · " .. issue.key, b_initial, function(buf)
       setup_keys(buf)
       setup_comment_cursorline(state.win, buf, function() return state.comment_rows end)
-      -- Linked PRs and comments arrive async; rebuild as each completes.
-      local async_dev_prs, async_gh_prs, async_comments
+      -- Linked PRs, comments and child issues arrive async; rebuild as each completes.
+      local async_dev_prs, async_gh_prs, async_comments, async_children
       local function rebuild()
         if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
-        local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments)
+        local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, nil, async_children)
         state.comment_rows = cr_new
         state.desc_range = dr_new
         show("Jira · " .. issue.key, b_new, setup_keys)
+      end
+      if has_children_panel(issue) then
+        api.children(issue.key, function(ok2, kids)
+          async_children = ok2 and kids or {}
+          rebuild()
+        end)
       end
       api.dev_status(issue.id, function(ok2, prs)
         async_dev_prs = ok2 and prs or {}
@@ -1649,7 +1840,8 @@ end
 
 --- Load and render a Jira issue detail. Calls on_ready(b, setup_keys_fn) once
 --- the initial data is available, and calls on_update(b, setup_keys_fn) each
---- time async enrichment (comments, linked PRs) arrives.
+--- time async enrichment (comments, linked PRs, child issues) arrives.
+--- opts.on_parent(link) handles `P` (jump to parent); defaults to the float.
 function M.load_issue(key, opts)
   opts = opts or {}
   local on_ready = opts.on_ready or function() end
@@ -1658,6 +1850,7 @@ function M.load_issue(key, opts)
 
   api.get_issue(key, function(ok, issue, err)
     if not ok or not issue then
+      if opts.on_error then opts.on_error(err) end
       return errors.show("DevOps: " .. (err or ("failed to load " .. key)))
     end
     local project_key = key:match("^(%u[%u%d_]*)%-")
@@ -1684,7 +1877,9 @@ function M.load_issue(key, opts)
           return { on_mention = jira_mention(), parent_win = vim.fn.bufwinid(buf) }
         end,
         refresh = function() M.load_issue(key, opts) end,
+        rerender = opts.on_rerender,
         get_cursor_row = function() return vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())[1] end,
+        open_parent = opts.on_parent,
         nowait = true,
       })
       if opts.content_win and vim.api.nvim_win_is_valid(opts.content_win) then
@@ -1692,6 +1887,7 @@ function M.load_issue(key, opts)
       end
     end
 
+    local wants_children = has_children_panel(issue)
     local b_initial, cr_initial, dr_initial = build_issue(issue, nil, nil, content_width())
     issue_comment_rows = cr_initial
     issue_desc_range = dr_initial
@@ -1702,21 +1898,22 @@ function M.load_issue(key, opts)
     local async_dev_prs = cached and cached.dev_prs or nil
     local async_gh_prs = cached and cached.gh_prs or nil
     local async_comments = cached and cached.comments or nil
+    local async_children = cached and cached.children or nil
 
     -- If all enrichment is cached, rebuild immediately
-    if async_dev_prs and async_comments then
-      local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, content_width())
+    if async_dev_prs and async_comments and (async_children or not wants_children) then
+      local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, content_width(), async_children)
       issue_comment_rows = cr_new
       issue_desc_range = dr_new
       on_update(b_new, make_keys)
     end
 
     local function rebuild()
-      local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, content_width())
+      local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, content_width(), async_children)
       issue_comment_rows = cr_new
       issue_desc_range = dr_new
       on_update(b_new, make_keys)
-      detail_cache_set(key, { issue = issue, comments = async_comments, dev_prs = async_dev_prs, gh_prs = async_gh_prs })
+      detail_cache_set(key, { issue = issue, comments = async_comments, dev_prs = async_dev_prs, gh_prs = async_gh_prs, children = async_children })
     end
 
     -- Fetch only what's not cached
@@ -1729,6 +1926,12 @@ function M.load_issue(key, opts)
     if gh.available() and not (cached and cached.gh_prs) then
       gh.prs_for_issue(issue.key, function(ok2, prs)
         async_gh_prs = ok2 and prs or {}
+        rebuild()
+      end)
+    end
+    if wants_children and not (cached and cached.children) then
+      api.children(issue.key, function(ok2, kids)
+        async_children = ok2 and kids or {}
         rebuild()
       end)
     end
@@ -1843,5 +2046,8 @@ function M.load_pr(pr, opts)
     function(full) on_update(build_pr(full, pr_w), make_keys) end,
     function() return gen == pr_view_gen end)
 end
+
+-- Test hook (tests/nvim_spec.lua): the pure issue-card builder.
+M._build_issue = build_issue
 
 return M

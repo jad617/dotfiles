@@ -67,6 +67,31 @@ function M.search(opts, cb)
   fetch(nil)
 end
 
+-- Child issues of an epic (or sub-tasks of a story), in board rank order — what
+-- Jira's web "Child issues" panel shows. Pages through big epics. cb(ok, issues[], err)
+function M.children(parent_key, cb)
+  local all = {}
+  local function fetch(token)
+    local body = {
+      jql = 'parent = "' .. parent_key .. '" ORDER BY rank ASC',
+      fields = LIST_FIELDS,
+      maxResults = 100,
+    }
+    if token then body.nextPageToken = token end
+    client.post("/rest/api/3/search/jql", body, function(ok, data, err)
+      if not ok then return cb(false, nil, err) end
+      vim.list_extend(all, (data and data.issues) or {})
+      local next_token = data and data.nextPageToken
+      if next_token and #all < MAX_ISSUES then
+        fetch(next_token)
+      else
+        cb(true, all, nil)
+      end
+    end)
+  end
+  fetch(nil)
+end
+
 function M.epics(project_key, filter, cb)
   if type(filter) == "string" then filter = { account_id = filter } end
   filter = filter or {}
@@ -122,14 +147,96 @@ function M.board_backlog(board_id, cb)
   fetch(0)
 end
 
--- Active + closed + future sprints for a board (for the sprint picker).
--- cb(ok, sprints[] {id,name,state}, err)
+-- Sprints visible on a board — Jira also returns other teams' sprints that ever
+-- held one of the board's issues. Pages through everything.
+-- cb(ok, sprints[] {id,name,state,originBoardId,startDate}, err)
 -- states: comma-separated subset of "active,closed,future" (default: all).
 function M.list_sprints(board_id, cb, states)
   states = states or "active,closed,future"
-  client.get("/rest/agile/1.0/board/" .. board_id .. "/sprint?state=" .. states .. "&maxResults=50", function(ok, data, err)
-    if not ok then return cb(false, nil, err) end
-    cb(true, (data and data.values) or {}, nil)
+  local PAGE, BATCH = 50, 8 -- Agile caps pages at 50; fetch 8 pages concurrently
+  local all = {}
+  local function fetch_batch(start)
+    local pages, pending, failed, last = {}, BATCH, nil, false
+    for i = 0, BATCH - 1 do
+      local at = start + i * PAGE
+      client.get("/rest/agile/1.0/board/" .. board_id .. "/sprint?state=" .. states
+        .. "&maxResults=" .. PAGE .. "&startAt=" .. at, function(ok, data, err)
+        if not ok then failed = failed or err end
+        local vals = ok and data and data.values or {}
+        pages[i + 1] = vals
+        if ok and (#vals < PAGE or (data and data.isLast ~= false)) then last = true end
+        pending = pending - 1
+        if pending > 0 then return end
+        if failed and start == 0 and #(pages[1] or {}) == 0 then return cb(false, nil, failed) end
+        for j = 1, BATCH do vim.list_extend(all, pages[j] or {}) end
+        if last or failed or #all >= MAX_ISSUES then
+          cb(true, all, nil)
+        else
+          fetch_batch(start + BATCH * PAGE)
+        end
+      end)
+    end
+  end
+  fetch_batch(0)
+end
+
+-- Only the project's own sprints (e.g. "DevOps 26.21"), not other teams' sprints
+-- that leak onto the board. A sprint is kept when it was created on a board that
+-- belongs to the project (teams move boards over time, so all of them count).
+-- Falls back to the unfiltered list if the filter would leave nothing.
+-- Cached per project/board/states for SPRINT_TTL; concurrent calls share one fetch.
+-- cb(ok, sprints[], err)
+local SPRINT_TTL = 600
+local sprint_cache, sprint_waiters = {}, {}
+function M.clear_sprint_cache() sprint_cache = {} end
+function M.project_sprints(project_key, board_id, states, cb)
+  local ck = table.concat({ tostring(project_key), tostring(board_id), tostring(states) }, "|")
+  local hit = sprint_cache[ck]
+  if hit and os.time() - hit.ts < SPRINT_TTL then
+    return cb(true, vim.deepcopy(hit.data), nil)
+  end
+  if sprint_waiters[ck] then
+    table.insert(sprint_waiters[ck], cb)
+    return
+  end
+  sprint_waiters[ck] = { cb }
+  local function finish(ok, data, err)
+    local waiters = sprint_waiters[ck] or {}
+    sprint_waiters[ck] = nil
+    if ok then sprint_cache[ck] = { data = data, ts = os.time() } end
+    for _, w in ipairs(waiters) do w(ok, ok and vim.deepcopy(data) or nil, err) end
+  end
+  M.boards_for_project(project_key or "", function(okb, boards)
+    local own, ids = {}, {}
+    for _, b in ipairs(okb and boards or {}) do
+      if b.location and b.location.projectKey == project_key then
+        own[b.id] = true
+        ids[#ids + 1] = b.id
+      end
+    end
+    if board_id then
+      own[board_id] = true
+      if not vim.tbl_contains(ids, board_id) then table.insert(ids, 1, board_id) end
+    end
+    if #ids == 0 then return finish(false, nil, "no Scrum board for " .. tostring(project_key)) end
+
+    local seen, all, pending, last_err = {}, {}, #ids, nil
+    for _, id in ipairs(ids) do
+      M.list_sprints(id, function(ok, sprints, err)
+        if not ok then last_err = err end
+        for _, s in ipairs(ok and sprints or {}) do
+          if s.id and not seen[s.id] then seen[s.id] = true; all[#all + 1] = s end
+        end
+        pending = pending - 1
+        if pending > 0 then return end
+        if #all == 0 and last_err then return finish(false, nil, last_err) end
+        local mine = {}
+        for _, s in ipairs(all) do
+          if s.originBoardId == nil or own[s.originBoardId] then mine[#mine + 1] = s end
+        end
+        finish(true, #mine > 0 and mine or all, nil)
+      end, states)
+    end
   end)
 end
 
