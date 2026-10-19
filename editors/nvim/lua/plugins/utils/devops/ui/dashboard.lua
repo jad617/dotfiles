@@ -70,6 +70,7 @@ local state = {
   detail_kind = nil, -- nil | "jira" | "pr"
   gh_notif_count = 0,
   bookmarks = {},
+  person_filter = {}, -- 'F' filter per section (jira_sprint / jira_backlog): { account_id, name } | { unassigned = true, name }
 }
 
 local function wrap_index(idx, count)
@@ -214,6 +215,9 @@ local function update_winbar()
       end
       if state.include_done then parts[#parts + 1] = "+Done" end
     end
+    if sec.id == "jira_sprint" and state.sprint then
+      parts[#parts + 1] = state.sprint.picked and state.sprint.name or "active sprint"
+    end
     if #parts > 0 then
       bar = bar .. "  ·  " .. table.concat(parts, "  ·  ")
     end
@@ -261,6 +265,10 @@ local function render_sidebar()
     if state.jira_user and (fsec == "jira_issues" or fsec == "jira_backlog" or fsec == "jira_epics"
         or (fsec == "jira_sprint" and state.jira_user.unassigned)) then
       push("   👤 " .. render.truncate(state.jira_user.name or "user", 24), "DevOpsKey")
+    end
+    local pf = state.person_filter[fsec]
+    if pf then
+      push("   ⧩ " .. render.truncate(pf.name or "person", 24), "DevOpsKey")
     end
   end
   push("")
@@ -316,8 +324,8 @@ local function render_footer()
     if state.detail_kind == "jira" then
       groups = {
         { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
-        { "Actions",  { "c comment", "e edit", "a assign", "o browser" } },
-        { "Jira",     { "r reply", "? help" } },
+        { "Actions",  { "c comment", "e edit", "a assign", "V to sprint", "o browser" } },
+        { "Jira",     { "↵ open link", "P parent/epic", "F filter children", "R refresh", "r reply", "v sprint", "? help" } },
         { "Window",   { "Q close" } },
       }
     else
@@ -338,8 +346,10 @@ local function render_footer()
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     groups = {
       { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "m move", "> / < column", "c comment", "a assign", "S search", "* pin" } },
-      { "Jira",     { "u user", "v sprint", "p project", "b board", "R refresh" } },
+      { "Actions",  { "m move", "> / < column", "c comment", "a assign", "V to sprint", "S search", "* pin" } },
+      { "Jira",     (sec_id == "jira_sprint" or sec_id == "jira_backlog")
+        and { "F people", "u user", "v sprint", "p project", "b board", "R refresh" }
+        or { "u user", "v sprint", "p project", "b board", "R refresh" } },
       { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
     }
   elseif sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
@@ -412,10 +422,13 @@ local function render_footer()
 
   -- Pad column 1 to a shared width so column 2 (Actions / Window) lines up across the
   -- two rows; the last column stays natural-width so the footer doesn't overflow.
-  local col1_w = math.max(
-    is_empty(row1_groups[1]) and 0 or select(3, render_group(row1_groups[1], 1)),
-    is_empty(row2_groups[1]) and 0 or select(3, render_group(row2_groups[1], 1))
-  )
+  local col1_w
+  local function group_w(grp) return is_empty(grp) and 0 or select(3, render_group(grp, 1)) end
+  local align = true -- line the second column up across both rows (dropped first when narrow)
+  local function compute_col1()
+    col1_w = align and math.max(group_w(row1_groups[1]), group_w(row2_groups[1])) or 0
+  end
+  compute_col1()
 
   local function build_line(grp_list)
     local text = " "
@@ -444,6 +457,38 @@ local function render_footer()
 
   local text1, h1 = build_line(row1_groups)
   local text2, h2 = build_line(row2_groups)
+
+  -- Narrow window: drop keys from the end of the widest group on the overflowing
+  -- line until it fits ('? help' lists everything, so it always stays).
+  local avail = (state.footer.win and vim.api.nvim_win_is_valid(state.footer.win))
+    and vim.api.nvim_win_get_width(state.footer.win) or math.huge
+  local KEEP = { ["? help"] = true, ["q back"] = true, ["Q close"] = true, ["↵ open"] = true }
+  local function drop_one(grp)
+    for i = #grp[2], 1, -1 do
+      if not KEEP[grp[2][i]] then
+        table.remove(grp[2], i)
+        return true
+      end
+    end
+    return false
+  end
+  for _ = 1, 60 do
+    local w1, w2 = vim.fn.strdisplaywidth(text1), vim.fn.strdisplaywidth(text2)
+    if math.max(w1, w2) <= avail then break end
+    if align then
+      align = false -- first give up column alignment (padding) before dropping keys
+    else
+      -- Drop from whichever group on the overflowing line is wider.
+      local row = w1 >= w2 and row1_groups or row2_groups
+      local function gw(g) return is_empty(g) and 0 or vim.fn.strdisplaywidth(table.concat(g[2], "   ")) end
+      local first, second = row[1], row[2]
+      if gw(second) > gw(first) then first, second = second, first end
+      if not (drop_one(first) or drop_one(second)) then break end
+    end
+    compute_col1()
+    text1, h1 = build_line(row1_groups)
+    text2, h2 = build_line(row2_groups)
+  end
 
   vim.bo[state.footer.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.footer.buf, 0, -1, false, { text1, text2 })
@@ -482,9 +527,12 @@ end
 
 local stop_spinner -- forward declaration (defined after set_message)
 
-local function render_jira(issues, assignee_name, columns, title_override)
+-- opts.show_assignee: add an assignee column (used by the team Sprint Board).
+local function render_jira(issues, assignee_name, columns, title_override, opts)
+  opts = opts or {}
   stop_spinner()
-  local scope = state.sprint and "Active sprints" or (state.project and state.project.key or "no project")
+  local scope = state.sprint and (state.sprint.picked and state.sprint.name or "Active sprints")
+    or (state.project and state.project.key or "no project")
   local subtitle = scope .. "  ·  " .. assignee_name .. "  ·  " .. #issues .. " issue" .. (#issues == 1 and "" or "s")
   local lines, hls = header(title_override or "Jira  ·  My Issues", subtitle)
   -- Say why the list is flat/unscoped instead of silently falling back.
@@ -525,19 +573,32 @@ local function render_jira(issues, assignee_name, columns, title_override)
       status_str = render.pad(render.truncate(f.status and f.status.name or "", 13), 13)
       reserve = reserve + 15
     end
+    local who_str
+    if opts.show_assignee then
+      -- JSON null decodes to vim.NIL, so check the type rather than truthiness.
+      local a = type(f.assignee) == "table" and f.assignee.displayName or nil
+      who_str = render.fit(a or "Unassigned", 18)
+      reserve = reserve + 20
+    end
     local summary = render.truncate(f.summary or "", math.max(10, w - reserve))
 
-    local text = show_status
-      and (prefix .. keypad .. "  " .. status_str .. "  " .. summary)
-      or (prefix .. keypad .. "  " .. summary)
+    local text = prefix .. keypad .. "  "
+    if show_status then text = text .. status_str .. "  " end
+    if who_str then text = text .. who_str .. "  " end
+    text = text .. summary
     lines[#lines + 1] = text
     local lidx = #lines - 1
     local key_start = #prefix
     hls[#hls + 1] = { line = lidx, col_start = key_start, col_end = key_start + #key, hl = "DevOpsId" }
     hls[#hls + 1] = { line = lidx, col_start = #indent, col_end = #indent + #icon, hl = "DevOpsIcon" }
+    local col = key_start + #keypad + 2
     if show_status then
-      local status_start = key_start + #keypad + 2
-      hls[#hls + 1] = { line = lidx, col_start = status_start, col_end = status_start + #status_str, hl = render.status_hl(cat) }
+      hls[#hls + 1] = { line = lidx, col_start = col, col_end = col + #status_str, hl = render.status_hl(cat) }
+      col = col + #status_str + 2
+    end
+    if who_str then
+      local unassigned = type(f.assignee) ~= "table"
+      hls[#hls + 1] = { line = lidx, col_start = col, col_end = col + #who_str, hl = unassigned and "DevOpsDim" or "DevOpsLabel" }
     end
     rows[#lines] = {
       kind = "jira",
@@ -610,6 +671,41 @@ local function render_jira(issues, assignee_name, columns, title_override)
   park_cursor_on_first_item()
 end
 
+-- Does `issue` match a person filter ('F')?
+local function person_match(issue, filter)
+  local a = issue.fields and issue.fields.assignee
+  if type(a) ~= "table" then return filter.unassigned == true end
+  return not filter.unassigned and a.accountId == filter.account_id
+end
+
+-- Apply the section's 'F' person filter locally (no refetch). Returns the shown
+-- issues and the subtitle label to use (nil when unfiltered).
+local function apply_person_filter(sec_id, issues)
+  local pf = state.person_filter[sec_id]
+  if not pf then return issues, nil end
+  local shown = {}
+  for _, it in ipairs(issues) do
+    if person_match(it, pf) then shown[#shown + 1] = it end
+  end
+  return shown, "👤 " .. pf.name .. "  (F to change)"
+end
+
+-- Sprint Board: always show assignees (the board data is team-wide).
+local function render_sprint(issues)
+  local picked = state.sprint and state.sprint.picked
+  local title = (picked and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
+  local who = (state.jira_user and state.jira_user.unassigned) and "Unassigned" or "all"
+  local shown, label = apply_person_filter("jira_sprint", issues)
+  render_jira(shown, label or who, state.columns, title, { show_assignee = true })
+end
+
+-- Backlog: likewise shows assignees and honours its own 'F' filter.
+local function render_backlog_list(issues)
+  local who = state.jira_user and state.jira_user.name or (state.project and state.project.key or "project")
+  local shown, label = apply_person_filter("jira_backlog", issues)
+  render_jira(shown, label or who, nil, "Jira  ·  Backlog", { show_assignee = true })
+end
+
 -- Render a Jira section straight from cached issues (no network call). Shared by
 -- the cache path in load_section and the optimistic update after a transition.
 local function render_jira_from_cache(sec_id, cached)
@@ -617,11 +713,11 @@ local function render_jira_from_cache(sec_id, cached)
     local name = state.jira_user and state.jira_user.name or (client.display_name() or "me")
     render_jira(cached, name, state.columns)
   elseif sec_id == "jira_sprint" then
-    render_jira(cached, "all", state.columns, "Jira  ·  Sprint Board")
+    render_sprint(cached)
   elseif sec_id == "jira_epics" then
     render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Epics")
   elseif sec_id == "jira_backlog" then
-    render_jira(cached, state.project and state.project.key or "project", nil, "Jira  ·  Backlog")
+    render_backlog_list(cached)
   end
 end
 
@@ -918,12 +1014,22 @@ local function invalidate_tab_cache(tab_id)
   end
 end
 
+-- A list fetch is stale if the user moved on: another section/load, or a detail
+-- view is open or loading (its result would otherwise overwrite the ticket).
+local function list_stale(sec_id, gen)
+  return not is_open() or state.in_detail or state.detail_loading
+    or current_section_id() ~= sec_id or state.load_gen ~= gen
+end
+
 local function load_section(force, allow_stale)
   local sec_id = current_section_id()
   -- Generation token: only the latest load's callback applies, so rapid section
   -- switches (or re-loads of the same section) don't double-render or race.
   state.load_gen = (state.load_gen or 0) + 1
   local gen = state.load_gen
+  -- A ticket is shown (or loading): don't paint the list over it. Filter changes
+  -- made from a ticket invalidate the cache, so Back refetches the list.
+  if state.in_detail or state.detail_loading then return end
 
   -- Bookmark sections are local — no API call needed
   if sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
@@ -959,7 +1065,7 @@ local function load_section(force, allow_stale)
     local account = (not unassigned) and ((u and u.account_id) or client.account_id()) or nil
     local name = unassigned and "Unassigned" or (u and u.name) or (client.display_name() or "me")
     local function on_issues(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
+      if list_stale(sec_id, gen) then return end
       if not ok then return set_message("⚠ " .. (err or "Jira search failed")) end
       cache_set(sec_id, issues)
       render_jira(issues, name, state.columns)
@@ -1000,11 +1106,10 @@ local function load_section(force, allow_stale)
       scope_project = true, -- sprint board follows the selected project
       include_done = true,
     }, function(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
+      if list_stale(sec_id, gen) then return end
       if not ok then return set_message("⚠ " .. (err or "sprint fetch failed")) end
       cache_set(sec_id, issues)
-      local title = (picked and state.sprint.name) and ("Jira  ·  " .. state.sprint.name) or "Jira  ·  Sprint Board"
-      render_jira(issues, unassigned and "Unassigned" or "all", state.columns, title)
+      render_sprint(issues)
     end)
   elseif sec_id == "jira_epics" then
     if not client.configured() then
@@ -1020,7 +1125,7 @@ local function load_section(force, allow_stale)
         or (state.jira_user.account_id and { account_id = state.jira_user.account_id }))
       or nil
     api.epics(state.project.key, efilter, function(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
+      if list_stale(sec_id, gen) then return end
       if not ok then return set_message("⚠ " .. (err or "epics fetch failed")) end
       cache_set(sec_id, issues)
       render_jira(issues, state.jira_user and state.jira_user.name or state.project.key, nil, "Jira  ·  Epics")
@@ -1053,10 +1158,10 @@ local function load_section(force, allow_stale)
         issues = filtered
       end
       cache_set(sec_id, issues)
-      render_jira(issues, state.jira_user and state.jira_user.name or state.project.key, nil, "Jira  ·  Backlog")
+      render_backlog_list(issues)
     end
     local on_bl = function(ok, issues, err)
-      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
+      if list_stale(sec_id, gen) then return end
       if not ok then return set_message("⚠ " .. (err or "backlog fetch failed")) end
       render_backlog(issues)
     end
@@ -1072,7 +1177,7 @@ local function load_section(force, allow_stale)
     local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
     local show_meta = sec_id == "gh_reviews"
     fn(function(ok, prs, err)
-      if not is_open() or current_section_id() ~= sec_id or state.load_gen ~= gen then return end
+      if list_stale(sec_id, gen) then return end
       if not ok then return set_message("⚠ " .. (err or "gh failed")) end
       cache_set(sec_id, prs)
       render_github(prs, title, show_meta)
@@ -1119,6 +1224,7 @@ end
 ---------------------------------------------------------------------------
 -- Navigation stack — detail views render into the content pane
 ---------------------------------------------------------------------------
+local move_to_sprint -- forward decl; defined below, also mapped to 'V' in Jira details
 local setup_keymaps -- forward decl; defined below, re-run when leaving a detail
                     -- (nav_render_detail deletes the list action maps, e.g. 'y')
 local function nav_push()
@@ -1134,7 +1240,7 @@ local function nav_push()
 end
 
 -- Keys a detail view maps on the content buffer (cleared when switching views).
-local DETAIL_ACTION_KEYS = { "c", "e", "a", "r", "o", "R", "C", "d", "D", "m", "x", "+", "y", "V", "t", "U" }
+local DETAIL_ACTION_KEYS = { "c", "e", "a", "r", "o", "R", "C", "d", "D", "m", "x", "+", "y", "V", "t", "U", "P", "F" }
 local function clear_action_keys()
   for _, k in ipairs(DETAIL_ACTION_KEYS) do
     pcall(vim.keymap.del, "n", k, { buffer = state.content.buf })
@@ -1148,15 +1254,32 @@ local function nav_render_detail(b, make_keys, preserve_cursor)
   detail.write_to_buf(state.content.buf, b)
   clear_action_keys()
   if make_keys then make_keys(state.content.buf) end
+  if state.detail_kind == "jira" and move_to_sprint then
+    vim.keymap.set("n", "V", move_to_sprint,
+      { buffer = state.content.buf, nowait = true, silent = true, desc = "DevOps: move issue to sprint" })
+    -- Refetch everything (incl. an epic's child issues), keeping the cursor.
+    vim.keymap.set("n", "R", function()
+      if not state.detail_key then return end
+      detail.invalidate_cache(state.detail_key)
+      if state.detail_reopen then state.detail_reopen(vim.api.nvim_win_get_cursor(state.content.win)) end
+    end, { buffer = state.content.buf, nowait = true, silent = true, desc = "DevOps: refresh issue" })
+  end
   if not preserve_cursor then
     pcall(vim.api.nvim_win_set_cursor, state.content.win, { 1, 0 })
   end
   render_footer()
 end
 
+-- Navigating away from a ticket: drop its in-flight load so it can't render later.
+local function cancel_detail_load()
+  state.detail_gen = (state.detail_gen or 0) + 1
+  state.detail_loading = false
+end
+
 local function nav_pop()
   if #state.nav_stack == 0 then return false end
   local entry = table.remove(state.nav_stack)
+  cancel_detail_load()
   state.in_detail = entry.in_detail
   state.detail_kind = entry.detail_kind
   state.rows = entry.rows
@@ -1187,31 +1310,92 @@ end
 
 -- Render the detail of a Jira key or PR in the content pane. `cursor` (optional)
 -- restores a position once rendered (used when navigating back).
+local follow_jira_link -- forward decl (needs show_detail)
 local function show_detail(kind, target, cursor)
+  -- Only the newest detail request may render (e.g. pressing P before the ticket
+  -- finished loading), and any in-flight list fetch is dropped.
+  state.detail_gen = (state.detail_gen or 0) + 1
+  state.load_gen = (state.load_gen or 0) + 1
+  state.detail_loading = true
+  local dgen = state.detail_gen
   local function ready(b, make_keys)
+    if state.detail_gen ~= dgen then return end
+    state.detail_loading = false
     nav_render_detail(b, make_keys)
     if cursor then pcall(vim.api.nvim_win_set_cursor, state.content.win, cursor) end
   end
   local function update(b, make_keys)
+    if state.detail_gen ~= dgen then return end
     if state.in_detail then nav_render_detail(b, make_keys, true) end
   end
   state.detail_kind = kind
+  state.detail_key = kind == "jira" and target or nil
   state.detail_reopen = function(c) show_detail(kind, target, c) end
   if kind == "jira" then
-    detail.load_issue(target, { content_win = state.content.win, on_ready = ready, on_update = update })
+    detail.load_issue(target, {
+      content_win = state.content.win, on_ready = ready, on_update = update,
+      on_parent = function(link) follow_jira_link(link) end,
+      on_rerender = function()
+        if state.detail_gen == dgen and state.detail_reopen then
+          state.detail_reopen(vim.api.nvim_win_get_cursor(state.content.win))
+        end
+      end,
+      on_error = function()
+        if state.detail_gen == dgen then state.detail_loading = false end
+      end,
+    })
   else
     detail.load_pr(target, { on_ready = ready, on_update = update })
   end
 end
 
+-- Open a parent epic inside the Epics section, the way Jira's web UI shows it
+-- (description + child issues). The nav stack becomes: Epics list → the issue we
+-- came from → the epic, so Back walks out the way you came in.
+local function jump_to_epic(epic_key)
+  local ti = tab_index_by_id("jira")
+  local si
+  for i, sec in ipairs(TABS[ti].sections) do
+    if sec.id == "jira_epics" then si = i end
+  end
+  if state.tab == ti and state.section == si then
+    nav_push()
+    return show_detail("jira", epic_key)
+  end
+  -- Remember the current detail (if any) so Back returns to it.
+  local from = state.in_detail and {
+    cursor = vim.api.nvim_win_get_cursor(state.content.win),
+    rows = {}, in_detail = true, detail_kind = state.detail_kind, reopen = state.detail_reopen,
+  } or nil
+  state.load_gen = (state.load_gen or 0) + 1 -- drop any in-flight list render
+  state.tab, state.section = ti, si
+  state.content_cursor = nil
+  state.nav_stack = { { cursor = { 1, 0 }, rows = {}, in_detail = false } }
+  if from then state.nav_stack[2] = from end
+  render_sidebar()
+  update_winbar()
+  state.sidebar_line = sidebar_line_for_section(si)
+  if state.sidebar.win and vim.api.nvim_win_is_valid(state.sidebar.win) then
+    pcall(vim.api.nvim_win_set_cursor, state.sidebar.win, { state.sidebar_line, 0 })
+  end
+  show_detail("jira", epic_key)
+end
+
+follow_jira_link = function(link)
+  if link.epic then return jump_to_epic(link.key) end
+  nav_push()
+  show_detail("jira", link.key)
+end
+
 local function open_detail()
   if state.in_detail then
-    -- Follow a Linked PR / Linked Jira Issue row; Back returns here.
+    -- Follow a Linked PR / Linked Jira Issue / Parent / Child row; Back returns here.
     local row = vim.api.nvim_win_get_cursor(state.content.win)[1]
     local link = detail.link_at(state.content.buf, row)
     if not link then return end
+    if link.kind == "jira_link" then return follow_jira_link(link) end
     nav_push()
-    if link.kind == "jira_link" then show_detail("jira", link.key) else show_detail("pr", link.pr) end
+    show_detail("pr", link.pr)
     return
   end
   local item = current_item()
@@ -1309,12 +1493,20 @@ end
 local function switch_section(section_idx, tab_idx)
   local next_tab = wrap_index(tab_idx or state.tab, #TABS)
   local next_section = wrap_index(section_idx or state.section, section_count(next_tab))
+  local was_detail = state.in_detail
   state.tab = next_tab
   state.section = next_section
   state.content_cursor = nil
   state.nav_stack = {}
   state.in_detail = false
   state.detail_kind = nil
+  cancel_detail_load()
+  if was_detail then
+    -- The detail view deleted the list action maps (V, y, c, …) and added its own;
+    -- swap them back, as nav_pop does when going Back.
+    clear_action_keys()
+    if setup_keymaps then setup_keymaps() end
+  end
   render_sidebar()
   render_footer()
   update_winbar()
@@ -1740,8 +1932,11 @@ end
 -- per-team boards, so we gather active+future sprints from all of the issue's
 -- *project* boards (not just the dashboard's selected board, which may not own
 -- the sprint you want — e.g. HORA's future sprint lives on the Horasphere board).
-local function move_to_sprint()
+move_to_sprint = function()
   local item = current_item()
+  if not item and state.in_detail and state.detail_kind == "jira" and state.detail_key then
+    item = { kind = "jira", key = state.detail_key }
+  end
   if not item or item.kind ~= "jira" then
     return vim.notify("DevOps: select a Jira issue to move", vim.log.levels.INFO)
   end
@@ -1768,41 +1963,32 @@ local function move_to_sprint()
       local function done(ok2, _, err2)
         if not ok2 then return errors.show("DevOps: move failed — " .. (err2 or "?")) end
         vim.notify("DevOps: moved " .. item.key .. " → " .. (choice.name or "?"), vim.log.levels.INFO)
-        refresh_current_jira_section()
+        if state.in_detail then
+          -- Lists are stale now; re-render the ticket being viewed (its Sprint changed).
+          for _, sid in ipairs({ "jira_issues", "jira_sprint", "jira_backlog" }) do cache_invalidate(sid) end
+          detail.invalidate_cache(item.key)
+          if state.detail_reopen then
+            state.detail_reopen(vim.api.nvim_win_get_cursor(state.content.win))
+          end
+        else
+          refresh_current_jira_section()
+        end
       end
       if choice.backlog then api.move_to_backlog(item.key, done)
       else api.move_to_sprint(choice.id, item.key, done) end
     end)
   end
 
-  -- Fetch active+future sprints from the given boards (parallel), dedup by id.
-  local function aggregate(boards)
-    if not boards or #boards == 0 then
-      return vim.notify("DevOps: no Scrum board found for " .. (project or "this issue"), vim.log.levels.INFO)
-    end
-    local seen, all, pending = {}, {}, #boards
-    for _, b in ipairs(boards) do
-      api.list_sprints(b.id, function(ok, sprints)
-        for _, s in ipairs(ok and sprints or {}) do
-          if s.id and not seen[s.id] then seen[s.id] = true; all[#all + 1] = s end
-        end
-        pending = pending - 1
-        if pending == 0 then pick(all) end
-      end, "active,future")
-    end
+  if not project and not state.board then
+    return vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
   end
-
-  if project then
-    api.boards_for_project(project, function(ok, boards)
-      if ok and boards and #boards > 0 then aggregate(boards)
-      elseif state.board then aggregate({ { id = state.board.id } })
-      else vim.notify("DevOps: no Scrum board found for " .. project, vim.log.levels.INFO) end
-    end)
-  elseif state.board then
-    aggregate({ { id = state.board.id } })
-  else
-    vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
-  end
+  -- Only this project's own sprints, not other teams' sprints leaking onto the board.
+  local board_id = (state.board and (not project or project == (state.project and state.project.key)))
+    and state.board.id or nil
+  api.project_sprints(project, board_id, "active,future", function(ok, sprints, err)
+    if not ok then return errors.show("DevOps: " .. (err or "sprint list failed")) end
+    pick(sprints)
+  end)
 end
 
 local function jira_search()
@@ -2156,6 +2342,69 @@ local function gh_files()
   end)
 end
 
+-- Sprint Board 'F': filter by one of the people actually on the board (built
+-- from the loaded sprint issues, not the company directory).
+local PERSON_FILTER_LABEL = { jira_sprint = "Sprint Board", jira_backlog = "Backlog" }
+local function filter_people(sec_id)
+  local what = PERSON_FILTER_LABEL[sec_id]
+  local issues = cache_get_raw(sec_id)
+  if not issues then
+    return vim.notify("DevOps: " .. what .. " not loaded yet", vim.log.levels.INFO)
+  end
+  local by_id, n_unassigned = {}, 0
+  for _, it in ipairs(issues) do
+    local a = it.fields and it.fields.assignee
+    if type(a) == "table" and a.accountId then
+      local p = by_id[a.accountId] or { account_id = a.accountId, name = a.displayName or a.accountId, count = 0 }
+      p.count = p.count + 1
+      by_id[a.accountId] = p
+    else
+      n_unassigned = n_unassigned + 1
+    end
+  end
+  local people = {}
+  for _, p in pairs(by_id) do people[#people + 1] = p end
+  table.sort(people, function(x, y) return x.name:lower() < y.name:lower() end)
+
+  local me = client.account_id()
+  local choices = { { label = "● Everyone  (" .. #issues .. ")", clear = true } }
+  if me and by_id[me] then
+    choices[#choices + 1] = { label = "● Me  (" .. by_id[me].count .. ")", person = by_id[me] }
+  end
+  for _, p in ipairs(people) do
+    choices[#choices + 1] = { label = p.name .. "  (" .. p.count .. ")", person = p }
+  end
+  if n_unassigned > 0 then
+    choices[#choices + 1] = {
+      label = "✗ Unassigned  (" .. n_unassigned .. ")",
+      person = { unassigned = true, name = "Unassigned" },
+    }
+  end
+
+  vim.ui.select(choices, {
+    prompt = "Filter " .. what .. " by:",
+    format_item = function(c) return c.label end,
+  }, function(choice)
+    if not choice then return end
+    state.person_filter[sec_id] = (not choice.clear) and { account_id = choice.person.account_id,
+      unassigned = choice.person.unassigned, name = choice.person.name } or nil
+    if current_section_id() ~= sec_id or state.in_detail then return end
+    state.content_cursor = nil
+    render_jira_from_cache(sec_id, cache_get_raw(sec_id) or issues)
+    render_sidebar()
+  end)
+end
+
+-- 'F': people filter on the Sprint Board / Backlog lists; changed-files tree for PRs elsewhere.
+local function dispatch_F()
+  local sec_id = current_section_id()
+  if PERSON_FILTER_LABEL[sec_id] and not state.in_detail then
+    filter_people(sec_id)
+  else
+    gh_files()
+  end
+end
+
 local function gh_checkout()
   local item, repo, n = pr_item()
   if not item then return end
@@ -2296,6 +2545,8 @@ local function show_help()
   if sec_id == "jira_issues" then
     keys = {
       { "↵",     "Open issue detail" },
+      { "P",     "Detail: jump to parent epic" },
+      { "F",     "Detail: filter an epic's child issues" },
       { "c",     "Add comment" },
       { "e",     "Edit summary/description" },
       { "a",     "Assign issue" },
@@ -2325,12 +2576,16 @@ local function show_help()
   elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
     keys = {
       { "↵",     "Open issue detail" },
+      { "P",     "Detail: jump to parent epic" },
+      { "F",     "Detail: filter an epic's child issues" },
       { "c",     "Add comment" },
       { "a",     "Assign issue" },
       { "m",     "Move (change status)" },
       { "> / <", "Move to next / previous board column" },
+      { "V",     "Move issue to a sprint / backlog" },
       { "S",     "Search Jira" },
       { "*",     "Pin/unpin selected item" },
+      { "F",     "Sprint Board / Backlog: filter by person" },
       { "u",     "Filter by user (colleague)" },
       { "v",     "Pick sprint (incl. past)" },
       { "p",     "Switch project" },
@@ -2562,14 +2817,25 @@ local function pick_sprint()
   if not state.board then
     return vim.notify("DevOps: pick a Scrum board first ('b')", vim.log.levels.INFO)
   end
-  api.list_sprints(state.board.id, function(ok, sprints, err)
+  local project_key = state.project and state.project.key
+  api.project_sprints(project_key, state.board.id, nil, function(ok, sprints, err)
     if not ok then return errors.show("DevOps: " .. (err or "sprint list failed")) end
     if #sprints == 0 then return vim.notify("DevOps: no sprints on this board", vim.log.levels.INFO) end
+    -- Active, then upcoming (soonest first), then closed (most recent first).
     local rank = { active = 0, future = 1, closed = 2 }
     table.sort(sprints, function(a, b)
       local ra, rb = rank[a.state] or 3, rank[b.state] or 3
       if ra ~= rb then return ra < rb end
-      return (a.id or 0) > (b.id or 0) -- most recent first
+      local da, db = a.startDate or "", b.startDate or ""
+      if a.state == "future" then
+        if da ~= db then
+          if da == "" then return false elseif db == "" then return true end
+          return da < db
+        end
+        return (a.id or 0) < (b.id or 0)
+      end
+      if da ~= db then return da > db end
+      return (a.id or 0) > (b.id or 0)
     end)
     -- Offer a reset to the live active sprint(s) at the top.
     table.insert(sprints, 1, { name = "● Active sprint(s)", state = "active", reset = true })
@@ -2592,6 +2858,7 @@ local function pick_sprint()
         return
       end
       state.sprint = { id = choice.id, name = choice.name, state = choice.state, picked = true }
+      vim.notify("DevOps: Sprint Board → " .. (choice.name or "?"), vim.log.levels.INFO)
       show_sprint_board()
     end)
   end)
@@ -2790,7 +3057,17 @@ function setup_keymaps()
   map("{", function() switch_tab(-1) end, "previous tab")
   map("}", function() switch_tab(1) end, "next tab")
   map("<CR>", open_detail, "open")
-  map("R", function() gh.clear_diff_cache(); load_section(true); refresh_notifications() end, "refresh")
+  map("R", function()
+    gh.clear_diff_cache()
+    api.clear_sprint_cache()
+    load_section(true)
+    refresh_notifications()
+    -- Re-warm the sprint pickers ('v' / 'V').
+    if state.project and state.project.key and state.board and state.board.id then
+      api.project_sprints(state.project.key, state.board.id, nil, function() end)
+      api.project_sprints(state.project.key, state.board.id, "active,future", function() end)
+    end
+  end, "refresh")
   map("o", open_browser, "open in browser")
   map("O", open_board_in_browser, "open board in browser")
   map("u", select_user, "select user")
@@ -2821,7 +3098,7 @@ function setup_keymaps()
   map(">", function() advance(1) end, "issue → next column")
   map("<", function() advance(-1) end, "issue → previous column")
   map("d", gh_diff, "view diff")
-  map("F", gh_files, "changed files tree")
+  map("F", dispatch_F, "sprint people filter / changed files tree")
   map("U", gh_since_review, "diff since my review")
   map("x", gh_checkout, "checkout PR")
   -- Toggles
@@ -2877,7 +3154,7 @@ local function relayout()
     fit(state.content.win, { row = 0, col = sw + 3, width = cw, height = height })
     fit(state.footer.win, { row = height + 2, col = 0, width = total, height = footer_h })
   end
-  if not state.in_detail then
+  if not state.in_detail and not state.detail_loading then
     local cursor = vim.api.nvim_win_get_cursor(state.content.win)
     load_section(false, true)
     pcall(vim.api.nvim_win_set_cursor, state.content.win, cursor)
@@ -2981,6 +3258,12 @@ local function prefetch_other_sections()
       end)
     end
 
+    -- Warm the sprint lists so 'v' / 'V' open instantly (cached in the API layer).
+    if project_key and state.board and state.board.id then
+      api.project_sprints(project_key, state.board.id, nil, function() end)
+      api.project_sprints(project_key, state.board.id, "active,future", function() end)
+    end
+
     -- Sprint/Epics/Backlog depend on the active user filter and selected sprint, so
     -- they're loaded fresh on first switch (load_section) rather than prefetched,
     -- to avoid caching a version inconsistent with the current filter.
@@ -3026,6 +3309,11 @@ function M.open(layout)
     if state.content_cursor then
       pcall(vim.api.nvim_win_set_cursor, state.content.win, state.content_cursor)
     end
+    if state.in_detail and state.detail_reopen then
+      -- setup_keymaps() put the list maps back; re-show the ticket to restore its own.
+      clear_action_keys()
+      state.detail_reopen(vim.api.nvim_win_get_cursor(state.content.win))
+    end
     return
   end
 
@@ -3034,9 +3322,11 @@ function M.open(layout)
   state.tab = 1
   state.section = 1
   state.jira_user = nil -- reset the user filter back to "me" on each open
+  state.person_filter = {}
   state.content_cursor = nil
   state.nav_stack = {}
   state.in_detail = false
+  state.detail_loading = false
   state.detail_kind = nil
   state.gh_notif_count = 0
   state.bookmarks = store.load_bookmarks()

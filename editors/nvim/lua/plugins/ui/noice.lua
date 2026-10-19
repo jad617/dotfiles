@@ -18,6 +18,16 @@ return {
           search_up   = { kind = "search", pattern = "^%?", icon = " ", lang = false },
         },
       },
+      -- nvim-cmp's docs popup still calls vim.lsp.util.stylize_markdown (deprecated
+      -- in Neovim 0.12+). Let noice render that markdown instead, so the deprecated
+      -- core function is never reached.
+      lsp = {
+        override = {
+          ["vim.lsp.util.convert_input_to_markdown_lines"] = true,
+          ["vim.lsp.util.stylize_markdown"] = true,
+          ["cmp.entry.get_documentation"] = true,
+        },
+      },
       messages = {
         enabled = true,
       },
