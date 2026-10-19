@@ -60,6 +60,12 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
 - [x] **Test harness** — `tests/run.lua` (run with `luajit tests/run.lua`) stubs `vim`
       and covers `render.truncate`/`pad`/`fit` and `markdown.clean`/`render`
       (headers, bullets, blockquotes, rules, word-wrap, table fit). 23 assertions.
+- [x] **Headless spec** — `tests/nvim_spec.lua` (run with `nvim --headless --clean -l
+      tests/nvim_spec.lua`) stubs the Jira HTTP client and covers sprint paging, the
+      project-sprint filter/cache, epic children paging, the parent link, the child-issues
+      panel and its `F` filter.
+- [x] **Detail vs list races** — a list fetch can't overwrite an open/loading ticket, and
+      only the newest ticket load renders.
 - [x] **`:DevOpsHealth`** now shows the remembered project/board and flags "no board"
       (the cause of an empty Sprint Board).
 - [~] **Error surfacing** — kept as-is: `set_message` for section-load errors (shown in
