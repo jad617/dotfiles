@@ -36,7 +36,7 @@ function M.show(msg)
     vim.bo[buf].bufhidden = "wipe"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
-    for _, k in ipairs({ "q", "<Esc>", "<CR>" }) do
+    for _, k in ipairs({ "q", "<C-d>", "<Esc>", "<CR>" }) do
       vim.keymap.set("n", k, close, { buffer = buf, nowait = true, desc = "Close" })
     end
   end

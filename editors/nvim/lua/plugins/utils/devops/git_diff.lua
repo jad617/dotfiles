@@ -346,6 +346,7 @@ local function keymaps(buf)
     vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, silent = true, desc = desc })
   end
   m("q", close, "Close git diff")
+  m("<C-d>", close, "Close git diff")
   m("<Tab>", function()
     state.base = state.base == "HEAD" and "working" or "HEAD"
     refresh()
