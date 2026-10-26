@@ -18,11 +18,14 @@ M.defaults = {
     project = nil, -- e.g. "DEVOPS"; nil => rely on `jql` or just assignee filter
     jql = nil,     -- raw JQL override; when set it fully replaces the default query
     page_size = 100, -- board/sprint views include Done; 50 dropped older Done tickets
+    branch_format = "feature/{key}-{slug}", -- 'B' branch name; also {type} = fix|feature
 
   },
   github = {
     enabled = true,
     pr_limit = 30,
+    org = nil, -- org for the scoped PR search (S); default: the org your gh token's account belongs to
+    poll_interval = 120, -- seconds between background checks for review requests (0 = off)
   },
   layout = "float", -- "float" | "tab"
   ui = {

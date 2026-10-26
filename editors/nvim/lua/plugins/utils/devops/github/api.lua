@@ -34,6 +34,8 @@ function M.available() return vim.fn.executable("gh") == 1 end
 -- Authenticated GitHub login (cached), for "(you)" markers. Fetched once.
 local _user_login
 function M.current_user_login() return _user_login end
+-- True when `login` is the authenticated user (GitHub refuses self-approval).
+function M.is_me(login) return login ~= nil and _user_login ~= nil and login == _user_login end
 function M.fetch_current_user(cb)
   if _user_login then if cb then cb(_user_login) end return end
   gh_json({ "api", "user" }, function(ok, data)
@@ -54,9 +56,60 @@ function M.notifications_count(cb)
   end)
 end
 
--- Open PRs authored by the current user.
+-- Open PRs waiting for my review (light; polled in the background).
+function M.review_requests(cb)
+  gh_json({ "search", "prs", "--review-requested=@me", "--state=open", "--limit", "50",
+    "--json", "number,title,url,repository" }, cb)
+end
+
+-- Merge readiness: the head commit's combined check state + review decision +
+-- conflicts. `statusCheckRollup` is normalised to { state = … } (or nil).
+local READINESS_GQL = [[
+        reviewDecision mergeable
+        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }]]
+
+function M.normalize_readiness(pr)
+  local c = pr.commits and pr.commits.nodes and pr.commits.nodes[1]
+  local roll = c and c.commit and c.commit.statusCheckRollup
+  if type(roll) == "table" and type(roll.state) == "string" then pr.statusCheckRollup = { state = roll.state } end
+  pr.commits = nil
+  if pr.reviewDecision == vim.NIL then pr.reviewDecision = nil end
+  return pr
+end
+
+-- Open PRs authored by the current user (with merge readiness).
 function M.my_prs(cb)
-  gh_json({ "search", "prs", "--author=@me", "--state=open", "--limit", limit(), "--json", SEARCH_FIELDS }, cb)
+  local query = [[
+query($n: Int!) {
+  search(query: "is:pr is:open author:@me", type: ISSUE, first: $n) {
+    nodes {
+      ... on PullRequest {
+        number title url state isDraft headRefName
+        repository { nameWithOwner name }
+        author { login }
+        createdAt updatedAt]] .. READINESS_GQL .. [[
+
+      }
+    }
+  }
+}]]
+  gh_json({ "api", "graphql", "-F", "n=" .. limit(), "-f", "query=" .. query }, function(ok, data, err)
+    if not ok then return cb(false, nil, err) end
+    local nodes = data and data.data and data.data.search and data.data.search.nodes
+    if not nodes then return cb(false, nil, "unexpected GraphQL response") end
+    for _, pr in ipairs(nodes) do M.normalize_readiness(pr) end
+    cb(true, nodes, nil)
+  end)
+end
+
+-- Orgs the authenticated gh account (your token) belongs to: { "login", ... }.
+function M.user_orgs(cb)
+  gh_json({ "api", "user/orgs" }, function(ok, data, err)
+    if not ok or type(data) ~= "table" then return cb(false, nil, err) end
+    local out = {}
+    for _, o in ipairs(data) do if type(o) == "table" and o.login then out[#out + 1] = o.login end end
+    cb(true, out)
+  end)
 end
 
 function M.search_prs(query, opts, cb)
@@ -64,6 +117,8 @@ function M.search_prs(query, opts, cb)
   local args = { "search", "prs", "--state=open", "--limit", limit(), "--json", SEARCH_FIELDS }
   if opts.repo then
     vim.list_extend(args, { "--repo", opts.repo })
+  elseif opts.owner then
+    vim.list_extend(args, { "--owner", opts.owner })
   end
   vim.list_extend(args, { "--", query })
   gh_json(args, cb)
@@ -83,7 +138,8 @@ query($n: Int!) {
         number title url state isDraft headRefName headRefOid
         repository { nameWithOwner name }
         author { login }
-        createdAt updatedAt
+        createdAt updatedAt]] .. READINESS_GQL .. [[
+
         reviewRequests(first: 10) {
           nodes {
             requestedReviewer {
@@ -122,6 +178,7 @@ query($n: Int!) {
       local me = _user_login
       -- Normalize: extract reviewReason from reviewRequests
       for _, pr in ipairs(nodes) do
+        M.normalize_readiness(pr)
         local reasons = {}
         if pr.reviewRequests and pr.reviewRequests.nodes then
           for _, rr in ipairs(pr.reviewRequests.nodes) do
@@ -226,6 +283,60 @@ query($o: String!, $r: String!, $n: Int!) {
   end)
 end
 
+-- Per-file "Viewed" state on a PR (GitHub's review checkbox) + the PR node id
+-- the mark/unmark mutations need. DISMISSED (changed since viewed) counts as
+-- not viewed. cb(ok, { id = node_id, author = login, viewed = { [path] = true } }, err)
+function M.pr_viewed_files(repo, number, cb)
+  local owner, name = repo:match("^([^/]+)/(.+)$")
+  if not owner then return vim.schedule(function() cb(false, nil, "bad repo") end) end
+  local query = [[
+query($o: String!, $r: String!, $n: Int!, $after: String) {
+  repository(owner: $o, name: $r) {
+    pullRequest(number: $n) {
+      id
+      author { login }
+      files(first: 100, after: $after) {
+        nodes { path viewerViewedState }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}]]
+  local out = { id = nil, viewed = {} }
+  local function fetch(after)
+    local args = { "api", "graphql", "-f", "o=" .. owner, "-f", "r=" .. name, "-F", "n=" .. tostring(number),
+      "-f", "query=" .. query }
+    if after then vim.list_extend(args, { "-f", "after=" .. after }) end
+    gh_json(args, function(ok, data, err)
+      local pr = ok and data and data.data and data.data.repository and data.data.repository.pullRequest
+      if not pr then return cb(false, nil, err or "unexpected GraphQL response") end
+      out.id = pr.id
+      out.author = pr.author and pr.author.login
+      local files = pr.files or {}
+      for _, f in ipairs(files.nodes or {}) do
+        if f.viewerViewedState == "VIEWED" then out.viewed[f.path] = true end
+      end
+      local pi = files.pageInfo or {}
+      if pi.hasNextPage and pi.endCursor then return fetch(pi.endCursor) end
+      cb(true, out, nil)
+    end)
+  end
+  fetch(nil)
+end
+
+-- Mark / unmark a file as viewed. cb(ok, _, err)
+function M.set_file_viewed(pr_id, path, viewed, cb)
+  local op = viewed and "markFileAsViewed" or "unmarkFileAsViewed"
+  local query = "mutation($id: ID!, $p: String!) { " .. op
+    .. "(input: { pullRequestId: $id, path: $p }) { clientMutationId } }"
+  gh_json({ "api", "graphql", "-f", "id=" .. pr_id, "-f", "p=" .. path, "-f", "query=" .. query }, function(ok, data, err)
+    if ok and data and data.errors then
+      return cb(false, nil, data.errors[1] and data.errors[1].message or "GraphQL error")
+    end
+    cb(ok, data, err)
+  end)
+end
+
 -- Inline review (code-thread) comments. cb(ok, comments[], err)
 function M.pr_review_comments(repo, number, cb)
   gh_json({ "api", "repos/" .. repo .. "/pulls/" .. tostring(number) .. "/comments?per_page=100" }, cb)
@@ -247,6 +358,54 @@ function M.pr_checks(repo, n, cb)
     "--repo", repo,
     "--json", "name,state,conclusion,startedAt,completedAt,detailsUrl",
   }, cb)
+end
+
+-- Recent workflow runs of a repo. cb(ok, runs, err)
+function M.run_list(repo, cb)
+  gh_json({ "run", "list", "--repo", repo, "--limit", limit(), "--json",
+    "databaseId,number,attempt,displayTitle,workflowName,headBranch,event,status,conclusion,createdAt,updatedAt,url" }, cb)
+end
+
+-- Jobs of a run. cb(ok, jobs, err)
+function M.run_jobs(repo, run_id, cb)
+  gh_json({ "run", "view", tostring(run_id), "--repo", repo, "--json", "jobs" }, function(ok, data, err)
+    cb(ok, ok and (data and data.jobs or {}) or nil, err)
+  end)
+end
+
+-- One job with its live step states (works while the job is running). cb(ok, job, err)
+function M.job_info(repo, job_id, cb)
+  gh_json({ "api", "repos/" .. repo .. "/actions/jobs/" .. tostring(job_id) }, cb)
+end
+
+-- `gh run rerun` args: a run's failed jobs (mode "failed"), all its jobs ("all"),
+-- or one job ("job").
+local function rerun_args(repo, run_id, mode, job_id)
+  local args = { "gh", "run", "rerun" }
+  if mode == "job" then
+    vim.list_extend(args, { "--job", tostring(job_id) })
+  else
+    args[#args + 1] = tostring(run_id)
+    if mode == "failed" then args[#args + 1] = "--failed" end
+  end
+  vim.list_extend(args, { "--repo", repo })
+  return args
+end
+M._rerun_args = rerun_args
+
+-- cb(ok, out, err)
+function M.run_rerun(repo, run_id, mode, job_id, cb)
+  vim.system(rerun_args(repo, run_id, mode, job_id), { text = true }, function(res)
+    vim.schedule(function() cb(res.code == 0, res.stdout or "", res.stderr or "") end)
+  end)
+end
+
+-- Log of one Actions job (failed steps only when `failed`). cb(ok, text, err)
+function M.job_log(repo, job_id, failed, cb)
+  local cmd = { "gh", "run", "view", "--repo", repo, "--job", tostring(job_id), failed and "--log-failed" or "--log" }
+  vim.system(cmd, { text = true }, function(res)
+    vim.schedule(function() cb(res.code == 0, res.stdout or "", res.stderr or "") end)
+  end)
 end
 
 ---------------------------------------------------------------------------
@@ -361,12 +520,11 @@ function M.pr_review(repo, n, event, body, comments, cb)
     -- Build JSON payload and write to temp file for gh api --input
     local api_comments = {}
     for _, c in ipairs(comments) do
-      api_comments[#api_comments + 1] = {
-        path = c.path,
-        line = c.line,
-        side = "RIGHT",
-        body = c.body,
-      }
+      local ac = { path = c.path, line = c.line, side = "RIGHT", body = c.body }
+      if c.start_line and c.start_line < c.line then
+        ac.start_line, ac.start_side = c.start_line, "RIGHT"
+      end
+      api_comments[#api_comments + 1] = ac
     end
     local payload = vim.json.encode({
       event = event,

@@ -381,7 +381,7 @@ function M.open(title, initial, on_submit, opts)
     local pbuf = vim.api.nvim_win_get_buf(pwin)
     pane_nav.map(pbuf, panes)
     local function back() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_set_current_win(win) end end
-    for _, k in ipairs({ "q", "<Esc>", "i", "a" }) do
+    for _, k in ipairs({ "q", "<C-d>", "<Esc>", "i", "a" }) do
       vim.keymap.set("n", k, back, { buffer = pbuf, nowait = true, desc = "Back to input" })
     end
     vim.keymap.set("n", "<C-s>", submit, { buffer = pbuf, desc = "Submit" })

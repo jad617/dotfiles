@@ -7,6 +7,8 @@ local config = require("plugins.utils.devops.config")
 local errors = require("plugins.utils.devops.ui.errors")
 local client = require("plugins.utils.devops.jira.client")
 local api = require("plugins.utils.devops.jira.api")
+local branch = require("plugins.utils.devops.jira.branch")
+local watch = require("plugins.utils.devops.github.watch")
 local adf = require("plugins.utils.devops.jira.adf")
 local gh = require("plugins.utils.devops.github.api")
 local render = require("plugins.utils.devops.ui.render")
@@ -28,6 +30,7 @@ local TABS = {
   { id = "github", label = "GitHub", icon = "", sections = {
     { id = "gh_prs", label = "My PRs" },
     { id = "gh_reviews", label = "Reviews" },
+    { id = "gh_actions", label = "Actions" },
     { id = "gh_bookmarks", label = "Bookmarks" },
   } },
 }
@@ -280,6 +283,12 @@ local function render_sidebar()
     local badge_start = 4
     local badge_end = badge_start + #badge
     local label_start = badge_end + 1
+    -- Reviews: open review requests, red while some are new since your last look.
+    local count_badge
+    if sec.id == "gh_reviews" and watch.total() > 0 then
+      count_badge = "  " .. (watch.unseen() > 0 and "● " or "") .. tostring(watch.total())
+      text = text .. count_badge
+    end
     lines[#lines + 1] = text
     rows[#lines] = i
     if active then
@@ -290,6 +299,10 @@ local function render_sidebar()
       hls[#hls + 1] = { line = #lines - 1, col_start = 0, col_end = 4, hl = "DevOpsDim" }
       hls[#hls + 1] = { line = #lines - 1, col_start = badge_start, col_end = badge_end, hl = "DevOpsBadge" }
       hls[#hls + 1] = { line = #lines - 1, col_start = label_start, col_end = #text, hl = "DevOpsSection" }
+    end
+    if count_badge then
+      hls[#hls + 1] = { line = #lines - 1, col_start = #text - #count_badge, col_end = #text,
+        hl = watch.unseen() > 0 and "DevOpsErr" or "DevOpsDim" }
     end
   end
 
@@ -313,198 +326,226 @@ end
 ---------------------------------------------------------------------------
 local footer_ns = vim.api.nvim_create_namespace("DevOpsFooter")
 
+-- One keymap table per view feeds both the one-line footer (entries marked
+-- `true` in their 4th slot, in that order) and the grouped '?' help.
+-- Entry: { key, short label, description, footer? }
+local function key_context()
+  local sec_id = current_section_id()
+  if state.in_detail then return state.detail_kind == "jira" and "jira_detail" or "pr_detail" end
+  if sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then return "jira_board" end
+  if sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then return "bookmarks" end
+  return sec_id
+end
+
+local function nav_list(open_desc, short)
+  return { "Navigate", {
+    { "↵", short or "open", open_desc or "Open the selected item", true },
+    { "j/k", "move", "Move the cursor" },
+    { "Tab/S-Tab", "section", "Next / previous section" },
+    { "H/L  {/}", "tabs", "Previous / next tab (Jira ↔ GitHub)" },
+    { "S-←", "sidebar", "Focus the sidebar" },
+  } }
+end
+local function window_list(extra)
+  local t = { { "o", "browser", "Open in the browser" } }
+  vim.list_extend(t, extra or {})
+  vim.list_extend(t, {
+    { "R", "refresh", "Refresh" },
+    { "q/Esc", "hide", "Hide the dashboard (state is kept)" },
+    { "Q", "close", "Close the dashboard" },
+  })
+  return { "Window", t }
+end
+local DETAIL_NAV = function(open_desc, short)
+  return { "Navigate", {
+    { "q/BS", "back", "Back to the list / previous item", true },
+    { "⇥/⇤", "tabs", "Next / previous detail tab", true },
+    { "↵", short or "open", open_desc, true },
+    { "H/L", "tabs", "Previous / next dashboard tab" },
+  } }
+end
+local JIRA_FILTERS = function(people)
+  local t = {}
+  if people then t[#t + 1] = { "F", "people", "Filter the board by person (only people on it)", true } end
+  vim.list_extend(t, {
+    { "u", "user", "Show another user's issues" },
+    { "v", "sprint", "Pick a sprint (incl. past ones)" },
+    { "p", "project", "Switch project" },
+    { "b", "board", "Switch board" },
+  })
+  return t
+end
+local PR_ACTIONS = {
+  { "a", "approve", "Approve" },
+  { "C", "changes", "Request changes" },
+  { "c", "comment", "Comment" },
+  { "d", "diff", "View the diff (x = toggle viewed, S = submit review)", true },
+  { "F", "files", "Changed-files tree (↵ opens the diff at that file)" },
+  { "m", "merge", "Merge (squash)", true },
+  { "D", "ready", "Mark ready for review" },
+  { "x", "checkout", "Check out the branch locally" },
+  { "J", "jira", "Open the Jira ticket named in the branch / title", true },
+}
+
+local function key_groups(ctx)
+  if ctx == "jira_detail" then
+    return {
+      DETAIL_NAV("Follow the link under the cursor (parent, child, PR)", "link"),
+      { "Actions", {
+        { "c", "comment", "Comment", true },
+        { "r", "reply", "Reply to the comment under the cursor" },
+        { "e", "edit", "Edit summary / description", true },
+        { "a", "assign", "Assign", true },
+        { "V", "sprint", "Move to a sprint / the backlog" },
+        { "B", "branch", "Create a git branch from this ticket and start it", true },
+      } },
+      { "Epic", {
+        { "P", "parent", "Jump to the parent epic", true },
+        { "F", "filter", "Filter the epic's child issues" },
+        { "v", "sprint", "Pick a sprint" },
+      } },
+      window_list(),
+    }
+  elseif ctx == "pr_detail" then
+    local acts = vim.deepcopy(PR_ACTIONS)
+    table.insert(acts, 3, { "r", "reply/re-run", "Reply to a comment · on a check: re-run it" })
+    table.insert(acts, 5, { "U", "since review", "Diff of the commits since your last review" })
+    acts[1][4] = true
+    return {
+      DETAIL_NAV("Files: open the diff · Checks: open the job log · links", "file/log"),
+      { "Actions", acts },
+      window_list({ { "gx", "links", "Pick a link from the PR to open" } }),
+    }
+  elseif ctx == "jira_issues" then
+    return {
+      nav_list("Open the issue"),
+      { "Actions", {
+        { "m", "move", "Change status", true },
+        { ">/<", "column", "Move to the next / previous board column" },
+        { "c", "comment", "Comment", true },
+        { "e", "edit", "Edit summary / description" },
+        { "a", "assign", "Assign", true },
+        { "+", "new", "Create an issue (epic, sprint, summary from the branch)", true },
+        { "y", "clone", "Clone the issue" },
+        { "V", "sprint", "Move to a sprint / the backlog" },
+        { "B", "branch", "Create a git branch from the issue and start it" },
+        { "S", "search", "Search Jira", true },
+        { "*", "pin", "Pin / unpin" },
+      } },
+      { "Filters", vim.list_extend(JIRA_FILTERS(false), {
+        { "s", "scope", "Toggle scope (sprint / project)" },
+        { "h", "done", "Show / hide Done issues" },
+      }) },
+      window_list({ { "O", "board", "Open the board in the browser" } }),
+    }
+  elseif ctx == "jira_board" then
+    local sec_id = current_section_id()
+    return {
+      nav_list("Open the issue"),
+      { "Actions", {
+        { "m", "move", "Change status", true },
+        { ">/<", "column", "Move to the next / previous board column", true },
+        { "c", "comment", "Comment" },
+        { "a", "assign", "Assign", true },
+        { "V", "sprint", "Move to a sprint / the backlog" },
+        { "B", "branch", "Create a git branch from the issue and start it" },
+        { "S", "search", "Search Jira", true },
+        { "*", "pin", "Pin / unpin" },
+      } },
+      { "Filters", JIRA_FILTERS(sec_id == "jira_sprint" or sec_id == "jira_backlog") },
+      window_list({ { "O", "board", "Open the board in the browser" } }),
+    }
+  elseif ctx == "bookmarks" then
+    return {
+      nav_list(),
+      { "Actions", { { "*", "unpin", "Unpin", true } } },
+      window_list(),
+    }
+  elseif ctx == "gh_actions" then
+    return {
+      nav_list("Pick a job → its log (live view while it runs)", "jobs/log"),
+      { "Actions", {
+        { "r", "re-run", "Re-run failed jobs / all jobs", true },
+        { "o", "browser", "Open the run in the browser", true },
+      } },
+      { "Log viewer", {
+        { "]e/[e", "error", "Next / previous error" },
+        { "]s/[s", "step", "Next / previous step" },
+        { "gf", "source", "Open file:line from the log in your checkout" },
+        { "y/Y", "copy", "Copy the error block / the whole step" },
+        { "r", "re-run", "Re-run (failed / this job / all)" },
+        { "␣z", "zoom", "Zoom the log float" },
+      } },
+      window_list(),
+    }
+  else -- gh_prs / gh_reviews
+    local acts = vim.deepcopy(PR_ACTIONS)
+    if ctx == "gh_reviews" then
+      acts[1][4], acts[2][4] = true, true
+      table.insert(acts, 5, { "U", "since review", "Diff of the commits since your last review", true })
+      acts[#acts + 1] = { "s", "sort", "Sort newest / oldest first" }
+    else
+      acts[#acts + 1] = { "+", "new", "Create a PR", true }
+    end
+    vim.list_extend(acts, { { "S", "search", "Search PRs in your org (C-t: global)" }, { "*", "pin", "Pin / unpin" } })
+    return { nav_list("Open the PR"), { "Actions", acts }, window_list(), { "Badges", {
+      { "●", "ready", "Ready to merge (approved, CI green, no conflicts)" },
+      { "✔", "approved", "Approved" },
+      { "○", "review", "Waiting for review" },
+      { "±", "changes", "Changes requested" },
+      { "✗ ci", "failing", "CI failing  (ci… = CI running)" },
+      { "⚠", "conflict", "Merge conflict" },
+    } } }
+  end
+end
+
+-- Footer entries for a context: the marked keys, in table order.
+local function footer_keys(ctx)
+  local out = {}
+  for _, g in ipairs(key_groups(ctx)) do
+    for _, e in ipairs(g[2]) do if e[4] then out[#out + 1] = e end end
+  end
+  return out
+end
+
 local function render_footer()
   if not state.footer.buf or not vim.api.nvim_buf_is_valid(state.footer.buf) then return end
-  local sec_id = current_section_id()
-  local local_sections = tostring(section_count())
-  local groups
-
-  if state.in_detail then
-    -- Detail view footer
-    local tab_key = detail.tabs_enabled() and "⇥/⇤ detail tab" or "Tab section"
-    if state.detail_kind == "jira" then
-      groups = {
-        { "Navigate", { "q back", "BS back", tab_key, "H/L tabs" } },
-        { "Actions",  { "c comment", "e edit", "a assign", "V to sprint", "o browser" } },
-        { "Jira",     { "↵ open link", "P parent/epic", "F filter children", "R refresh", "r reply", "v sprint", "? help" } },
-        { "Window",   { "Q close" } },
-      }
-    else
-      groups = {
-        { "Navigate", { "q back", "BS back", tab_key, "H/L tabs" } },
-        { "Actions",  { "a approve", "C changes", "c comment", "r reply", "d diff", "F files", "U since review" } },
-        { "PR",       { "R refresh", "D ready", "x checkout", "m merge", "o browser", "gx links" } },
-        { "Window",   { "? help", "Q close" } },
-      }
-    end
-  elseif sec_id == "jira_issues" then
-    groups = {
-      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "c comment", "e edit", "a assign", "m move", "> / < column", "+ new", "y clone", "V sprint", "S search", "* pin" } },
-      { "Toggles",  { "s scope", "h done", "u user", "v sprint", "p project", "b board", "R refresh" } },
-      { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
-    }
-  elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
-    groups = {
-      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "m move", "> / < column", "c comment", "a assign", "V to sprint", "S search", "* pin" } },
-      { "Jira",     (sec_id == "jira_sprint" or sec_id == "jira_backlog")
-        and { "F people", "u user", "v sprint", "p project", "b board", "R refresh" }
-        or { "u user", "v sprint", "p project", "b board", "R refresh" } },
-      { "Window",   { "o browser", "O board", "? help", "q hide", "Q close" } },
-    }
-  elseif sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
-    groups = {
-      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "* unpin", "o browser", "R refresh" } },
-      { "Window",   { "? help", "q hide", "Q close" } },
-    }
-  elseif sec_id == "gh_reviews" then
-    groups = {
-      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "C changes", "c comment", "d diff", "F files", "U since review", "m merge", "S search", "* pin" } },
-      { "PR",       { "s sort", "D ready", "x checkout", "R refresh" } },
-      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
-    }
-  else
-    groups = {
-      { "Navigate", { "↵ open", "j/k move", "Tab section", "H/L tabs" } },
-      { "Actions",  { "a approve", "C changes", "c comment", "d diff", "F files", "m merge", "S search", "* pin" } },
-      { "PR",       { "D ready", "x checkout", "+ new", "R refresh" } },
-      { "Window",   { "o browser", "? help", "q hide", "Q close" } },
-    }
-  end
-
-  -- Footers are a 2×2 grid; pad short ones (e.g. bookmarks has 3 groups) so the
-  -- second row always has two slots and we never index a missing group.
-  groups[3] = groups[3] or { "", {} }
-  groups[4] = groups[4] or { "", {} }
-  local function is_empty(grp) return not grp or not grp[2] or #grp[2] == 0 end
-
-  local sep = " │ "
-
-  -- Compute max label width per column (row pairs share columns).
-  local row1_groups = { groups[1], groups[2] }
-  local row2_groups = { groups[3], groups[4] }
-  local label_widths = {}
-  for i = 1, 2 do
-    local lw1 = is_empty(row1_groups[i]) and 0 or #row1_groups[i][1]
-    local lw2 = is_empty(row2_groups[i]) and 0 or #row2_groups[i][1]
-    label_widths[i] = math.max(lw1, lw2)
-  end
-
-  -- Render a single group with fixed-width key-desc pairs and padded label.
-  local function render_group(grp, col_idx)
-    local highlights = {}
-    local label = grp[1]
-    local keys = grp[2]
-    local col = 0
-
-    highlights[#highlights + 1] = { col_start = col, col_end = col + #label, hl = "DevOpsSection" }
-    local label_pad = string.rep(" ", label_widths[col_idx] - #label)
-    local segment = label .. label_pad .. "  "
-    for ki, k in ipairs(keys) do
-      local key_part, desc_part = k:match("^(%S+)%s+(.+)$")
-      if key_part then
-        highlights[#highlights + 1] = { col_start = col + #segment, col_end = col + #segment + #key_part, hl = "DevOpsKey" }
-        segment = segment .. key_part .. " "
-        highlights[#highlights + 1] = { col_start = col + #segment, col_end = col + #segment + #desc_part, hl = "DevOpsAction" }
-        segment = segment .. desc_part
-      else
-        segment = segment .. k
-      end
-      -- Separate pairs with a small gap (natural width) so the footer stays compact.
-      if ki < #keys then
-        segment = segment .. "   "
-      end
-    end
-    return segment, highlights, vim.fn.strdisplaywidth(segment)
-  end
-
-  -- Pad column 1 to a shared width so column 2 (Actions / Window) lines up across the
-  -- two rows; the last column stays natural-width so the footer doesn't overflow.
-  local col1_w
-  local function group_w(grp) return is_empty(grp) and 0 or select(3, render_group(grp, 1)) end
-  local align = true -- line the second column up across both rows (dropped first when narrow)
-  local function compute_col1()
-    col1_w = align and math.max(group_w(row1_groups[1]), group_w(row2_groups[1])) or 0
-  end
-  compute_col1()
-
-  local function build_line(grp_list)
-    local text = " "
-    local highlights = {}
-    local col = 1
-    local first = true
-    for gi, grp in ipairs(grp_list) do
-      if not is_empty(grp) then
-        if not first then
-          highlights[#highlights + 1] = { col_start = col + 1, col_end = col + 1 + #"│", hl = "DevOpsBorder" }
-          text = text .. sep
-          col = col + #sep
-        end
-        local segment, hls, dw = render_group(grp, gi)
-        if gi == 1 then segment = segment .. string.rep(" ", math.max(0, col1_w - dw)) end
-        for _, h in ipairs(hls) do
-          highlights[#highlights + 1] = { col_start = col + h.col_start, col_end = col + h.col_end, hl = h.hl }
-        end
-        text = text .. segment
-        col = col + #segment
-        first = false
-      end
-    end
-    return text, highlights
-  end
-
-  local text1, h1 = build_line(row1_groups)
-  local text2, h2 = build_line(row2_groups)
-
-  -- Narrow window: drop keys from the end of the widest group on the overflowing
-  -- line until it fits ('? help' lists everything, so it always stays).
+  local keys = footer_keys(key_context())
   local avail = (state.footer.win and vim.api.nvim_win_is_valid(state.footer.win))
-    and vim.api.nvim_win_get_width(state.footer.win) or math.huge
-  local KEEP = { ["? help"] = true, ["q back"] = true, ["Q close"] = true, ["↵ open"] = true }
-  local function drop_one(grp)
-    for i = #grp[2], 1, -1 do
-      if not KEEP[grp[2][i]] then
-        table.remove(grp[2], i)
-        return true
-      end
+    and vim.api.nvim_win_get_width(state.footer.win) or 200
+  local right = "? all keys "
+  local gap = "   "
+  local function build(n)
+    local text, hls = " ", {}
+    for i = 1, n do
+      local e = keys[i]
+      if i > 1 then text = text .. gap end
+      hls[#hls + 1] = { #text, #text + #e[1], "DevOpsKey" }
+      text = text .. e[1] .. " "
+      hls[#hls + 1] = { #text, #text + #e[2], "DevOpsAction" }
+      text = text .. e[2]
     end
-    return false
+    return text, hls
   end
-  for _ = 1, 60 do
-    local w1, w2 = vim.fn.strdisplaywidth(text1), vim.fn.strdisplaywidth(text2)
-    if math.max(w1, w2) <= avail then break end
-    if align then
-      align = false -- first give up column alignment (padding) before dropping keys
-    else
-      -- Drop from whichever group on the overflowing line is wider.
-      local row = w1 >= w2 and row1_groups or row2_groups
-      local function gw(g) return is_empty(g) and 0 or vim.fn.strdisplaywidth(table.concat(g[2], "   ")) end
-      local first, second = row[1], row[2]
-      if gw(second) > gw(first) then first, second = second, first end
-      if not (drop_one(first) or drop_one(second)) then break end
-    end
-    compute_col1()
-    text1, h1 = build_line(row1_groups)
-    text2, h2 = build_line(row2_groups)
+  -- Narrow window: drop keys from the end; '? all keys' always stays.
+  local n = #keys
+  local text, hls = build(n)
+  while n > 0 and vim.fn.strdisplaywidth(text) + #gap + vim.fn.strdisplaywidth(right) > avail do
+    n = n - 1
+    text, hls = build(n)
   end
+  local pad = math.max(1, avail - vim.fn.strdisplaywidth(text) - vim.fn.strdisplaywidth(right))
+  local line = text .. string.rep(" ", pad) .. right
+  local rstart = #text + pad
+  hls[#hls + 1] = { rstart, rstart + 1, "DevOpsKey" }
+  hls[#hls + 1] = { rstart + 2, #line, "DevOpsDim" }
 
   vim.bo[state.footer.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(state.footer.buf, 0, -1, false, { text1, text2 })
+  vim.api.nvim_buf_set_lines(state.footer.buf, 0, -1, false, { line })
   vim.bo[state.footer.buf].modifiable = false
-
   vim.api.nvim_buf_clear_namespace(state.footer.buf, footer_ns, 0, -1)
-  for _, h in ipairs(h1) do
-    pcall(vim.api.nvim_buf_set_extmark, state.footer.buf, footer_ns, 0, h.col_start, {
-      end_col = h.col_end, hl_group = h.hl,
-    })
-  end
-  for _, h in ipairs(h2) do
-    pcall(vim.api.nvim_buf_set_extmark, state.footer.buf, footer_ns, 1, h.col_start, {
-      end_col = h.col_end, hl_group = h.hl,
-    })
+  for _, h in ipairs(hls) do
+    pcall(vim.api.nvim_buf_set_extmark, state.footer.buf, footer_ns, 0, h[1], { end_col = h[2], hl_group = h[3] })
   end
 end
 
@@ -725,14 +766,45 @@ end
 
 local function github_check_status(rollup)
   if not rollup then return "", nil end
+  if type(rollup) == "table" and vim.islist(rollup) then
+    -- `gh pr list --json` gives the contexts (latest run per check); fold them into one state.
+    rollup = detail._check_contexts(rollup)
+    if #rollup == 0 then return "", nil end
+    local pending = false
+    for _, c in ipairs(rollup) do
+      local s = c.conclusion or c.state or ""
+      if s == "FAILURE" or s == "ERROR" or s == "TIMED_OUT" or s == "CANCELLED" or s == "ACTION_REQUIRED" then
+        return "✗", "DevOpsErr"
+      end
+      if (c.status and c.status ~= "COMPLETED") or s == "PENDING" or s == "" then pending = true end
+    end
+    if pending then return "⏳", "DevOpsWarn" end
+    return "✓", "DevOpsOk"
+  end
   local state_val = type(rollup) == "table" and rollup.state or rollup
   if state_val == "SUCCESS" then return "✓", "DevOpsOk" end
   if state_val == "FAILURE" or state_val == "ERROR" then return "✗", "DevOpsErr" end
-  if state_val == "PENDING" or state_val == "IN_PROGRESS" then return "⏳", "DevOpsWarn" end
+  if state_val == "PENDING" or state_val == "IN_PROGRESS" or state_val == "EXPECTED" then return "⏳", "DevOpsWarn" end
   return "", nil
 end
 
 local time_ago = render.time_ago
+
+-- One badge summing up whether a PR can merge: conflicts / changes requested
+-- first, then approved (+ green checks → ready), then awaiting review.
+local function pr_readiness(pr)
+  if pr.isDraft then return nil end
+  local checks = select(1, github_check_status(pr.statusCheckRollup))
+  if pr.mergeable == "CONFLICTING" then return "⚠ conflict", "DevOpsErr" end
+  if pr.reviewDecision == "CHANGES_REQUESTED" then return "± changes", "DevOpsErr" end
+  if pr.reviewDecision == "APPROVED" then
+    if checks == "✗" then return "✔ approved · ✗ ci", "DevOpsWarn" end
+    if checks == "⏳" then return "✔ approved · ci…", "DevOpsWarn" end
+    return "● ready", "DevOpsOk"
+  end
+  if pr.reviewDecision == "REVIEW_REQUIRED" then return "○ review", "DevOpsDim" end
+  return nil
+end
 
 local function render_github(prs, title, show_meta)
   stop_spinner()
@@ -760,10 +832,14 @@ local function render_github(prs, title, show_meta)
     local check_cell = render.pad(check_icon, 2) -- fixed 2 display cols (or "  " when none)
     local repo = (pr.repository and pr.repository.name) or ""
     local tag = (not show_meta) and repo or ""
-    local summary = render.truncate(pr.title or "", math.max(10, w - 15 - vim.fn.strdisplaywidth(tag)))
+    local badge, badge_hl = pr_readiness(pr)
+    local badge_w = badge and (vim.fn.strdisplaywidth(badge) + 2) or 0
+    local summary = render.truncate(pr.title or "", math.max(10, w - 15 - vim.fn.strdisplaywidth(tag) - badge_w))
 
     local prefix = "  " .. icon .. "  "
     local text = prefix .. numpad .. check_cell .. " " .. summary
+    local badge_col
+    if badge then badge_col = #text + 2; text = text .. "  " .. badge end
     if tag ~= "" then text = text .. "  " .. tag end
     lines[#lines + 1] = text
     local lidx = #lines - 1
@@ -776,6 +852,12 @@ local function render_github(prs, title, show_meta)
     end
     if tag ~= "" then
       hls[#hls + 1] = { line = lidx, col_start = #text - #tag, col_end = #text, hl = "DevOpsDim" }
+    end
+    if badge then hls[#hls + 1] = { line = lidx, col_start = badge_col, col_end = badge_col + #badge, hl = badge_hl } end
+    -- Jira keys in the title (J opens them).
+    local title_start = #prefix + #numpad + #check_cell + 1
+    for ks, ke in summary:gmatch("()%f[%w][A-Z][A-Z0-9_]+%-%d+%f[^%w]()") do
+      hls[#hls + 1] = { line = lidx, col_start = title_start + ks - 1, col_end = title_start + ke - 1, hl = "DevOpsKey" }
     end
     rows[#lines] = { kind = "pr", pr = pr }
 
@@ -871,6 +953,67 @@ local function render_github(prs, title, show_meta)
   end
 
   if #prs == 0 then lines[#lines + 1] = "  (none)" end
+  set_buf_lines(state.content.buf, lines)
+  apply_highlights(state.content.buf, hls)
+  state.rows = rows
+  park_cursor_on_first_item()
+end
+
+-- Workflow run state → icon, highlight.
+local function run_icon(run)
+  local st, c = run.status or "", run.conclusion or ""
+  if st ~= "completed" then
+    if st == "in_progress" then return "⟳", "DevOpsWarn" end
+    return "⏳", "DevOpsWarn"
+  end
+  if c == "success" then return "✓", "DevOpsOk" end
+  if c == "failure" or c == "timed_out" or c == "startup_failure" then return "✗", "DevOpsErr" end
+  if c == "cancelled" then return "⊘", "DevOpsDim" end
+  if c == "skipped" or c == "neutral" then return "↷", "DevOpsDim" end
+  if c == "action_required" then return "!", "DevOpsWarn" end
+  return "·", "DevOpsDim"
+end
+
+local function runs_active(runs)
+  for _, r in ipairs(runs or {}) do if r.status ~= "completed" then return true end end
+  return false
+end
+
+-- GitHub › Actions: the cwd repo's recent workflow runs.
+local function render_actions(data)
+  stop_spinner()
+  local runs = data.runs or {}
+  local active = 0
+  for _, r in ipairs(runs) do if r.status ~= "completed" then active = active + 1 end end
+  local lines, hls = header(nil, data.repo .. "  ·  " .. #runs .. " run" .. (#runs == 1 and "" or "s")
+    .. (active > 0 and ("  ·  " .. active .. " running (auto-refresh)") or ""))
+  local rows = {}
+  local w = content_width()
+  local wf_w = 0
+  for _, r in ipairs(runs) do wf_w = math.max(wf_w, vim.fn.strdisplaywidth(r.workflowName or "")) end
+  wf_w = math.min(wf_w, 22)
+  for _, r in ipairs(runs) do
+    local icon, ihl = run_icon(r)
+    local wf = render.pad(render.truncate(r.workflowName or "?", wf_w), wf_w)
+    local age = time_ago(r.createdAt)
+    local branch = r.headBranch or ""
+    local tail = branch .. "  " .. age
+    local prefix = "  " .. icon .. "  "
+    local avail = math.max(10, w - vim.fn.strdisplaywidth(prefix) - wf_w - 2 - vim.fn.strdisplaywidth(tail) - 3)
+    local title = render.truncate(r.displayTitle or "", avail)
+    local mid = prefix .. wf .. "  " .. title
+    local gap = math.max(2, w - vim.fn.strdisplaywidth(mid) - vim.fn.strdisplaywidth(tail) - 1)
+    local text = mid .. string.rep(" ", gap) .. tail
+    lines[#lines + 1] = text
+    local li = #lines - 1
+    hls[#hls + 1] = { line = li, col_start = 2, col_end = 2 + #icon, hl = ihl }
+    hls[#hls + 1] = { line = li, col_start = #prefix, col_end = #prefix + #wf, hl = "DevOpsColumn" }
+    local tail_start = #text - #tail
+    hls[#hls + 1] = { line = li, col_start = tail_start, col_end = tail_start + #branch, hl = "DevOpsLabel" }
+    hls[#hls + 1] = { line = li, col_start = tail_start + #branch, col_end = #text, hl = "DevOpsDim" }
+    rows[#lines] = { kind = "run", run = r, repo = data.repo }
+  end
+  if #runs == 0 then lines[#lines + 1] = "  (no workflow runs)" end
   set_buf_lines(state.content.buf, lines)
   apply_highlights(state.content.buf, hls)
   state.rows = rows
@@ -1024,6 +1167,44 @@ local function list_stale(sec_id, gen)
     or current_section_id() ~= sec_id or state.load_gen ~= gen
 end
 
+local warm_cwd_repo -- forward decl (defined with the GitHub helpers below)
+
+-- Fetch the cwd repo's runs. `quiet` (auto-refresh) repaints in place, keeping the cursor.
+local actions_timer
+local schedule_actions_refresh
+local function fetch_actions(sec_id, gen, quiet)
+  warm_cwd_repo(nil, function(repo)
+    if list_stale(sec_id, gen) then return end
+    if not repo then
+      return set_message("⚠ Not in a GitHub repo — Actions lists the runs of the current directory's repo")
+    end
+    gh.run_list(repo, function(ok, runs, err)
+      if list_stale(sec_id, gen) then return end
+      if not ok then
+        if quiet then return end
+        return set_message("⚠ " .. (err or "gh run list failed"))
+      end
+      local data = { repo = repo, runs = runs or {} }
+      cache_set(sec_id, data)
+      local cur = quiet and vim.api.nvim_win_get_cursor(state.content.win)
+      render_actions(data)
+      if cur then pcall(vim.api.nvim_win_set_cursor, state.content.win, cur) end
+      if runs_active(data.runs) then schedule_actions_refresh() end
+    end)
+  end)
+end
+
+-- While runs are in progress, refresh the Actions list every 10s (only while it's shown).
+schedule_actions_refresh = function()
+  actions_timer = actions_timer or vim.uv.new_timer()
+  actions_timer:stop()
+  actions_timer:start(10000, 0, vim.schedule_wrap(function()
+    if not is_open() or state.in_detail or state.detail_loading or current_section_id() ~= "gh_actions" then return end
+    state.load_gen = (state.load_gen or 0) + 1
+    fetch_actions("gh_actions", state.load_gen, true)
+  end))
+end
+
 local function load_section(force, allow_stale)
   local sec_id = current_section_id()
   -- Generation token: only the latest load's callback applies, so rapid section
@@ -1033,6 +1214,8 @@ local function load_section(force, allow_stale)
   -- A ticket is shown (or loading): don't paint the list over it. Filter changes
   -- made from a ticket invalidate the cache, so Back refetches the list.
   if state.in_detail or state.detail_loading then return end
+
+  if sec_id == "gh_reviews" and watch.unseen() > 0 then watch.mark_seen() end
 
   -- Bookmark sections are local — no API call needed
   if sec_id == "jira_bookmarks" or sec_id == "gh_bookmarks" then
@@ -1049,6 +1232,14 @@ local function load_section(force, allow_stale)
       if sec_id == "gh_prs" or sec_id == "gh_reviews" then
         local title = sec_id == "gh_prs" and "GitHub · My PRs" or "GitHub · Reviews"
         render_github(cached, title, sec_id == "gh_reviews")
+      elseif sec_id == "gh_actions" then
+        local repo = state._cwd_repo and state._cwd_repo[vim.fn.getcwd()]
+        if cached.repo and cached.repo == repo then
+          render_actions(cached)
+          if runs_active(cached.runs) then schedule_actions_refresh() end
+          return
+        end
+        return load_section(true)
       else
         render_jira_from_cache(sec_id, cached)
       end
@@ -1173,6 +1364,9 @@ local function load_section(force, allow_stale)
     else
       api.backlog(state.project.key, acct, on_bl)
     end
+  elseif sec_id == "gh_actions" then
+    if not gh.available() then return set_message("⚠ gh CLI not found") end
+    fetch_actions(sec_id, gen)
   else -- gh_prs / gh_reviews
     if not gh.available() then return set_message("⚠ gh CLI not found") end
     gh.fetch_current_user() -- ensure login is cached for status detection
@@ -1188,30 +1382,86 @@ local function load_section(force, allow_stale)
   end
 end
 
+-- Starts the background watch (review requests + notification count) and
+-- polls now; the sidebar badges repaint whenever the counts change.
 local function refresh_notifications()
   if not gh.available() then return end
-  gh.notifications_count(function(count)
+  watch.start(function()
+    state.gh_notif_count = watch.state.notif or 0
     if not is_open() then return end
-    state.gh_notif_count = count
+    if current_section_id() == "gh_reviews" and not state.in_detail then
+      for _, r in ipairs(watch.state.requests or {}) do watch.state.seen[r.id] = true end
+    end
     render_sidebar()
   end)
 end
 
 -- Resolve cwd → "owner/repo" asynchronously and cache it, so the PR-search
 -- local-scope label never blocks the UI thread (was a synchronous git call).
-local function warm_cwd_repo(cwd)
+-- "owner/repo" from a git remote URL (ssh or https), or nil.
+local function remote_owner_repo(remote)
+  -- Strip a trailing ".git" first, then take the last two path segments.
+  -- The character class must include "_" — underscores are legal in both
+  -- owner and repo names.
+  remote = (remote or ""):gsub("%s+", ""):gsub("%.git$", "")
+  return remote:match("[:/]([%w%._%-]+/[%w%._%-]+)$")
+end
+
+-- origin's URL straight from .git/config (no git binary — it may be unusable,
+-- e.g. macOS's /usr/bin/git before the Xcode licence is accepted). Handles
+-- worktrees (.git file → gitdir, commondir).
+local function origin_from_config(cwd)
+  local root = vim.fs.root(cwd, ".git")
+  if not root then return nil end
+  local dotgit = root .. "/.git"
+  local gitdir = dotgit
+  if vim.fn.isdirectory(dotgit) == 0 then
+    local f = io.open(dotgit)
+    if not f then return nil end
+    local line = f:read("*l") or ""
+    f:close()
+    gitdir = line:match("^gitdir:%s*(.-)%s*$")
+    if not gitdir then return nil end
+    if gitdir:sub(1, 1) ~= "/" then gitdir = root .. "/" .. gitdir end
+    local cf = io.open(gitdir .. "/commondir")
+    if cf then
+      local common = vim.trim(cf:read("*a") or "")
+      cf:close()
+      gitdir = common:sub(1, 1) == "/" and common or (gitdir .. "/" .. common)
+    end
+  end
+  local f = io.open(gitdir .. "/config")
+  if not f then return nil end
+  local in_origin, url = false, nil
+  for line in f:lines() do
+    local sec = line:match("^%s*%[(.-)%]")
+    if sec then in_origin = sec:match('^remote%s+"origin"$') ~= nil
+    elseif in_origin then url = url or line:match("^%s*url%s*=%s*(.-)%s*$") end
+  end
+  f:close()
+  return url
+end
+M._remote_owner_repo = remote_owner_repo
+M._origin_from_config = origin_from_config
+
+warm_cwd_repo = function(cwd, cb)
   cwd = cwd or vim.fn.getcwd()
   state._cwd_repo = state._cwd_repo or {}
-  if state._cwd_repo[cwd] ~= nil then return end
+  if state._cwd_repo[cwd] ~= nil then
+    if cb then cb(state._cwd_repo[cwd] or nil) end
+    return
+  end
+  local direct = remote_owner_repo(origin_from_config(cwd))
+  if direct then
+    state._cwd_repo[cwd] = direct
+    if cb then cb(direct) end
+    return
+  end
   vim.system({ "git", "-C", cwd, "remote", "get-url", "origin" }, { text = true }, function(res)
     vim.schedule(function()
-      local remote = (res.code == 0 and res.stdout or ""):gsub("%s+", "")
-      -- Strip a trailing ".git" first, then take the last two path segments.
-      -- The character class must include "_" — underscores are legal in both
-      -- owner and repo names and were previously dropped.
-      remote = remote:gsub("%.git$", "")
-      local owner_repo = remote:match("[:/]([%w%._%-]+/[%w%._%-]+)$")
+      local owner_repo = remote_owner_repo(res.code == 0 and res.stdout or "")
       state._cwd_repo[cwd] = owner_repo or false
+      if cb then cb(owner_repo) end
     end)
   end)
 end
@@ -1333,6 +1583,7 @@ local function show_detail(kind, target, cursor)
   end
   state.detail_kind = kind
   state.detail_key = kind == "jira" and target or nil
+  state.detail_pr = kind == "pr" and target or nil
   state.detail_reopen = function(c) show_detail(kind, target, c) end
   if kind == "jira" then
     detail.load_issue(target, {
@@ -1390,12 +1641,41 @@ follow_jira_link = function(link)
   show_detail("jira", link.key)
 end
 
+-- A run's jobs → pick one (the failed ones first) → its log / live view.
+local function job_ctx(job)
+  return { name = job.name, detailsUrl = job.url, status = (job.status or ""):upper(),
+    conclusion = (job.conclusion or ""):upper() }
+end
+
+local function open_run(item)
+  local jl = require("plugins.utils.devops.ui.job_log")
+  vim.notify("DevOps: loading jobs of run #" .. (item.run.number or item.run.databaseId) .. "…", vim.log.levels.INFO)
+  gh.run_jobs(item.repo, item.run.databaseId, function(ok, jobs, err)
+    if not ok then return require("plugins.utils.devops.ui.errors").show("DevOps: " .. (err or "gh run view failed")) end
+    if #jobs == 0 then return vim.ui.open(item.run.url) end
+    if #jobs == 1 then return jl.open(job_ctx(jobs[1])) end
+    local rank = { failure = 0, timed_out = 0, cancelled = 2 }
+    table.sort(jobs, function(a, b)
+      local ra = a.status ~= "completed" and 1 or (rank[a.conclusion] or 3)
+      local rb = b.status ~= "completed" and 1 or (rank[b.conclusion] or 3)
+      if ra ~= rb then return ra < rb end
+      return (a.name or "") < (b.name or "")
+    end)
+    vim.ui.select(jobs, {
+      prompt = (item.run.workflowName or "Run") .. " · jobs",
+      format_item = function(j) return (run_icon(j)) .. "  " .. (j.name or "?") end,
+    }, function(j) if j then jl.open(job_ctx(j)) end end)
+  end)
+end
+
 local function open_detail()
   if state.in_detail then
     -- Follow a Linked PR / Linked Jira Issue / Parent / Child row; Back returns here.
     local row = vim.api.nvim_win_get_cursor(state.content.win)[1]
     local file = detail.file_at(state.content.buf, row)
     if file then return detail.open_pr_file(file) end
+    local ck = detail.check_at(state.content.buf, row)
+    if ck then return require("plugins.utils.devops.ui.job_log").open(ck.ctx) end
     local link = detail.link_at(state.content.buf, row)
     if not link then return end
     if link.kind == "jira_link" then return follow_jira_link(link) end
@@ -1405,6 +1685,7 @@ local function open_detail()
   end
   local item = current_item()
   if not item then return end
+  if item.kind == "run" then return open_run(item) end
   nav_push()
   if item.kind == "jira" then
     show_detail("jira", item.key)
@@ -1420,7 +1701,35 @@ local function open_browser()
     vim.ui.open(client.base_url() .. "/browse/" .. item.key)
   elseif item.kind == "pr" then
     vim.ui.open(item.pr.url)
+  elseif item.kind == "run" then
+    vim.ui.open(item.run.url)
   end
+end
+
+-- r on a workflow run: re-run it (failed / all jobs).
+local function rerun_run()
+  local item = current_item()
+  if not (item and item.kind == "run") then return end
+  require("plugins.utils.devops.ui.job_log").rerun(item.run.url, function()
+    if current_section_id() == "gh_actions" then schedule_actions_refresh() end
+  end)
+end
+
+-- J: open the Jira ticket(s) a PR mentions (branch, title, body).
+local function pr_jira()
+  local pr
+  if state.in_detail then
+    pr = state.detail_kind == "pr" and state.detail_pr or nil
+  else
+    local item = current_item()
+    pr = item and item.kind == "pr" and item.pr or nil
+  end
+  if not pr then return end
+  local keys = detail.issue_keys(pr.headRefName, pr.title, pr.body)
+  if #keys == 0 then return vim.notify("DevOps: no Jira key in this PR's branch or title", vim.log.levels.INFO) end
+  if not client.configured() then return vim.notify("DevOps: Jira not configured — run :JiraAuth", vim.log.levels.WARN) end
+  if #keys == 1 then return follow_jira_link({ key = keys[1] }) end
+  vim.ui.select(keys, { prompt = "Open Jira ticket" }, function(k) if k then follow_jira_link({ key = k }) end end)
 end
 
 -- Open the project's Scrum board in the browser, scoped to the active user filter
@@ -1657,6 +1966,49 @@ local function advance(delta)
   end)
 end
 
+-- 'B': create/switch to a branch named after the issue in the cwd's repo, then
+-- move the issue to In Progress if it hasn't started yet.
+local function jira_branch()
+  local item = current_item()
+  if not item and state.in_detail and state.detail_kind == "jira" and state.detail_key then
+    item = { kind = "jira", key = state.detail_key }
+  end
+  if not item or item.kind ~= "jira" then
+    return vim.notify("DevOps: select a Jira issue first", vim.log.levels.INFO)
+  end
+  local key = item.key
+  api.get_issue(key, function(ok, issue, err)
+    if not ok then return errors.show("DevOps: " .. (err or "issue fetch failed")) end
+    local f = issue.fields or {}
+    local default = branch.name(key, f.summary, f.issuetype and f.issuetype.name)
+    vim.ui.input({ prompt = "Branch: ", default = default }, function(name)
+      if not name or vim.trim(name) == "" then return end
+      name = vim.trim(name)
+      branch.checkout(name, vim.fn.getcwd(), function(ok2, how, err2)
+        if not ok2 then return errors.show("DevOps: git — " .. (err2 or "checkout failed")) end
+        vim.notify(("DevOps: %s branch %s"):format(how, name), vim.log.levels.INFO)
+        vim.cmd("silent! checktime")
+        local cat = f.status and f.status.statusCategory and f.status.statusCategory.key
+        if cat ~= "new" then return end
+        api.transitions(key, function(ok3, trs)
+          local tr = ok3 and branch.pick_start(trs)
+          if not tr then return end
+          api.do_transition(key, tr.id, function(ok4, _, err4)
+            if not ok4 then return errors.show("DevOps: " .. (err4 or "transition failed")) end
+            vim.notify(("DevOps: %s → %s"):format(key, tr.to and tr.to.name or tr.name), vim.log.levels.INFO)
+            if state.in_detail then
+              detail.invalidate_cache(key)
+              if state.detail_reopen then state.detail_reopen(vim.api.nvim_win_get_cursor(state.content.win)) end
+            else
+              apply_transition_locally(key, tr.to)
+            end
+          end)
+        end)
+      end)
+    end)
+  end)
+end
+
 ---------------------------------------------------------------------------
 -- Write actions — Jira (comment, edit, assign, create, clone)
 ---------------------------------------------------------------------------
@@ -1799,55 +2151,8 @@ local function jira_assign()
   end)
 end
 
-local function jira_create()
-  if not client.configured() then
-    return vim.notify("DevOps: configure Jira first (:JiraAuth)", vim.log.levels.WARN)
-  end
-  -- Step 1: project (default to current)
-  api.list_projects(nil, function(ok, projects, err)
-    if not ok then return errors.show("DevOps: " .. (err or "project list failed")) end
-    vim.ui.select(projects, {
-      prompt = "Project:",
-      format_item = function(p) return p.key .. "  —  " .. (p.name or "") end,
-    }, function(proj)
-      if not proj then return end
-      -- Step 2: issue type
-      api.issue_types(proj.key, function(ok2, types, err2)
-        if not ok2 then return errors.show("DevOps: " .. (err2 or "types failed")) end
-        vim.ui.select(types, {
-          prompt = "Issue type:",
-          format_item = function(t) return t.name end,
-        }, function(itype)
-          if not itype then return end
-          -- Step 3: summary
-          vim.ui.input({ prompt = "Summary: " }, function(summary)
-            if not summary or summary == "" then return end
-            -- Step 4: description
-            input.open("Description (new " .. itype.name .. ")", "", function(desc)
-              local fields = {
-                project = { key = proj.key },
-                issuetype = { name = itype.name },
-                summary = summary,
-              }
-              if desc ~= "" then fields.description = adf.text_to_adf(desc) end
-              -- Step 5: assignee (default to me)
-              local me_id = client.account_id()
-              if me_id then fields.assignee = { accountId = me_id } end
-              api.create_issue(fields, function(ok3, data, err3)
-                if not ok3 then return errors.show("DevOps: " .. (err3 or "create failed")) end
-                local new_key = data and data.key or "?"
-                vim.notify("DevOps: created " .. new_key, vim.log.levels.INFO)
-                refresh_current_jira_section()
-              end)
-            end)
-          end)
-        end)
-      end)
-    end)
-  end)
-end
-
 -- Popup confirming a clone, showing the new key with quick actions.
+-- old_key nil → a newly created issue.
 local function show_clone_popup(old_key, new_key)
   local url = client.base_url() .. "/browse/" .. new_key
   -- Auto-copy the new key to the system (and unnamed) clipboard.
@@ -1855,7 +2160,8 @@ local function show_clone_popup(old_key, new_key)
   pcall(vim.fn.setreg, '"', new_key)
   local lines = {
     "",
-    "  ✓ Cloned  " .. old_key .. "  →  " .. new_key .. "    📋 copied",
+    old_key and ("  ✓ Cloned  " .. old_key .. "  →  " .. new_key .. "    📋 copied")
+      or ("  ✓ Created  " .. new_key .. "    📋 copied"),
     "",
     "  ↵  open in DevOps     o  open in browser     y  copy     q  close",
     "",
@@ -1873,7 +2179,7 @@ local function show_clone_popup(old_key, new_key)
     row = math.floor((vim.o.lines - #lines) / 2),
     col = math.floor((vim.o.columns - width) / 2),
     style = "minimal", border = "rounded",
-    title = " Issue cloned ", title_pos = "center",
+    title = old_key and " Issue cloned " or " Issue created ", title_pos = "center",
   })
   vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle"
   local cns = vim.api.nvim_create_namespace("DevOpsClone")
@@ -1896,9 +2202,131 @@ local function show_clone_popup(old_key, new_key)
     vim.notify("DevOps: copied " .. new_key, vim.log.levels.INFO)
     close_popup()
   end, { buffer = buf, nowait = true, silent = true })
-  for _, k in ipairs({ "q", "<Esc>" }) do
+  for _, k in ipairs({ "q", "<C-d>", "<Esc>" }) do
     vim.keymap.set("n", k, close_popup, { buffer = buf, nowait = true, silent = true })
   end
+end
+
+-- '+': project (current first) → type → epic → sprint → summary (prefilled
+-- from the git branch) → description. Assigned to me.
+local function jira_create()
+  if not client.configured() then
+    return vim.notify("DevOps: configure Jira first (:JiraAuth)", vim.log.levels.WARN)
+  end
+  local cur_key = state.project and state.project.key
+  local sel = {}
+
+  local function finish()
+    local fields = {
+      project = { key = sel.proj.key },
+      issuetype = { name = sel.itype.name },
+      summary = sel.summary,
+    }
+    if sel.desc and sel.desc ~= "" then fields.description = adf.text_to_adf(sel.desc) end
+    if sel.epic then fields.parent = { key = sel.epic } end
+    local me_id = client.account_id()
+    if me_id then fields.assignee = { accountId = me_id } end
+    api.create_issue(fields, function(ok, data, err)
+      if not ok then return errors.show("DevOps: " .. (err or "create failed")) end
+      local new_key = data and data.key or "?"
+      local function done()
+        show_clone_popup(nil, new_key)
+        refresh_current_jira_section()
+      end
+      if not sel.sprint then return done() end
+      api.move_to_sprint(sel.sprint.id, new_key, function(ok2, _, err2)
+        if not ok2 then errors.show("DevOps: created " .. new_key .. " but sprint move failed — " .. (err2 or "?")) end
+        done()
+      end)
+    end)
+  end
+
+  local function ask_text()
+    branch.current(vim.fn.getcwd(), function(br)
+      vim.ui.input({ prompt = "Summary: ", default = branch.summary_from_branch(br) or "" }, function(summary)
+        if not summary or vim.trim(summary) == "" then return end
+        sel.summary = vim.trim(summary)
+        input.open("Description (new " .. sel.itype.name .. ")", "", function(desc)
+          sel.desc = desc
+          finish()
+        end)
+      end)
+    end)
+  end
+
+  local function ask_sprint()
+    if sel.itype.subtask then return ask_text() end
+    local board_id = state.board and sel.proj.key == cur_key and state.board.id or nil
+    api.project_sprints(sel.proj.key, board_id, "active,future", function(ok, sprints)
+      if not ok or #sprints == 0 then return ask_text() end
+      table.sort(sprints, function(x, y)
+        if (x.state == "active") ~= (y.state == "active") then return x.state == "active" end
+        return (x.startDate or x.name or "") < (y.startDate or y.name or "")
+      end)
+      local items = { { backlog = true, name = "Backlog" } }
+      vim.list_extend(items, sprints)
+      vim.ui.select(items, {
+        prompt = "Sprint:",
+        format_item = function(sp)
+          if sp.backlog then return "○ Backlog" end
+          return (sp.state == "active" and "● " or "◌ ") .. sp.name
+        end,
+      }, function(sp)
+        if not sp then return end
+        sel.sprint = not sp.backlog and sp or nil
+        ask_text()
+      end)
+    end)
+  end
+
+  local function ask_epic()
+    local tname = (sel.itype.name or ""):lower()
+    if sel.itype.subtask or tname == "epic" then return ask_sprint() end
+    api.epics(sel.proj.key, nil, function(ok, epics)
+      if not ok or #epics == 0 then return ask_sprint() end
+      local items = { { none = true } }
+      vim.list_extend(items, epics)
+      vim.ui.select(items, {
+        prompt = "Epic:",
+        format_item = function(e)
+          if e.none then return "— No epic —" end
+          return e.key .. "  " .. ((e.fields or {}).summary or "")
+        end,
+      }, function(e)
+        if not e then return end
+        sel.epic = not e.none and e.key or nil
+        ask_sprint()
+      end)
+    end)
+  end
+
+  api.list_projects(nil, function(ok, projects, err)
+    if not ok then return errors.show("DevOps: " .. (err or "project list failed")) end
+    if cur_key then
+      table.sort(projects, function(x, y)
+        if (x.key == cur_key) ~= (y.key == cur_key) then return x.key == cur_key end
+        return false
+      end)
+    end
+    vim.ui.select(projects, {
+      prompt = "Project:",
+      format_item = function(p) return p.key .. "  —  " .. (p.name or "") .. (p.key == cur_key and "  (current)" or "") end,
+    }, function(proj)
+      if not proj then return end
+      sel.proj = proj
+      api.issue_types(proj.key, function(ok2, types, err2)
+        if not ok2 then return errors.show("DevOps: " .. (err2 or "types failed")) end
+        vim.ui.select(types, {
+          prompt = "Issue type:",
+          format_item = function(t) return t.name end,
+        }, function(itype)
+          if not itype then return end
+          sel.itype = itype
+          ask_epic()
+        end)
+      end)
+    end)
+  end)
 end
 
 local function jira_clone()
@@ -2117,6 +2545,41 @@ local function jira_search()
   vim.cmd("startinsert")
 end
 
+-- Org for the scoped PR search: config github.org, else the org your gh token's
+-- account belongs to (if it's in several, the one most of your PRs/reviews are
+-- in). Fetched once per session by warm_search_org. nil → global only.
+local function pr_owner_counts()
+  local counts = {}
+  for _, sec in ipairs({ "gh_prs", "gh_reviews" }) do
+    local data = cache_get_raw(sec)
+    for _, pr in ipairs(type(data) == "table" and data or {}) do
+      local o = type(pr) == "table" and type(pr.repository) == "table"
+        and (pr.repository.nameWithOwner or ""):match("^([^/]+)/")
+      if o then counts[o] = (counts[o] or 0) + 1 end
+    end
+  end
+  return counts
+end
+
+local function search_org()
+  local cfg = config.options.github and config.options.github.org
+  if cfg and cfg ~= "" then return cfg end
+  local orgs = state._token_orgs
+  if not orgs or #orgs == 0 then return nil end
+  if #orgs == 1 then return orgs[1] end
+  local counts, best = pr_owner_counts(), orgs[1]
+  for _, o in ipairs(orgs) do if (counts[o] or 0) > (counts[best] or 0) then best = o end end
+  return best
+end
+
+local function warm_search_org(cb)
+  if state._token_orgs then if cb then cb() end return end
+  gh.user_orgs(function(ok, orgs)
+    if ok then state._token_orgs = orgs end
+    if cb then vim.schedule(cb) end
+  end)
+end
+
 local function gh_search()
   if not gh.available() then
     errors.show("DevOps: gh CLI not found")
@@ -2129,19 +2592,12 @@ local function gh_search()
   local content_cfg = vim.api.nvim_win_get_config(state.content.win)
   local w = content_cfg.width - 2
 
-  -- Current repo for local scope — resolved asynchronously (warm_cwd_repo) and
-  -- cached per cwd, so this never blocks. If not warmed yet, fall back to global.
-  local cwd = vim.fn.getcwd()
-  state._cwd_repo = state._cwd_repo or {}
-  local cwd_repo = state._cwd_repo[cwd]
-  if cwd_repo == nil then warm_cwd_repo(cwd) end
-  if cwd_repo == false then cwd_repo = nil end
-
-  local scope_local = false -- default: global
+  local org = search_org()
+  local scope_org = org ~= nil -- default: current org; C-t toggles to global
 
   local function title_text()
-    local scope_label = scope_local and ("local: " .. (cwd_repo or "repo")) or "global"
-    return " 🔍 GitHub [" .. scope_label .. "]  C-t: toggle "
+    local scope_label = scope_org and ("org: " .. org) or "global"
+    return " 🔍 GitHub [" .. scope_label .. "]  C-t: " .. (scope_org and "global" or ("org" .. (org and "" or " (none)"))) .. " "
   end
 
 
@@ -2157,6 +2613,20 @@ local function gh_search()
 
   local timer = vim.uv.new_timer()
   local closed = false
+  local last_query = ""
+  local do_search
+
+  -- Org not fetched yet (S pressed right after opening): scope it once it lands.
+  if not org then
+    warm_search_org(function()
+      org = search_org()
+      if closed or not org or not vim.api.nvim_win_is_valid(input_win) then return end
+      scope_org = true
+      vim.api.nvim_win_set_config(input_win, { title = title_text(), title_pos = "center" })
+      last_query = ""
+      do_search(vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
+    end)
+  end
 
   local function do_close()
     if closed then return end
@@ -2170,8 +2640,7 @@ local function gh_search()
     end
   end
 
-  local last_query = ""
-  local function do_search(query)
+  function do_search(query)
     timer:stop()
     if query == "" then
       last_query = ""
@@ -2184,7 +2653,7 @@ local function gh_search()
     timer:start(400, 0, vim.schedule_wrap(function()
       if closed then return end
       local opts = {}
-      if scope_local and cwd_repo then opts.repo = cwd_repo end
+      if scope_org and org then opts.owner = org end
       gh.search_prs(query, opts, function(ok, prs, err)
         if closed or not is_open() then return end
         if not ok then return set_message("⚠ " .. (err or "search failed")) end
@@ -2208,7 +2677,9 @@ local function gh_search()
 
   -- Toggle scope
   km({ "i", "n" }, "<C-t>", function()
-    scope_local = not scope_local
+    if not org then return end
+    scope_org = not scope_org
+    last_query = "" -- same text, new scope: search again
     vim.api.nvim_win_set_config(input_win, { title = title_text(), title_pos = "center" })
     local q = (vim.api.nvim_buf_get_lines(input_buf, 0, 1, false)[1] or "")
     do_search(q)
@@ -2259,9 +2730,17 @@ local function pr_item()
   return item, repo, n
 end
 
+-- GitHub rejects approving / requesting changes on your own PR; say so up front.
+local function refuse_own(pr, what)
+  if not gh.is_me(pr and pr.author and pr.author.login) then return false end
+  vim.notify("DevOps: you can't " .. what .. " your own PR — use c to comment", vim.log.levels.WARN)
+  return true
+end
+
 local function gh_approve()
   local item, repo, n = pr_item()
   if not item then return end
+  if refuse_own(item.pr, "approve") then return end
   gh.pr_approve(repo, n, function(ok, _, err)
     if not ok then return errors.show("DevOps: " .. (err or "approve failed")) end
     vim.notify("DevOps: approved #" .. n, vim.log.levels.INFO)
@@ -2272,6 +2751,7 @@ end
 local function gh_request_changes()
   local item, repo, n = pr_item()
   if not item then return end
+  if refuse_own(item.pr, "request changes on") then return end
   input.open("Request changes #" .. n, "", function(body)
     if body == "" then return end
     gh.pr_request_changes(repo, n, body, function(ok, _, err)
@@ -2539,125 +3019,56 @@ end
 ---------------------------------------------------------------------------
 
 local function show_help()
-  local sec_id = current_section_id()
-  local keys
-  if sec_id == "jira_issues" then
-    keys = {
-      { "↵",     "Open issue detail" },
-      { "P",     "Detail: jump to parent epic" },
-      { "F",     "Detail: filter an epic's child issues" },
-      { "c",     "Add comment" },
-      { "e",     "Edit summary/description" },
-      { "a",     "Assign issue" },
-      { "+",     "Create new issue" },
-      { "y",     "Clone selected issue" },
-      { "V",     "Move issue to a sprint / backlog" },
-      { "S",     "Search Jira" },
-      { "*",     "Pin/unpin selected item" },
-      { "m",     "Move (change status)" },
-      { "> / <", "Move to next / previous board column" },
-      { "u",     "Filter by user (colleague)" },
-      { "p",     "Switch project" },
-      { "b",     "Switch board" },
-      { "v",     "Pick sprint (incl. past)" },
-      { "s",     "Toggle scope (sprint/project)" },
-      { "h",     "Toggle show Done issues" },
-      { "R",     "Refresh" },
-      { "o",     "Open issue in browser" },
-      { "O",     "Open board in browser" },
-      { "Tab",   "Next section (in a ticket: next tab)" },
-      { "S-Tab", "Prev section (in a ticket: prev tab)" },
-      { "⇥ / ⇤", "Detail: Overview · Comments · Pull requests" },
-      { "H/L",   "Previous/next tab" },
-      { "{/}",   "Previous/next tab" },
-      { "S-←",   "Focus sidebar" },
-      { "q/Esc", "Close" },
-    }
-  elseif sec_id == "jira_sprint" or sec_id == "jira_epics" or sec_id == "jira_backlog" then
-    keys = {
-      { "↵",     "Open issue detail" },
-      { "P",     "Detail: jump to parent epic" },
-      { "F",     "Detail: filter an epic's child issues" },
-      { "c",     "Add comment" },
-      { "a",     "Assign issue" },
-      { "m",     "Move (change status)" },
-      { "> / <", "Move to next / previous board column" },
-      { "V",     "Move issue to a sprint / backlog" },
-      { "S",     "Search Jira" },
-      { "*",     "Pin/unpin selected item" },
-      { "F",     "Sprint Board / Backlog: filter by person" },
-      { "u",     "Filter by user (colleague)" },
-      { "v",     "Pick sprint (incl. past)" },
-      { "p",     "Switch project" },
-      { "b",     "Switch board" },
-      { "R",     "Refresh" },
-      { "o",     "Open issue in browser" },
-      { "O",     "Open board in browser" },
-      { "Tab",   "Next section (in a ticket: next tab)" },
-      { "S-Tab", "Prev section (in a ticket: prev tab)" },
-      { "⇥ / ⇤", "Detail: Overview · Comments · Pull requests" },
-      { "H/L",   "Previous/next tab" },
-      { "{/}",   "Previous/next tab" },
-      { "S-←",   "Focus sidebar" },
-      { "q/Esc", "Close" },
-    }
-  else
-    keys = {
-      { "↵",     "Open PR detail" },
-      { "a",     "Approve PR" },
-      { "C",     "Request changes" },
-      { "c",     "Comment on PR" },
-      { "r",     "Reply to comment under cursor (PR detail)" },
-      { "d",     "View diff" },
-      { "F",     "Changed-files tree (↵ opens diff at file)" },
-      { "U",     "Diff of new commits since your review" },
-      { "D",     "Mark ready for review" },
-      { "m",     "Merge (squash)" },
-      { "x",     "Checkout branch" },
-      { "+",     "Create new PR" },
-      { "S",     "Search GitHub" },
-      { "*",     "Pin/unpin selected item" },
-      { "R",     "Refresh" },
-      { "o",     "Open in browser" },
-      { "Tab",   "Next section (in a PR: next tab)" },
-      { "S-Tab", "Prev section (in a PR: prev tab)" },
-      { "⇥ / ⇤", "Detail: Overview · Conversation · Checks · Files" },
-      { "↵",     "Detail Files: open the diff at that file" },
-      { "H/L",   "Previous/next tab" },
-      { "{/}",   "Previous/next tab" },
-      { "S-←",   "Focus sidebar" },
-      { "q/Esc", "Close" },
-    }
+  local groups = key_groups(key_context())
+  local key_w = 0
+  for _, g in ipairs(groups) do
+    for _, e in ipairs(g[2]) do key_w = math.max(key_w, vim.fn.strdisplaywidth(e[1])) end
   end
-
-  local lines = { "", "  Keybindings (" .. current_section_label() .. ")", "" }
-  for _, k in ipairs(keys) do
-    lines[#lines + 1] = "   " .. render.pad(k[1], 7) .. " " .. k[2]
+  local lines, marks = { "" }, {}
+  local function add(text, hl_spans)
+    lines[#lines + 1] = text
+    for _, h in ipairs(hl_spans or {}) do marks[#marks + 1] = { #lines - 1, h[1], h[2], h[3] } end
   end
-  lines[#lines + 1] = ""
+  for gi, g in ipairs(groups) do
+    if gi > 1 then add("") end
+    add("  " .. g[1], { { 2, 2 + #g[1], "DevOpsSection" } })
+    for _, e in ipairs(g[2]) do
+      local k = "    " .. e[1] .. string.rep(" ", key_w - vim.fn.strdisplaywidth(e[1])) .. "   "
+      local spans = { { 4, 4 + #e[1], "DevOpsKey" } }
+      if e[4] then spans[#spans + 1] = { #k + #e[3] + 2, #k + #e[3] + 5, "DevOpsDim" } end
+      add(k .. e[3] .. (e[4] and "  ·" or ""), spans)
+    end
+  end
+  add("")
+  add("  · = shown in the footer", { { 2, 25, "DevOpsDim" } })
 
+  local w = 0
+  for _, l in ipairs(lines) do w = math.max(w, vim.fn.strdisplaywidth(l)) end
+  w = math.min(w + 3, vim.o.columns - 6)
+  local h = math.min(#lines, vim.o.lines - 6)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
-  local w = 44
-  local h = #lines
+  local hns = vim.api.nvim_create_namespace("DevOpsHelp")
+  for _, m in ipairs(marks) do
+    pcall(vim.api.nvim_buf_set_extmark, buf, hns, m[1], m[2], { end_col = m[3], hl_group = m[4] })
+  end
   local win = vim.api.nvim_open_win(buf, true, {
     relative = "editor", width = w, height = h,
-    row = math.floor((vim.o.lines - h) / 2),
+    row = math.floor((vim.o.lines - h) / 2) - 1,
     col = math.floor((vim.o.columns - w) / 2),
-    style = "minimal", border = "rounded",
-    title = " Help (press any key) ", title_pos = "center",
+    style = "minimal", border = "rounded", zindex = 60,
+    title = { { " Keys · " .. current_section_label() .. (state.in_detail and " · detail" or "") .. " ", "DevOpsTitle" } },
+    title_pos = "center",
+    footer = { { " q close ", "DevOpsDim" } }, footer_pos = "center",
   })
-  local function close_help() vim.api.nvim_win_close(win, true) end
-  vim.keymap.set("n", "q", close_help, { buffer = buf })
-  vim.keymap.set("n", "<C-d>", close_help, { buffer = buf })
-  vim.keymap.set("n", "<Esc>", close_help, { buffer = buf })
-  vim.keymap.set("n", "?", close_help, { buffer = buf })
-  vim.api.nvim_create_autocmd("BufLeave", {
-    buffer = buf, once = true,
-    callback = function() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end end,
-  })
+  vim.wo[win].winhighlight = "Normal:Normal,FloatBorder:DevOpsBorderActive,FloatTitle:DevOpsTitle"
+  local function close_help() if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end end
+  for _, k in ipairs({ "q", "<C-d>", "<Esc>", "?" }) do
+    vim.keymap.set("n", k, close_help, { buffer = buf, nowait = true })
+  end
+  vim.api.nvim_create_autocmd("BufLeave", { buffer = buf, once = true, callback = function() vim.schedule(close_help) end })
 end
 
 ---------------------------------------------------------------------------
@@ -2912,6 +3323,7 @@ end
 ---------------------------------------------------------------------------
 local function close()
   stop_spinner()
+  watch.stop()
   vim.schedule(function()
     pcall(vim.api.nvim_clear_autocmds, { group = "DevOpsWin" })
     for _, w in ipairs({ state.sidebar.win, state.content.win, state.footer.win }) do
@@ -2948,7 +3360,7 @@ end
 -- Float layout geometry, derived from the current editor size.
 local function float_geometry()
   local total = vim.o.columns - 2
-  local footer_h = 2
+  local footer_h = 1
   local height = vim.o.lines - 2 - footer_h - 2 -- room for footer + gap
   local sw = 32
   return total, footer_h, height, sw, total - sw - 3
@@ -3105,6 +3517,9 @@ function setup_keymaps()
   map("F", dispatch_F, "sprint people filter / changed files tree")
   map("U", gh_since_review, "diff since my review")
   map("x", gh_checkout, "checkout PR")
+  map("J", pr_jira, "open the PR's Jira ticket")
+  map("r", rerun_run, "re-run workflow run")
+  map("B", jira_branch, "branch from issue")
   -- Toggles
   map("s", toggle_scope, "toggle scope")
   map("h", toggle_done, "toggle done")
@@ -3289,6 +3704,22 @@ local function prefetch_other_sections()
   end
 end
 
+-- Test hooks (headless spec drives these flows with stubbed pickers).
+M._actions = { jira_create = jira_create, jira_branch = jira_branch }
+M._check_status = github_check_status
+M._readiness = pr_readiness
+M._search_org = search_org
+M._cache_set = cache_set
+M._set_token_orgs = function(o) state._token_orgs = o end
+M._key_groups = key_groups
+M._footer_keys = footer_keys
+M._run_icon = run_icon
+-- Step aside (float layout only) so a file can open in a regular window.
+function M.hide_float()
+  if is_open() and state.layout == "float" then hide() end
+end
+M._refuse_own = refuse_own
+
 function M.open(layout)
   layout = layout or config.options.layout or "float"
 
@@ -3335,6 +3766,7 @@ function M.open(layout)
   state.gh_notif_count = 0
   state.bookmarks = store.load_bookmarks()
   warm_cwd_repo() -- async-resolve cwd→repo so PR search never blocks on it
+  warm_search_org() -- the token account's org, for the org-scoped PR search
 
   if layout == "tab" then open_tab_windows() else open_float_windows() end
   vim.wo[state.sidebar.win].cursorline = true

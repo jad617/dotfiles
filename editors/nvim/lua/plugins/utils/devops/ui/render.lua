@@ -284,7 +284,7 @@ function M.pick_diff_theme(on_change)
     draw()
     finish(true)
   end, o)
-  for _, k in ipairs({ "q", "<Esc>", "T" }) do
+  for _, k in ipairs({ "q", "<C-d>", "<Esc>", "T" }) do
     vim.keymap.set("n", k, function() finish(false) end, o)
   end
 end
