@@ -321,16 +321,17 @@ local function render_footer()
 
   if state.in_detail then
     -- Detail view footer
+    local tab_key = detail.tabs_enabled() and "⇥/⇤ detail tab" or "Tab section"
     if state.detail_kind == "jira" then
       groups = {
-        { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
+        { "Navigate", { "q back", "BS back", tab_key, "H/L tabs" } },
         { "Actions",  { "c comment", "e edit", "a assign", "V to sprint", "o browser" } },
         { "Jira",     { "↵ open link", "P parent/epic", "F filter children", "R refresh", "r reply", "v sprint", "? help" } },
         { "Window",   { "Q close" } },
       }
     else
       groups = {
-        { "Navigate", { "q back", "BS back", "Tab section", "H/L tabs" } },
+        { "Navigate", { "q back", "BS back", tab_key, "H/L tabs" } },
         { "Actions",  { "a approve", "C changes", "c comment", "r reply", "d diff", "F files", "U since review" } },
         { "PR",       { "R refresh", "D ready", "x checkout", "m merge", "o browser", "gx links" } },
         { "Window",   { "? help", "Q close" } },
@@ -570,8 +571,9 @@ local function render_jira(issues, assignee_name, columns, title_override, opts)
     local reserve = #indent + 4 + max_key + 2
     if show_status then
       cat = f.status and f.status.statusCategory and f.status.statusCategory.key
-      status_str = render.pad(render.truncate(f.status and f.status.name or "", 13), 13)
-      reserve = reserve + 15
+      local sname = f.status and f.status.name or ""
+      status_str = render.fit(render.status_icon(sname, cat) .. " " .. sname, 15)
+      reserve = reserve + 17
     end
     local who_str
     if opts.show_assignee then
@@ -590,7 +592,7 @@ local function render_jira(issues, assignee_name, columns, title_override, opts)
     local lidx = #lines - 1
     local key_start = #prefix
     hls[#hls + 1] = { line = lidx, col_start = key_start, col_end = key_start + #key, hl = "DevOpsId" }
-    hls[#hls + 1] = { line = lidx, col_start = #indent, col_end = #indent + #icon, hl = "DevOpsIcon" }
+    hls[#hls + 1] = { line = lidx, col_start = #indent, col_end = #indent + #icon, hl = render.issue_icon_hl(f.issuetype and f.issuetype.name) }
     local col = key_start + #keypad + 2
     if show_status then
       hls[#hls + 1] = { line = lidx, col_start = col, col_end = col + #status_str, hl = render.status_hl(cat) }
@@ -894,6 +896,7 @@ local function render_bookmarks(tab_id)
       local lidx = #lines - 1
       local key_start = #("  " .. icon .. "  ")
       hls[#hls + 1] = { line = lidx, col_start = key_start, col_end = key_start + #key, hl = "DevOpsId" }
+      hls[#hls + 1] = { line = lidx, col_start = 2, col_end = 2 + #icon, hl = render.issue_icon_hl(bm.type_name) }
       rows[#lines] = { kind = "jira", key = bm.key, id = bm.id, title = bm.title, type_name = bm.type_name }
     elseif bm.kind == "pr" then
       local num = "#" .. tostring(bm.number or "?")
@@ -1391,6 +1394,8 @@ local function open_detail()
   if state.in_detail then
     -- Follow a Linked PR / Linked Jira Issue / Parent / Child row; Back returns here.
     local row = vim.api.nvim_win_get_cursor(state.content.win)[1]
+    local file = detail.file_at(state.content.buf, row)
+    if file then return detail.open_pr_file(file) end
     local link = detail.link_at(state.content.buf, row)
     if not link then return end
     if link.kind == "jira_link" then return follow_jira_link(link) end
@@ -1681,6 +1686,7 @@ local function jira_comment()
   if not state.in_detail then
     nav_push()
     state.detail_kind = "jira"
+    detail.set_tab(item.key, "comments")
     detail.load_issue(item.key, {
       content_win = state.content.win,
       on_ready = function(b, make_keys)
@@ -2010,10 +2016,6 @@ local function jira_search()
     return " 🔍 Jira [" .. scope_label .. "]  C-t: toggle "
   end
 
-  -- Highlight groups matching Snacks picker style
-  vim.api.nvim_set_hl(0, "DevOpsSearchBorder", { fg = "#ff9e64" })
-  vim.api.nvim_set_hl(0, "DevOpsSearchTitle", { fg = "#c27fd7", bold = true })
-  vim.api.nvim_set_hl(0, "DevOpsSearchNormal", { bg = "#242b38" })
 
   local input_win = vim.api.nvim_open_win(input_buf, true, {
     relative = "win", win = state.content.win,
@@ -2142,9 +2144,6 @@ local function gh_search()
     return " 🔍 GitHub [" .. scope_label .. "]  C-t: toggle "
   end
 
-  vim.api.nvim_set_hl(0, "DevOpsSearchBorder", { fg = "#ff9e64" })
-  vim.api.nvim_set_hl(0, "DevOpsSearchTitle", { fg = "#c27fd7", bold = true })
-  vim.api.nvim_set_hl(0, "DevOpsSearchNormal", { bg = "#242b38" })
 
   local input_win = vim.api.nvim_open_win(input_buf, true, {
     relative = "win", win = state.content.win,
@@ -2566,8 +2565,9 @@ local function show_help()
       { "R",     "Refresh" },
       { "o",     "Open issue in browser" },
       { "O",     "Open board in browser" },
-      { "Tab",   "Next section" },
-      { "S-Tab", "Prev section" },
+      { "Tab",   "Next section (in a ticket: next tab)" },
+      { "S-Tab", "Prev section (in a ticket: prev tab)" },
+      { "⇥ / ⇤", "Detail: Overview · Comments · Pull requests" },
       { "H/L",   "Previous/next tab" },
       { "{/}",   "Previous/next tab" },
       { "S-←",   "Focus sidebar" },
@@ -2593,8 +2593,9 @@ local function show_help()
       { "R",     "Refresh" },
       { "o",     "Open issue in browser" },
       { "O",     "Open board in browser" },
-      { "Tab",   "Next section" },
-      { "S-Tab", "Prev section" },
+      { "Tab",   "Next section (in a ticket: next tab)" },
+      { "S-Tab", "Prev section (in a ticket: prev tab)" },
+      { "⇥ / ⇤", "Detail: Overview · Comments · Pull requests" },
       { "H/L",   "Previous/next tab" },
       { "{/}",   "Previous/next tab" },
       { "S-←",   "Focus sidebar" },
@@ -2618,8 +2619,10 @@ local function show_help()
       { "*",     "Pin/unpin selected item" },
       { "R",     "Refresh" },
       { "o",     "Open in browser" },
-      { "Tab",   "Next section" },
-      { "S-Tab", "Prev section" },
+      { "Tab",   "Next section (in a PR: next tab)" },
+      { "S-Tab", "Prev section (in a PR: prev tab)" },
+      { "⇥ / ⇤", "Detail: Overview · Conversation · Checks · Files" },
+      { "↵",     "Detail Files: open the diff at that file" },
       { "H/L",   "Previous/next tab" },
       { "{/}",   "Previous/next tab" },
       { "S-←",   "Focus sidebar" },
@@ -3057,6 +3060,7 @@ function setup_keymaps()
   map("{", function() switch_tab(-1) end, "previous tab")
   map("}", function() switch_tab(1) end, "next tab")
   map("<CR>", open_detail, "open")
+  map("<2-LeftMouse>", open_detail, "open")
   map("R", function()
     gh.clear_diff_cache()
     api.clear_sprint_cache()

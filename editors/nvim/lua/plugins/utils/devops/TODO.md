@@ -45,10 +45,25 @@ Backlog of fixes and improvements. Priority: 🔴 bug/correctness · 🟠 Jira U
 - [x] **Comment drafts** — cancelled comments are kept in `drafts.json` and restored.
 - [x] **Jira ↔ PR links** — keys from PR branch/title/body; `↵` on a linked row opens it,
       `BS` goes back.
+- [x] **Paged diff viewer** — one file per page (other files folded away). Each pane title
+      shows the file path · side, and a new or deleted file shows a "∅" placeholder on
+      the empty pane. An END/TOP banner marks the edge of each file and is pinned to the
+      bottom on short files. At the edge, the first scroll stops; `ui.diff_overscroll`
+      more scrolls (default 2) flip to the next or previous file. `gg`/`G` stay inside the
+      file and `]f`/`[f` jump between files. Diff buffers (`ft=devops_diff`) are exempt
+      from scrollEOF and `scrolloffpad`.
 
 ## ⚪ Polish
 - [x] **Error float** — failures open a red float instead of a fleeting notify.
 - [x] **`NVIM_READONLY_STATE=1`** — test runs never write state/drafts/workspaces.
+- [x] **Theming** — all `DevOps*` groups live in `ui/theme.lua`, set with `default = true`
+      so colorschemes/users can override; `ui = { theme = "auto" }` follows the colorscheme,
+      `ui.highlights` overrides any group, `ui.issue_types` / `ui.status_icons` set icons.
+- [x] **Visual polish** — status/state pills in headers, chips for labels/components/fix
+      versions, type-coloured issue icons, priority icons, status icons in list rows.
+- [x] **Detail tabs** — `Tab`/`S-Tab` cycle Overview · Comments · Pull requests (Jira) and
+      Overview · Conversation · Checks · Files (PRs); list `c` opens on Comments.
+      `ui.detail_tabs = false` restores the single scroll.
 
 ## 🟢 Performance
 - [x] **Section-cache read warmed at idle** — `dashboard.preload_cache` is scheduled from
