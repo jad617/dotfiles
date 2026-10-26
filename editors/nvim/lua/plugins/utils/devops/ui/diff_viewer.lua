@@ -50,6 +50,7 @@ local function close_windows()
     end
   end
   state.wins, state.bufs, state.file_positions, state.line_map = {}, {}, {}, {}
+  state.page_first, state.page_last, state.on_page, state.tree_goto = nil, nil, nil, nil
   pcall(vim.api.nvim_clear_autocmds, { group = augroup })
 end
 
@@ -68,15 +69,28 @@ local function close()
   state.threads, state.thread_at, state.thread_rows = nil, nil, nil
   state.blame_visible = false
   state.blame_data = {}
+  state.page, state.page_diff = nil, nil
   if state.prev_win and vim.api.nvim_win_is_valid(state.prev_win) then
     vim.api.nvim_set_current_win(state.prev_win)
   end
   state.prev_win = nil
 end
 
+-- Plugins that scroll past the end of the buffer (scrollEOF.nvim pads with the
+-- global 'scrolloff') fight the paged view's clamp, so opt these buffers out.
+local FT = "devops_diff"
+local function exempt_scroll_plugins()
+  local ok, se = pcall(require, "scrollEOF")
+  if ok and type(se.opts) == "table" and type(se.opts.disabled_filetypes) == "table" then
+    se.opts.disabled_filetypes[FT] = true
+  end
+end
+
 local function make_buf()
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].filetype = FT
+  exempt_scroll_plugins()
   return buf
 end
 
@@ -91,7 +105,9 @@ local function set_win_opts(win)
   vim.wo[win].cursorline = true
   vim.wo[win].number = false
   vim.wo[win].signcolumn = "no"
-  vim.wo[win].winhighlight = "FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle,CursorLine:Visual"
+  vim.wo[win].scrolloff = 0
+  pcall(function() vim.wo[win].scrolloffpad = 0 end) -- nvim 0.13+: no padding past EOF
+  vim.wo[win].winhighlight = "FloatBorder:DevOpsBorder,FloatTitle:DevOpsTitle,CursorLine:Visual,Folded:NormalFloat"
 end
 
 local function file_separator(title, width)
@@ -133,23 +149,352 @@ end
 -- Navigation
 ---------------------------------------------------------------------------
 
-local function jump_file(delta)
-  local pos = state.file_positions
-  if #pos == 0 then return end
-  local cur = vim.api.nvim_win_get_cursor(0)[1] - 1
-  local target
-  if delta > 0 then
-    for _, p in ipairs(pos) do
-      if p > cur then target = p; break end
-    end
-    target = target or pos[1]
-  else
-    for i = #pos, 1, -1 do
-      if pos[i] < cur then target = pos[i]; break end
-    end
-    target = target or pos[#pos]
+-- Paged view: only the current file is visible. Everything before/after it sits
+-- in two closed folds drawn as delimiter bars, and moving (or scrolling) past
+-- either edge flips to the adjacent file, so files never bleed into each other.
+-- The buffer itself stays whole, so line_map / threads / blame are unaffected.
+local PAGE_GAP = 3 -- blank "filegap" lines before each file's rules (never shown)
+local paging = false
+
+local function diff_wins()
+  local out = {}
+  for _, key in ipairs({ "unified", "left", "right" }) do
+    local w = state.wins[key]
+    if w and vim.api.nvim_win_is_valid(w) then out[#out + 1] = w end
   end
-  vim.api.nvim_win_set_cursor(0, { target + 1, 0 })
+  return out
+end
+
+-- 1-based inclusive line range of file `i`'s page: its 2 rules, header, 2 rules, hunks.
+local function page_range(i, total)
+  local pos = state.file_positions
+  local first = pos[i] - 1
+  local last = pos[i + 1] and (pos[i + 1] - 2 - PAGE_GAP) or total
+  return first, math.max(first, last)
+end
+
+-- File index owning buffer line `line` (1-based).
+local function page_of(line)
+  local pos = state.file_positions
+  for i = #pos, 1, -1 do
+    if line >= pos[i] - 1 - PAGE_GAP then return i end
+  end
+  return 1
+end
+
+-- Overscroll needed at a page edge before flipping (config ui.diff_overscroll).
+local function overscroll_needed()
+  local ok, cfg = pcall(require, "plugins.utils.devops.config")
+  local n = ok and cfg.options and cfg.options.ui and cfg.options.ui.diff_overscroll
+  return math.max(1, tonumber(n) or 2)
+end
+
+function M._foldtext()
+  return ""
+end
+
+-- End/top banners (virtual lines, so the buffer and line_map are untouched): a
+-- full-width bar under the page's last line ("END a.lua 1/3 … next ▸ b.lua ]f")
+-- and one above its first line, revealed with topfill when scrolling up.
+local ns_page = vim.api.nvim_create_namespace("DevOpsDiffPage")
+local EDGE_H = 2 -- blank spacer + banner
+
+local function file_name(i)
+  local f = state.parsed and state.parsed[i]
+  return f and (f.new_path or f.old_path) or ""
+end
+
+local dw = vim.fn.strdisplaywidth
+local function chunks_w(cs)
+  local n = 0
+  for _, c in ipairs(cs) do n = n + dw(c[1]) end
+  return n
+end
+-- First layout of `layouts` (widest → most compact) that fits in `width`.
+local function fit(layouts, width)
+  for _, l in ipairs(layouts) do
+    if chunks_w(l) <= width then return l end
+  end
+  return layouts[#layouts]
+end
+local function meter(dir)
+  local need = overscroll_needed()
+  local at = state.over and state.over.dir == dir
+  local n = at and state.over.n or 0
+  return string.rep("▰", n) .. string.rep("▱", need - n), at and true or false
+end
+
+-- Context for the marker at edge `dir` ("down" = end of file, "up" = top).
+local function edge_ctx(dir)
+  local i, n = state.page, #state.file_positions
+  local other = dir == "down" and i + 1 or i - 1
+  local bar, hot = meter(dir)
+  return {
+    i = i, n = n, name = file_name(i), bar = bar, hot = hot,
+    has_other = other >= 1 and other <= n,
+    other = file_name(other),
+    key = dir == "down" and "]f" or "[f",
+  }
+end
+
+-- banner -----------------------------------------------------------------
+local function banner_rows(dir, width)
+  local c = edge_ctx(dir)
+  local bg = c.hot and "DevOpsDiffBannerHot" or "DevOpsDiffBanner"
+  local function h(g) return g and { bg, g } or bg end
+  local tag = dir == "down" and (c.has_other and " END " or " END OF DIFF ") or " TOP "
+  local left = { { " " .. tag, h("DevOpsDiffBannerTag") }, { "  ", h() },
+    { c.name, h("DevOpsId") }, { ("  %d/%d"):format(c.i, c.n), h() } }
+  local right
+  if c.has_other then
+    local arrow = dir == "down" and "next ▸ " or "◂ prev "
+    right = fit({
+      { { arrow, h() }, { c.other, h("DevOpsId") }, { "   " .. c.bar .. "  ", h() }, { c.key, h("DevOpsKey") }, { " ", h() } },
+      { { arrow, h() }, { vim.fs.basename(c.other), h("DevOpsId") }, { "  " .. c.bar .. " ", h() }, { c.key, h("DevOpsKey") }, { " ", h() } },
+      { { c.bar .. " ", h() }, { c.key, h("DevOpsKey") }, { " ", h() } },
+    }, math.max(10, width - chunks_w(left) - 2))
+  else
+    right = fit({
+      { { "✓ last file   ", h("DevOpsOk") }, { "[f", h("DevOpsKey") }, { " prev  ", h() }, { "q", h("DevOpsKey") }, { " close ", h() } },
+      { { "✓ ", h("DevOpsOk") } },
+    }, math.max(4, width - chunks_w(left) - 2))
+  end
+  local over = chunks_w(left) + chunks_w(right) - width
+  if over > 0 then left[3][1] = render.truncate(c.name, math.max(3, dw(c.name) - over)) end
+  local row = vim.list_extend(left, { { string.rep(" ", math.max(1, width - chunks_w(left) - chunks_w(right))), h() } })
+  vim.list_extend(row, right)
+  if dir == "down" then return { { { "", "Normal" } }, row } end
+  return { row, { { "", "Normal" } } }
+end
+
+-- Virtual lines drawn under buffer row `row` (1-based), from any namespace
+-- (end banner, review threads). nvim_win_text_height leaves these out when
+-- `row` ends the measured range.
+local function rows_below(buf, row)
+  local n = 0
+  local ok, marks = pcall(vim.api.nvim_buf_get_extmarks, buf, -1, { row - 1, 0 }, { row - 1, -1 }, { details = true })
+  for _, m in ipairs(ok and marks or {}) do
+    if m[4].virt_lines and not m[4].virt_lines_above then n = n + #m[4].virt_lines end
+  end
+  return n
+end
+
+local function paint_cards()
+  if not state.page or not state.page_first then return end
+  for _, w in ipairs(diff_wins()) do
+    local buf = vim.api.nvim_win_get_buf(w)
+    local width = vim.api.nvim_win_get_width(w)
+    vim.api.nvim_buf_clear_namespace(buf, ns_page, 0, -1)
+    local down = banner_rows("down", width)
+    -- Short page: pad so the end marker sits on the window's last row instead
+    -- of floating mid-screen above empty space.
+    local ok_h, th = pcall(vim.api.nvim_win_text_height, w,
+      { start_row = state.page_first - 1, end_row = state.page_last - 1 })
+    local fill = vim.api.nvim_win_call(w, function() return vim.fn.winsaveview().topfill or 0 end)
+    local pad = ok_h and (vim.api.nvim_win_get_height(w) - th.all - rows_below(buf, state.page_last) - #down - fill) or 0
+    for _ = 1, pad do table.insert(down, 1, { { "", "Normal" } }) end
+    state.painted_fill = fill
+    pcall(vim.api.nvim_buf_set_extmark, buf, ns_page, state.page_last - 1, 0, { virt_lines = down })
+    if state.page > 1 then
+      pcall(vim.api.nvim_buf_set_extmark, buf, ns_page, state.page_first - 1, 0,
+        { virt_lines = banner_rows("up", width), virt_lines_above = true })
+    end
+  end
+end
+
+-- Highest topline of window `w` that still fills it with the page, so the end
+-- marker (+ the fold line under it) are the last rows. Counted in screen rows,
+-- so review threads / padding (virtual lines) are accounted for.
+local function max_top(w)
+  local buf = vim.api.nvim_win_get_buf(w)
+  local h = vim.api.nvim_win_get_height(w)
+  local base = rows_below(buf, state.page_last) + (state.page_last < vim.api.nvim_buf_line_count(buf) and 1 or 0)
+  for t = state.page_last, state.page_first + 1, -1 do
+    local ok, th = pcall(vim.api.nvim_win_text_height, w, { start_row = t - 1, end_row = state.page_last - 1 })
+    if (ok and th.all or (state.page_last - t + 1)) + base >= h then return t end
+  end
+  return state.page_first
+end
+
+--- Show file `i` as the page. `where`: "top" (header at the top), "bottom"
+--- (cursor on the last line) or a buffer line to put the cursor on.
+local function show_page(i, where)
+  local pos = state.file_positions
+  local wins = diff_wins()
+  if #pos == 0 or #wins == 0 then return end
+  i = math.max(1, math.min(i, #pos))
+  state.page, state.over = i, nil
+  paging = true
+  -- Unbind while positioning: scrollbind would shift the other pane by the
+  -- (fold-dependent) scroll delta and leak the neighbouring file's bar in.
+  local bound = {}
+  for _, w in ipairs(wins) do
+    bound[w] = vim.wo[w].scrollbind
+    vim.wo[w].scrollbind, vim.wo[w].cursorbind = false, false
+  end
+  for _, w in ipairs(wins) do
+    local total = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(w))
+    local first, last = page_range(i, total)
+    state.page_first, state.page_last = first, last
+    vim.api.nvim_win_call(w, function()
+      vim.wo.foldmethod = "manual"
+      vim.wo.foldenable = true
+      vim.wo.foldlevel = 0
+      vim.wo.foldminlines = 0
+      vim.wo.foldcolumn = "0"
+      vim.wo.fillchars = "fold: ,eob: "
+      vim.wo.foldtext = "v:lua.require'plugins.utils.devops.ui.diff_viewer'._foldtext()"
+      vim.cmd("silent! normal! zE")
+      if first > 1 then vim.cmd(("silent! 1,%dfold"):format(first - 1)) end
+      if last < total then vim.cmd(("silent! %d,%dfold"):format(last + 1, total)) end
+      vim.fn.winrestview({ topfill = 0 })
+    end)
+  end
+  paint_cards()
+  for _, w in ipairs(wins) do
+    local first, last = state.page_first, state.page_last
+    local h = vim.api.nvim_win_get_height(w)
+    local lnum, top
+    if where == "bottom" then
+      lnum, top = last, max_top(w)
+    elseif type(where) == "number" then
+      lnum = math.max(first, math.min(where, last))
+      top = math.max(first, math.min(lnum - math.floor(h / 2), max_top(w)))
+    else
+      lnum, top = math.min(pos[i] + 1, last), first
+    end
+    vim.api.nvim_win_call(w, function()
+      -- `zt` (not winrestview's topline, which gets clamped on a short last
+      -- page) so the bar above is scrolled out of view.
+      vim.api.nvim_win_set_cursor(0, { top, 0 })
+      vim.cmd("normal! zt")
+      vim.api.nvim_win_set_cursor(0, { lnum, 0 })
+      vim.fn.winrestview({ topfill = 0 })
+    end)
+  end
+  for _, w in ipairs(wins) do
+    if bound[w] then vim.wo[w].scrollbind, vim.wo[w].cursorbind = true, true end
+  end
+  paging = false
+  if state.tree_goto then state.tree_goto(i) end
+  if state.on_page then state.on_page() end
+end
+
+-- Overscroll: reaching a page edge is a hard stop (the banner lights up, ▱▱).
+-- After that, N separate scrolls (ui.diff_overscroll) fill the meter and the
+-- Nth flips to the adjacent file. Events within BURST_MS of the last counted
+-- one (wheel momentum, a held j) merge into it, idle time resets the stop, and a cooldown
+-- after a flip keeps momentum from skipping through several files.
+local BURST_MS, RESET_MS, COOLDOWN_MS = 120, 1200, 300
+M._now = function() return vim.uv.hrtime() / 1e6 end
+local over_timer
+local flipped_at = -1e9
+local function arm_reset()
+  over_timer = over_timer or vim.uv.new_timer()
+  over_timer:stop()
+  over_timer:start(RESET_MS, 0, vim.schedule_wrap(function()
+    state.over = nil
+    paint_cards()
+  end))
+end
+
+local function main_win()
+  local w = state.wins.left or state.wins.unified
+  return w and vim.api.nvim_win_is_valid(w) and w or nil
+end
+
+local function overscroll(dir)
+  local now = M._now()
+  if now - flipped_at < COOLDOWN_MS then return end
+  local can = dir == "down" and state.page < #state.file_positions or dir == "up" and state.page > 1
+  if not can then return end
+  local over = state.over
+  if not (over and over.dir == dir and now - over.at < RESET_MS) then
+    state.over = { dir = dir, n = 0, at = now, mark = now } -- the stop
+  else
+    over.at = now
+    -- merge only events right after the last counted one (momentum / key
+    -- repeat); a steady wheel still counts one scroll every BURST_MS
+    if now - over.mark < BURST_MS then return end
+    over.mark = now
+    over.n = over.n + 1
+    if over.n >= overscroll_needed() then
+      state.over, flipped_at = nil, now
+      show_page(state.page + (dir == "down" and 1 or -1), dir == "down" and "top" or "bottom")
+      -- Landed on a page that already fits the window: you're at its edge, so
+      -- that counts as the stop (no scrolling through empty space first).
+      local w = main_win()
+      if w and max_top(w) == state.page_first then
+        state.over = { dir = dir, n = 0, at = now, mark = now }
+        paint_cards()
+        arm_reset()
+      end
+      return
+    end
+  end
+  paint_cards()
+  arm_reset()
+end
+
+-- Keep the view on the page: never scrolled past it — at most a bar sits on the
+-- first/last row. Returns the direction it had to clamp ("up"/"down") or nil.
+local function clamp_view()
+  local main = main_win()
+  if not main then return end
+  local top = vim.api.nvim_win_call(main, function() return vim.fn.line("w0") end)
+  local mt = max_top(main)
+  local dir, clamp
+  if top > mt then dir, clamp = "down", mt
+  elseif top < state.page_first then dir, clamp = "up", state.page_first end
+  if not dir then return end
+  paging = true
+  for _, w in ipairs(diff_wins()) do
+    vim.api.nvim_win_call(w, function()
+      local lnum = math.max(clamp, math.min(vim.fn.line("."), state.page_last))
+      local fill = (dir == "up" and state.page > 1) and EDGE_H or 0
+      vim.fn.winrestview({ topline = clamp, topfill = fill, lnum = lnum })
+    end)
+  end
+  paging = false
+  return dir
+end
+
+-- Cursor stepped onto a bar (j/k past the edge): keep it on the page and count.
+local function on_diff_cursor()
+  if paging or not state.page_first then return end
+  local l = vim.api.nvim_win_get_cursor(0)[1]
+  local dir
+  if l > state.page_last then dir = "down" elseif l < state.page_first then dir = "up" end
+  if not dir then return end
+  paging = true
+  local back = dir == "down" and state.page_last or state.page_first
+  for _, w in ipairs(diff_wins()) do pcall(vim.api.nvim_win_set_cursor, w, { back, 0 }) end
+  paging = false
+  clamp_view()
+  overscroll(dir)
+end
+
+-- View scrolled (wheel, Ctrl-e/y…) past the page: clamp it and count the attempt.
+local function on_diff_scroll()
+  if paging or not state.page_first then return end
+  local dir = clamp_view()
+  if dir then return overscroll(dir) end
+  -- the top marker scrolled in/out of view: re-pad the end marker
+  local w = main_win()
+  local fill = w and vim.api.nvim_win_call(w, function() return vim.fn.winsaveview().topfill or 0 end)
+  if fill and fill ~= state.painted_fill then paint_cards() end
+end
+M._on_scroll = on_diff_scroll
+
+-- Put the cursor on buffer line `line`, switching to its file's page.
+local function goto_line(line)
+  show_page(page_of(line), line)
+end
+
+local function jump_file(delta)
+  local n = #state.file_positions
+  if n == 0 then return end
+  show_page(((state.page or 1) - 1 + delta) % n + 1, "top")
 end
 
 ---------------------------------------------------------------------------
@@ -235,7 +580,6 @@ end
 -- (split: on the commented side, padded on the other so scrollbind stays aligned).
 ---------------------------------------------------------------------------
 local ns_threads = vim.api.nvim_create_namespace("DevOpsDiffThreads")
-vim.api.nvim_set_hl(0, "DevOpsThreadText", { link = "Normal", default = true })
 local MAX_BODY = 8
 
 local function wrap_text(text, width)
@@ -386,13 +730,7 @@ local function jump_thread(delta)
     target = target or rows[#rows]
   end
   vim.api.nvim_set_current_win(focus)
-  for _, key in ipairs({ "unified", "left", "right" }) do
-    local w = state.wins[key]
-    if w and vim.api.nvim_win_is_valid(w) then
-      pcall(vim.api.nvim_win_set_cursor, w, { target, 0 })
-      pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zz") end)
-    end
-  end
+  goto_line(target)
 end
 
 local function reply_thread()
@@ -538,8 +876,7 @@ local function jump_to_comment(c)
       local w = state.wins.right or state.wins.unified or state.wins.left
       if w and vim.api.nvim_win_is_valid(w) then
         vim.api.nvim_set_current_win(w)
-        pcall(vim.api.nvim_win_set_cursor, w, { bl, 0 })
-        pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zz") end)
+        goto_line(bl)
       end
       return
     end
@@ -738,6 +1075,18 @@ local function setup_keymaps(buf)
   map_pane_nav(buf)
   map_buf(buf, "]f", function() jump_file(1) end, "Next file")
   map_buf(buf, "[f", function() jump_file(-1) end, "Prev file")
+  map_buf(buf, "gg", function() show_page(state.page or 1, "top") end, "Top of file")
+  map_buf(buf, "G", function() show_page(state.page or 1, "bottom") end, "Bottom of file")
+  vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = on_diff_cursor })
+  vim.api.nvim_create_autocmd("WinScrolled", {
+    group = augroup,
+    callback = function()
+      for id in pairs(vim.v.event or {}) do
+        local w = tonumber(id)
+        if w and vim.api.nvim_win_get_buf(w) == buf then return on_diff_scroll() end
+      end
+    end,
+  })
   -- Open in browser at current file/line position
   if state.pr then
     map_buf(buf, "o", function()
@@ -1020,6 +1369,22 @@ local function build_unified(files, total_w)
   return lines, marks, file_positions, line_map
 end
 
+-- Pane title: the current file's path (trimmed from the left to fit) · side.
+local function pane_title(win, side, base)
+  pcall(function()
+    local path = state.page and file_name(state.page) or ""
+    local room = vim.api.nvim_win_get_width(win) - #side - 9
+    if vim.fn.strdisplaywidth(path) > room then
+      path = "…" .. vim.fn.strcharpart(path, vim.fn.strchars(path) - math.max(1, room - 1))
+    end
+    local cfg = vim.api.nvim_win_get_config(win)
+    cfg.title = path ~= "" and { { " " .. path, "DevOpsTitle" }, { " · " .. side .. " ", "DevOpsDim" } }
+      or (" " .. base .. " · " .. side .. " ")
+    cfg.title_pos = "center"
+    vim.api.nvim_win_set_config(win, cfg)
+  end)
+end
+
 local function render_unified()
   close_windows()
   local files = state.parsed or {}
@@ -1051,7 +1416,10 @@ local function render_unified()
   state.wins.unified = win
   set_win_opts(win)
   setup_keymaps(buf)
+  local base = state.title ~= "" and state.title or "Diff"
+  state.on_page = function() pane_title(win, "unified", base) end
   render_footer(total_w, total_h + 2)
+  show_page(state.page or 1, "top")
   render_tree_pane(total_h)
 end
 
@@ -1059,11 +1427,22 @@ end
 -- Split
 ---------------------------------------------------------------------------
 
+-- "new" / "deleted" / nil, from the git headers.
+local function file_kind(file)
+  for _, h in ipairs(file.headers or {}) do
+    if h:match("^new file mode") or h == "--- /dev/null" then return "new" end
+    if h:match("^deleted file mode") or h == "+++ /dev/null" then return "deleted" end
+  end
+end
+
+local ns_placeholder = vim.api.nvim_create_namespace("DevOpsDiffPlaceholder")
+
 local function build_split_data(files, pane_width)
   local left, right = {}, {}
   local left_marks, right_marks = {}, {}
   local file_pos = {}
   local line_map = {}
+  local placeholders = {} -- { side = "left"|"right", line = 0-based, text }
 
   local function add(fpath, lhs, rhs, ltype, rtype, map_line)
     left[#left + 1] = lhs or ""
@@ -1096,6 +1475,12 @@ local function build_split_data(files, pane_width)
       local rule = sep_rule(pane_width)
       add(nil, rule, rule, "sep", "sep")
       add(nil, rule, rule, "sep", "sep")
+    end
+    local kind = file_kind(file)
+    if kind == "new" then
+      placeholders[#placeholders + 1] = { side = "left", line = #left, text = "new file · no previous version" }
+    elseif kind == "deleted" then
+      placeholders[#placeholders + 1] = { side = "right", line = #right, text = "file deleted" }
     end
 
     for hi, hunk in ipairs(file.hunks or {}) do
@@ -1154,7 +1539,7 @@ local function build_split_data(files, pane_width)
     end
   end
 
-  return left, right, left_marks, right_marks, file_pos, line_map
+  return left, right, left_marks, right_marks, file_pos, line_map, placeholders
 end
 
 local function render_split()
@@ -1163,7 +1548,7 @@ local function render_split()
   local off = tree_off()
   local total_w = vim.o.columns - 4 - off
   local left_w = math.floor(total_w / 2)
-  local left_lines, right_lines, left_marks, right_marks, file_pos, line_map = build_split_data(files, left_w)
+  local left_lines, right_lines, left_marks, right_marks, file_pos, line_map, placeholders = build_split_data(files, left_w)
   state.file_positions = file_pos
   state.line_map = line_map
   local right_w = total_w - left_w
@@ -1175,6 +1560,11 @@ local function render_split()
   set_lines(right_buf, right_lines)
   apply_marks(left_buf, left_marks)
   apply_marks(right_buf, right_marks)
+  for _, ph in ipairs(placeholders) do
+    pcall(vim.api.nvim_buf_set_extmark, ph.side == "left" and left_buf or right_buf, ns_placeholder, ph.line, 0, {
+      virt_text = { { "  ∅  " .. ph.text, "DevOpsDim" } }, virt_text_pos = "overlay",
+    })
+  end
 
   local base = state.title ~= "" and state.title or "Diff"
   local left_win = vim.api.nvim_open_win(left_buf, true, {
@@ -1202,31 +1592,9 @@ local function render_split()
     setup_keymaps(buf)
   end
 
-  -- Dynamic title showing current file
   local function update_titles()
-    local line = 1
-    if left_win and vim.api.nvim_win_is_valid(left_win) then
-      line = vim.api.nvim_win_get_cursor(left_win)[1]
-    end
-    local current_file = ""
-    for _, fp in ipairs(file_pos) do
-      if fp + 1 <= line then
-        current_file = (left_lines[fp + 1] or ""):match("^%s*(.-)%s*$") or ""
-      end
-    end
-    local suffix = current_file ~= "" and (" · " .. current_file) or ""
-    pcall(function()
-      local cfg = vim.api.nvim_win_get_config(left_win)
-      cfg.title = " " .. base .. suffix .. " · old "
-      cfg.title_pos = "center"
-      vim.api.nvim_win_set_config(left_win, cfg)
-    end)
-    pcall(function()
-      local cfg = vim.api.nvim_win_get_config(right_win)
-      cfg.title = " " .. base .. suffix .. " · new "
-      cfg.title_pos = "center"
-      vim.api.nvim_win_set_config(right_win, cfg)
-    end)
+    pane_title(left_win, "old", base)
+    pane_title(right_win, "new", base)
   end
 
   for _, buf in ipairs({ left_buf, right_buf }) do
@@ -1234,8 +1602,9 @@ local function render_split()
       group = augroup, buffer = buf, callback = update_titles,
     })
   end
-  update_titles()
+  state.on_page = update_titles
   render_footer(vim.o.columns - 2, total_h + 2)
+  show_page(state.page or 1, "top")
   render_tree_pane(total_h)
 end
 
@@ -1345,18 +1714,14 @@ render_tree_pane = function(total_h)
 
   -- Move every diff pane to file `idx` (programmatic cursor sets don't trigger
   -- scrollbind, so set all of them).
-  local function jump()
+  -- Show the file under the cursor as the page, header at the top. `force`
+  -- re-shows the current file too (↵ / l); plain cursor moves skip it so
+  -- re-entering the tree doesn't reset the diff's scroll position.
+  local function jump(force)
     local r = current()
     if not r or r.dir then return end
-    local pos = state.file_positions[r.idx]
-    if not pos then return end
-    for _, key in ipairs({ "unified", "left", "right" }) do
-      local w = state.wins[key]
-      if w and vim.api.nvim_win_is_valid(w) then
-        pcall(vim.api.nvim_win_set_cursor, w, { pos + 1, 0 })
-        pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zt") end)
-      end
-    end
+    if not force and r.idx == state.page then return end
+    show_page(r.idx, "top")
   end
   local function focus_diff()
     for _, key in ipairs({ "left", "unified" }) do
@@ -1394,13 +1759,13 @@ render_tree_pane = function(total_h)
     local r = current()
     if not r then return end
     if r.dir then set_collapsed(r.path, not state.tree_collapsed[r.path])
-    else jump() focus_diff() end
+    else jump(true) focus_diff() end
   end, "Open file / toggle dir")
   map_buf(buf, "l", function()
     local r = current()
     if not r then return end
     if r.dir then set_collapsed(r.path, false)
-    else jump() focus_diff() end
+    else jump(true) focus_diff() end
   end, "Expand / open")
   map_buf(buf, "h", function()
     local r = current()
@@ -1412,28 +1777,27 @@ render_tree_pane = function(total_h)
       if parent then goto_path(parent, true) end
     end
   end, "Collapse / parent")
-  vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = jump })
+  vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = function() jump() end })
 
   rebuild()
-  -- Park on the requested file (e.g. from the 'F' picker via state.pending_focus)
-  -- or the first file, and focus the tree. Jump the diff there now so the deferred
-  -- CursorMoved can't clobber it back to file 1.
+  -- Keep the tree's cursor on the page's file when the diff flips pages.
+  state.tree_goto = function(idx)
+    if not vim.api.nvim_win_is_valid(win) or vim.api.nvim_get_current_win() == win then return end
+    local r = current()
+    if r and r.idx == idx then return end
+    for line, row in pairs(rows) do
+      if not row.dir and row.idx == idx then
+        pcall(vim.api.nvim_win_set_cursor, win, { line, 0 })
+        return
+      end
+    end
+  end
+  -- Park on the current page's file and focus the tree.
   local park
-  if state.pending_focus then
-    for line, r in pairs(rows) do
-      if not r.dir and r.idx == state.pending_focus then park = line break end
-    end
-    state.pending_focus = nil -- consumed
+  for line, r in pairs(rows) do
+    if not r.dir and r.idx == state.page then park = line break end
   end
-  if not park then
-    for line, r in pairs(rows) do
-      if not r.dir and (not park or line < park) then park = line end
-    end
-  end
-  if park then
-    pcall(vim.api.nvim_win_set_cursor, win, { park, 0 })
-    jump()
-  end
+  if park then pcall(vim.api.nvim_win_set_cursor, win, { park, 0 }) end
   vim.api.nvim_set_current_win(win)
 end
 
@@ -1507,9 +1871,14 @@ function M.open(diff_text, title, opts)
   state.diff_text = diff_text or ""
   state.title = title or "Diff"
   state.parsed = parse_diff(state.diff_text)
-  -- Requested file to land on (e.g. from the 'F' picker). When the tree is shown,
-  -- render_tree_pane consumes this (parks + jumps); otherwise we position below.
-  state.pending_focus = opts.focus_file
+  -- Page to show: the requested file (e.g. from the 'F' picker / Files tab), the
+  -- current one on a re-render of the same diff (Tab, resize), else the first.
+  if opts.focus_file then
+    state.page = opts.focus_file
+  elseif state.page_diff ~= state.diff_text then
+    state.page = 1
+  end
+  state.page_diff = state.diff_text
   if opts.pr then
     if not (state.pr and state.pr.repo == opts.pr.repo and state.pr.number == opts.pr.number) then
       state.threads = nil
@@ -1525,21 +1894,6 @@ function M.open(diff_text, title, opts)
   if reapply_blame and state.pr then
     state.blame_visible = false
     toggle_blame()
-  end
-  -- Tree hidden → position the diff on the requested file here (the tree path
-  -- handles it when visible, and clears state.pending_focus).
-  if state.pending_focus then
-    local pos = state.file_positions[state.pending_focus]
-    if pos then
-      for _, key in ipairs({ "unified", "left", "right" }) do
-        local w = state.wins[key]
-        if w and vim.api.nvim_win_is_valid(w) then
-          pcall(vim.api.nvim_win_set_cursor, w, { pos + 1, 0 })
-          pcall(vim.api.nvim_win_call, w, function() vim.cmd("normal! zt") end)
-        end
-      end
-    end
-    state.pending_focus = nil
   end
   refresh_virt_all() -- pending 💬 markers + review threads (also after Tab/resize)
   if opts.pr then load_threads() end

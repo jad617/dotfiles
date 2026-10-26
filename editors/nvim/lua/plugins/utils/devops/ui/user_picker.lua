@@ -8,6 +8,7 @@
 ---------------------------------------------------------------------------
 
 local M = {}
+require("plugins.utils.devops.ui.render") -- defines the DevOps* highlight groups
 local api = require("plugins.utils.devops.jira.api")
 local ns = vim.api.nvim_create_namespace("devops_user_picker")
 
@@ -38,12 +39,6 @@ function M.open(on_select, opts)
   row = math.max(1, row)
   local col = math.floor((vim.o.columns - w) / 2)
 
-  -- Snacks-style highlights for the picker
-  vim.api.nvim_set_hl(0, "DevOpsPickerNormal", { fg = "#e06c75", bg = "#242b38" })
-  vim.api.nvim_set_hl(0, "DevOpsPickerBorder", { fg = "#ff9e64", bg = "#242b38" })
-  vim.api.nvim_set_hl(0, "DevOpsPickerTitle", { fg = "#c27fd7", bg = "#242b38", bold = true })
-  vim.api.nvim_set_hl(0, "DevOpsPickerCursorLine", { bg = "#98C379", fg = "#282c34", bold = true })
-  vim.api.nvim_set_hl(0, "DevOpsPickerDim", { fg = "#565f89", bg = "#242b38" })
 
   local input_win = vim.api.nvim_open_win(input_buf, true, {
     relative = "editor",
