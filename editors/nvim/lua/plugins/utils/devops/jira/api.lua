@@ -44,14 +44,11 @@ end
 -- Max issues fetched across pages for a single view (safety cap).
 local MAX_ISSUES = 1000
 
--- List issues, following nextPageToken so big sprints/lists aren't truncated.
--- opts = { account_id, project_key, sprint_id, open_sprints, scope_project, include_done }.
-function M.search(opts, cb)
-  local jql = M.build_jql(opts)
-  local page = config.options.jira.page_size or 100
+-- Run a JQL query, following nextPageToken up to MAX_ISSUES. cb(ok, issues[], err)
+function M.search_all(jql, page, cb)
   local all = {}
   local function fetch(token)
-    local body = { jql = jql, fields = LIST_FIELDS, maxResults = page }
+    local body = { jql = jql, fields = LIST_FIELDS, maxResults = page or 100 }
     if token then body.nextPageToken = token end
     client.post("/rest/api/3/search/jql", body, function(ok, data, err)
       if not ok then return cb(false, nil, err) end
@@ -67,29 +64,16 @@ function M.search(opts, cb)
   fetch(nil)
 end
 
+-- List issues (big sprints/lists aren't truncated).
+-- opts = { account_id, project_key, sprint_id, open_sprints, scope_project, include_done }.
+function M.search(opts, cb)
+  M.search_all(M.build_jql(opts), config.options.jira.page_size or 100, cb)
+end
+
 -- Child issues of an epic (or sub-tasks of a story), in board rank order — what
--- Jira's web "Child issues" panel shows. Pages through big epics. cb(ok, issues[], err)
+-- Jira's web "Child issues" panel shows. cb(ok, issues[], err)
 function M.children(parent_key, cb)
-  local all = {}
-  local function fetch(token)
-    local body = {
-      jql = 'parent = "' .. parent_key .. '" ORDER BY rank ASC',
-      fields = LIST_FIELDS,
-      maxResults = 100,
-    }
-    if token then body.nextPageToken = token end
-    client.post("/rest/api/3/search/jql", body, function(ok, data, err)
-      if not ok then return cb(false, nil, err) end
-      vim.list_extend(all, (data and data.issues) or {})
-      local next_token = data and data.nextPageToken
-      if next_token and #all < MAX_ISSUES then
-        fetch(next_token)
-      else
-        cb(true, all, nil)
-      end
-    end)
-  end
-  fetch(nil)
+  M.search_all('parent = "' .. parent_key .. '" ORDER BY rank ASC', 100, cb)
 end
 
 function M.epics(project_key, filter, cb)
@@ -101,30 +85,14 @@ function M.epics(project_key, filter, cb)
   elseif filter.account_id and filter.account_id ~= "" then
     jql = jql .. ' AND assignee = "' .. filter.account_id .. '"'
   end
-  local body = {
-    jql = jql .. " ORDER BY updated DESC",
-    fields = LIST_FIELDS,
-    maxResults = config.options.jira.page_size or 50,
-  }
-  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
-    if not ok then return cb(false, nil, err) end
-    cb(true, (data and data.issues) or {}, nil)
-  end)
+  M.search_all(jql .. " ORDER BY updated DESC", config.options.jira.page_size or 100, cb)
 end
 
 -- JQL backlog fallback (when no Agile board). cb(ok, issues[], err)
 function M.backlog(project_key, account_id, cb)
   local jql = 'project = "' .. project_key .. '" AND sprint is EMPTY AND statusCategory != Done'
   if account_id and account_id ~= "" then jql = jql .. ' AND assignee = "' .. account_id .. '"' end
-  local body = {
-    jql = jql .. " ORDER BY updated DESC",
-    fields = LIST_FIELDS,
-    maxResults = 100,
-  }
-  client.post("/rest/api/3/search/jql", body, function(ok, data, err)
-    if not ok then return cb(false, nil, err) end
-    cb(true, (data and data.issues) or {}, nil)
-  end)
+  M.search_all(jql .. " ORDER BY updated DESC", 100, cb)
 end
 
 -- Agile board backlog — matches Jira's Backlog view (unscheduled + future-sprint

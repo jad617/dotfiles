@@ -19,6 +19,8 @@ local state = {
   file_positions = {},
   -- PR review context (nil when viewing non-PR diffs)
   pr = nil,       -- { repo = "owner/repo", number = 123 }
+  viewed = {},    -- [path] = true for files marked "Viewed" on the PR
+  pr_node_id = nil,
   line_map = {},   -- [buf_line_1indexed] = { path = "...", line = N, kind = "add"|"del"|"ctx" }
   pending_comments = {}, -- { { path, line, body }, ... }
   blame_visible = false,
@@ -51,6 +53,7 @@ local function close_windows()
   end
   state.wins, state.bufs, state.file_positions, state.line_map = {}, {}, {}, {}
   state.page_first, state.page_last, state.on_page, state.tree_goto = nil, nil, nil, nil
+  state.tree_refresh = nil
   pcall(vim.api.nvim_clear_autocmds, { group = augroup })
 end
 
@@ -65,6 +68,7 @@ local function close()
   close_windows()
   state.mode = "split"
   state.pr = nil
+  state.viewed, state.pr_node_id, state.pr_author = {}, nil, nil
   state.pending_comments = {}
   state.threads, state.thread_at, state.thread_rows = nil, nil, nil
   state.blame_visible = false
@@ -466,6 +470,14 @@ local function on_diff_cursor()
   local dir
   if l > state.page_last then dir = "down" elseif l < state.page_first then dir = "up" end
   if not dir then return end
+  -- A jump into another file (search /?nN, marks, :N) lands past the edge inside
+  -- an opened fold (or mid-fold); j/k only reach the closed fold's first line.
+  local fc = vim.fn.foldclosed(l)
+  local far = (dir == "down" and l > state.page_last + 1) or (dir == "up" and l < state.page_first - 1)
+  if far and fc ~= l then
+    local target = page_of(l)
+    if target ~= state.page then return show_page(target, l) end
+  end
   paging = true
   local back = dir == "down" and state.page_last or state.page_first
   for _, w in ipairs(diff_wins()) do pcall(vim.api.nvim_win_set_cursor, w, { back, 0 }) end
@@ -491,11 +503,53 @@ local function goto_line(line)
   show_page(page_of(line), line)
 end
 
+-- Next/prev file, skipping files marked viewed (unless every other one is).
+function M._next_file(cur, delta, n, viewed_at)
+  for step = 1, n - 1 do
+    local i = (cur - 1 + delta * step) % n + 1
+    if not viewed_at(i) then return i end
+  end
+  return (cur - 1 + delta) % n + 1
+end
+
+local function is_viewed(i) return state.viewed[file_name(i)] == true end
+
 local function jump_file(delta)
   local n = #state.file_positions
   if n == 0 then return end
-  show_page(((state.page or 1) - 1 + delta) % n + 1, "top")
+  show_page(M._next_file(state.page or 1, delta, n, is_viewed), "top")
 end
+
+-- GitHub's per-file "Viewed" checkbox. Marking the page's file from the diff
+-- moves on to the next unviewed file, like the web UI collapsing it.
+local function toggle_viewed(idx, advance)
+  if not state.pr then
+    return vim.notify("DevOps: viewed marks need a PR diff", vim.log.levels.INFO)
+  end
+  if not state.pr_node_id then
+    return vim.notify("DevOps: viewed state still loading…", vim.log.levels.INFO)
+  end
+  idx = idx or state.page
+  local path = file_name(idx)
+  if path == "" then return end
+  local now = not state.viewed[path]
+  state.viewed[path] = now or nil
+  if state.tree_refresh then state.tree_refresh() end
+  if state.on_page then state.on_page() end
+  require("plugins.utils.devops.github.api").set_file_viewed(state.pr_node_id, path, now, function(ok, _, err)
+    if ok then return end
+    state.viewed[path] = (not now) or nil
+    if state.tree_refresh then state.tree_refresh() end
+    if state.on_page then state.on_page() end
+    vim.notify("DevOps: couldn't update viewed — " .. (err or "?"), vim.log.levels.WARN)
+  end)
+  if now and advance and idx == state.page then
+    local n = #state.file_positions
+    local nxt = M._next_file(idx, 1, n, is_viewed)
+    if not is_viewed(nxt) then show_page(nxt, "top") end
+  end
+end
+M._toggle_viewed = toggle_viewed
 
 ---------------------------------------------------------------------------
 -- Inline comments & review submission
@@ -690,13 +744,13 @@ local function load_threads()
     table.sort(list, function(a, b) return (a.created_at or "") < (b.created_at or "") end)
     local roots, by_id = {}, {}
     for _, c in ipairs(list) do
-      if not c.in_reply_to_id then
+      if type(c.in_reply_to_id) ~= "number" then
         by_id[c.id] = { root = c, replies = {} }
         roots[#roots + 1] = by_id[c.id]
       end
     end
     for _, c in ipairs(list) do
-      local t = c.in_reply_to_id and by_id[c.in_reply_to_id]
+      local t = type(c.in_reply_to_id) == "number" and by_id[c.in_reply_to_id]
       if t then t.replies[#t.replies + 1] = c end
     end
     state.threads = roots
@@ -827,17 +881,84 @@ local function add_inline_comment()
     and (state.pr.repo .. "#" .. state.pr.number .. " " .. info.path .. ":" .. info.line) or nil })
 end
 
+-- Rows r1..r2 (1-based) → the new-side range a suggestion replaces:
+-- { path, start_line, line, lines }, or nil + reason.
+function M.suggestion_range(line_map, r1, r2)
+  if r1 > r2 then r1, r2 = r2, r1 end
+  local path, first, last, lines
+  for r = r1, r2 do
+    local m = line_map[r]
+    if m and m.new then
+      if path and m.path ~= path then return nil, "the selection spans two files" end
+      if last and m.line ~= last + 1 then return nil, "the selection isn't contiguous on the new side" end
+      path = m.path
+      first = first or m.line
+      last = m.line
+      lines = lines or {}
+      lines[#lines + 1] = m.text or ""
+    end
+  end
+  if not path then return nil, "select added or unchanged lines (new side)" end
+  return { path = path, start_line = first ~= last and first or nil, line = last, lines = lines }
+end
+
+-- Body template: the selected lines inside a ```suggestion block, to edit.
+function M.suggestion_body(lines)
+  return "```suggestion\n" .. table.concat(lines, "\n") .. "\n```"
+end
+
+local function add_suggestion(r1, r2)
+  if not state.pr then
+    return vim.notify("DevOps: no PR context — open diff from a PR", vim.log.levels.WARN)
+  end
+  if state.wins.left and vim.api.nvim_get_current_win() == state.wins.left then
+    return vim.notify("DevOps: suggest from the new side (right pane)", vim.log.levels.INFO)
+  end
+  local rng, why = M.suggestion_range(state.line_map, r1, r2)
+  if not rng then return vim.notify("DevOps: " .. why, vim.log.levels.INFO) end
+  local where = rng.path .. ":" .. (rng.start_line and (rng.start_line .. "-") or "") .. rng.line
+  local preview = comment_preview(math.min(r1, r2), rng.path, "Suggesting on " .. where)
+  input.open("Suggestion on " .. where, M.suggestion_body(rng.lines), function(body)
+    if not body or body:match("^%s*$") then return end
+    state.pending_comments[#state.pending_comments + 1] = {
+      path = rng.path, line = rng.line, start_line = rng.start_line, body = body,
+    }
+    save_pending_store()
+    vim.notify(string.format("DevOps: suggestion queued (%d pending)", #state.pending_comments), vim.log.levels.INFO)
+    refresh_virt_all()
+  end, { preview = preview, draft_key = false })
+end
+
+-- Read-only preview of the inline comments a review will send.
+function M._review_summary(pending)
+  if not pending or #pending == 0 then return nil end
+  local lines = {}
+  for _, c in ipairs(pending) do
+    local where = c.path .. ":" .. (c.start_line and (c.start_line .. "-") or "") .. c.line
+    local first = (c.body or ""):match("^[^\n]*") or ""
+    if (c.body or ""):find("```suggestion", 1, true) then first = "✎ suggestion" end
+    lines[#lines + 1] = "  💬 " .. where .. "  " .. first
+  end
+  return { title = " " .. #pending .. " inline comment" .. (#pending == 1 and "" or "s") .. " ", lines = lines, wrap = false }
+end
+
 local function submit_review()
   if not state.pr then
     vim.notify("DevOps: no PR context — open diff from a PR", vim.log.levels.WARN)
     return
   end
-  local items = {
-    "Comment — Submit general feedback",
-    "Approve — Approve merging these changes",
-    "Request changes — Suggest changes before merging",
-  }
-  vim.ui.select(items, { prompt = "Submit review:" }, function(choice)
+  local own = gh.is_me(state.pr_author)
+  local items = { "Comment — Submit general feedback" }
+  if not own then
+    items[2] = "Approve — Approve merging these changes"
+    items[3] = "Request changes — Suggest changes before merging"
+  end
+  local n_pending = #state.pending_comments
+  local prompt = n_pending > 0
+    and ("Submit review (" .. n_pending .. " inline comment" .. (n_pending == 1 and "" or "s") .. "):")
+    or "Submit review:"
+  if own then prompt = prompt:gsub(":$", " — your PR, comment only:") end
+  vim.ui.select(items, { prompt = prompt }, function(choice)
     if not choice then return end
     local event = choice:match("^Approve") and "APPROVE"
       or choice:match("^Request") and "REQUEST_CHANGES"
@@ -864,7 +985,7 @@ local function submit_review()
     else
       input.open("Review body (" .. event:lower():gsub("_", " ") .. ")", nil, function(body)
         do_submit(body or "")
-      end)
+      end, { preview = M._review_summary(pending) })
     end
   end)
 end
@@ -906,7 +1027,7 @@ local function open_pending_panel()
     rows = {}
     for i, c in ipairs(pending) do
       local name = (c.path or "?"):match("[^/]+$") or c.path or "?"
-      local loc = ("  %s:%d"):format(name, c.line or 0)
+      local loc = ("  %s:%d"):format(name, type(c.line) == "number" and c.line or 0)
       local prev = render.truncate(((c.body or ""):gsub("%s+", " ")), 54)
       lines[#lines + 1] = loc .. "   " .. prev
       hls[#hls + 1] = { #lines - 1, 0, #loc, "DevOpsId" }
@@ -963,6 +1084,7 @@ local function open_pending_panel()
   end)
   map("S", function() close_panel(); submit_review() end)
   map("q", close_panel)
+  map("<C-d>", close_panel)
   map("<Esc>", close_panel)
 end
 
@@ -1103,7 +1225,17 @@ local function setup_keymaps(buf)
   -- Review keymaps (only active when PR context exists)
   if state.pr then
     map_buf(buf, "c", add_inline_comment, "Inline comment")
+    map_buf(buf, "s", function()
+      local r = vim.api.nvim_win_get_cursor(0)[1]
+      add_suggestion(r, r)
+    end, "Suggest a change (line)")
+    vim.keymap.set("x", "s", function()
+      local r1, r2 = vim.fn.line("v"), vim.fn.line(".")
+      vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
+      add_suggestion(r1, r2)
+    end, { buffer = buf, nowait = true, silent = true, desc = "Suggest a change (selection)" })
     map_buf(buf, "gc", open_pending_panel, "Pending review comments")
+    map_buf(buf, "x", function() toggle_viewed(nil, true) end, "Toggle file viewed")
     map_buf(buf, "S", submit_review, "Submit review")
     map_buf(buf, "r", reply_thread, "Reply to review thread")
     map_buf(buf, "]c", function() jump_thread(1) end, "Next review thread")
@@ -1238,9 +1370,13 @@ local function render_footer(total_width, footer_row)
       { sep, nil },
       { "c ", "DevOpsKey" }, { "comment", "DevOpsAction" },
       { "  ", nil },
+      { "s ", "DevOpsKey" }, { "suggest", "DevOpsAction" },
+      { "  ", nil },
       { "gc ", "DevOpsKey" }, { "list" .. badge, "DevOpsAction" },
       { "  ", nil },
       { "S ", "DevOpsKey" }, { "submit review", "DevOpsAction" },
+      { "  ", nil },
+      { "x ", "DevOpsKey" }, { "viewed", "DevOpsAction" },
       { "  ", nil },
       { "]c ", "DevOpsKey" }, { "[c ", "DevOpsKey" }, { "r ", "DevOpsKey" }, { "threads", "DevOpsAction" },
     })
@@ -1343,7 +1479,7 @@ local function build_unified(files, total_w)
         if prefix == "+" then
           lines[#lines + 1] = gutter(new_ln) .. content
           marks[#marks + 1] = { line = #lines - 1, type = "add", gutter_end = g }
-          line_map[#lines] = { path = fpath, line = new_ln, kind = "add" }
+          line_map[#lines] = { path = fpath, line = new_ln, kind = "add", new = true, text = content }
           new_ln = new_ln + 1
         elseif prefix == "-" then
           lines[#lines + 1] = gutter(old_ln) .. content
@@ -1353,7 +1489,7 @@ local function build_unified(files, total_w)
         elseif prefix == " " then
           lines[#lines + 1] = gutter(new_ln) .. content
           marks[#marks + 1] = { line = #lines - 1, type = "ctx", gutter_end = g }
-          line_map[#lines] = { path = fpath, line = new_ln, kind = "ctx" }
+          line_map[#lines] = { path = fpath, line = new_ln, kind = "ctx", new = true, text = content }
           old_ln = old_ln + 1
           new_ln = new_ln + 1
         else
@@ -1374,12 +1510,19 @@ local function pane_title(win, side, base)
   pcall(function()
     local path = state.page and file_name(state.page) or ""
     local room = vim.api.nvim_win_get_width(win) - #side - 9
+    local cfg = vim.api.nvim_win_get_config(win)
+    local seen = state.page and state.viewed[file_name(state.page)]
+    if seen then room = room - 4 end
     if vim.fn.strdisplaywidth(path) > room then
       path = "…" .. vim.fn.strcharpart(path, vim.fn.strchars(path) - math.max(1, room - 1))
     end
-    local cfg = vim.api.nvim_win_get_config(win)
-    cfg.title = path ~= "" and { { " " .. path, "DevOpsTitle" }, { " · " .. side .. " ", "DevOpsDim" } }
-      or (" " .. base .. " · " .. side .. " ")
+    if path ~= "" then
+      cfg.title = { { " " .. path, "DevOpsTitle" } }
+      if seen then cfg.title[#cfg.title + 1] = { " ✓", "DevOpsOk" } end
+      cfg.title[#cfg.title + 1] = { " · " .. side .. " ", "DevOpsDim" }
+    else
+      cfg.title = " " .. base .. " · " .. side .. " "
+    end
     cfg.title_pos = "center"
     vim.api.nvim_win_set_config(win, cfg)
   end)
@@ -1444,13 +1587,13 @@ local function build_split_data(files, pane_width)
   local line_map = {}
   local placeholders = {} -- { side = "left"|"right", line = 0-based, text }
 
-  local function add(fpath, lhs, rhs, ltype, rtype, map_line)
+  local function add(fpath, lhs, rhs, ltype, rtype, map_line, text, is_new)
     left[#left + 1] = lhs or ""
     right[#right + 1] = rhs or ""
     if ltype then left_marks[#left_marks + 1] = { line = #left - 1, type = ltype } end
     if rtype then right_marks[#right_marks + 1] = { line = #right - 1, type = rtype } end
     if map_line and fpath then
-      line_map[#right] = { path = fpath, line = map_line }
+      line_map[#right] = { path = fpath, line = map_line, new = is_new, text = text }
     end
   end
 
@@ -1504,7 +1647,9 @@ local function build_split_data(files, pane_width)
             r and (gutter(r_ln) .. r) or "",
             l and "del" or "empty",
             r and "add" or "empty",
-            r_ln or l_ln
+            r_ln or l_ln,
+            r or l,
+            r ~= nil
           )
           if l then left_marks[#left_marks].gutter_end = g end
           if r then right_marks[#right_marks].gutter_end = g end
@@ -1523,7 +1668,7 @@ local function build_split_data(files, pane_width)
           added[#added + 1] = content
         elseif prefix == " " then
           flush()
-          add(fpath, gutter(old_ln) .. content, gutter(new_ln) .. content, "ctx", "ctx", new_ln)
+          add(fpath, gutter(old_ln) .. content, gutter(new_ln) .. content, "ctx", "ctx", new_ln, content, true)
           left_marks[#left_marks].gutter_end = g
           right_marks[#right_marks].gutter_end = g
           old_ln = old_ln + 1
@@ -1675,7 +1820,9 @@ render_tree_pane = function(total_h)
         hls[#hls + 1] = { l = #lines - 1, s = sg[1], e = sg[2], g = sg[3] }
       end
     end
-    local header = "  Changed files (" .. #files .. ")"
+    local n_seen = 0
+    for _, f in ipairs(files) do if state.viewed[f.new_path or f.old_path or ""] then n_seen = n_seen + 1 end end
+    local header = "  Changed files (" .. #files .. ")" .. (n_seen > 0 and ("  ✓ " .. n_seen) or "")
     emit(header, { { 0, #header, "DevOpsTitle" } })
     emit("", {})
     local function walk(node, depth)
@@ -1693,11 +1840,14 @@ render_tree_pane = function(total_h)
       for _, fl in ipairs(node.files) do
         local indent = string.rep("  ", depth)
         local ic, ihl = file_icon(fl.name)
-        local text = indent .. "  " .. ic .. " " .. render.truncate(fl.name, TREE_W - #indent - 4)
-        local istart = #indent + 2
+        local seen = state.viewed[fl.path]
+        local mark = seen and "✓" or " "
+        local text = indent .. mark .. " " .. ic .. " " .. render.truncate(fl.name, TREE_W - #indent - 4)
+        local istart = #indent + #mark + 1
         emit(text, {
-          { istart, istart + #ic, ihl },
-          { istart + #ic + 1, #text, "Normal" },
+          { #indent, #indent + #mark, "DevOpsOk" },
+          { istart, istart + #ic, seen and "DevOpsDim" or ihl },
+          { istart + #ic + 1, #text, seen and "DevOpsDim" or "Normal" },
         })
         rows[#lines] = { dir = false, idx = fl.idx, path = fl.path }
       end
@@ -1755,6 +1905,12 @@ render_tree_pane = function(total_h)
     map_buf(buf, "[c", function() jump_thread(-1) end, "Prev review thread")
   end
   map_pane_nav(buf)
+  if state.pr then
+    map_buf(buf, "x", function()
+      local r = current()
+      if r and not r.dir then toggle_viewed(r.idx, false) end
+    end, "Toggle viewed")
+  end
   map_buf(buf, "<CR>", function()
     local r = current()
     if not r then return end
@@ -1780,6 +1936,12 @@ render_tree_pane = function(total_h)
   vim.api.nvim_create_autocmd("CursorMoved", { group = augroup, buffer = buf, callback = function() jump() end })
 
   rebuild()
+  state.tree_refresh = function()
+    if not vim.api.nvim_win_is_valid(win) then return end
+    local cur = vim.api.nvim_win_get_cursor(win)
+    rebuild()
+    pcall(vim.api.nvim_win_set_cursor, win, cur)
+  end
   -- Keep the tree's cursor on the page's file when the diff flips pages.
   state.tree_goto = function(idx)
     if not vim.api.nvim_win_is_valid(win) or vim.api.nvim_get_current_win() == win then return end
@@ -1882,6 +2044,7 @@ function M.open(diff_text, title, opts)
   if opts.pr then
     if not (state.pr and state.pr.repo == opts.pr.repo and state.pr.number == opts.pr.number) then
       state.threads = nil
+      state.viewed, state.pr_node_id, state.pr_author = {}, nil, nil
     end
     state.pr = opts.pr
     bind_pending() -- restore this PR's persisted draft review comments
@@ -1896,7 +2059,16 @@ function M.open(diff_text, title, opts)
     toggle_blame()
   end
   refresh_virt_all() -- pending 💬 markers + review threads (also after Tab/resize)
-  if opts.pr then load_threads() end
+  if opts.pr then
+    load_threads()
+    local pr = state.pr
+    gh.pr_viewed_files(pr.repo, pr.number, function(ok, data)
+      if not ok or state.pr ~= pr then return end
+      state.pr_node_id, state.viewed, state.pr_author = data.id, data.viewed, data.author
+      if state.tree_refresh then state.tree_refresh() end
+      if state.on_page then state.on_page() end
+    end)
+  end
   watch_resize()
 end
 

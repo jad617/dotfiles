@@ -16,6 +16,10 @@ local markdown = require("plugins.utils.devops.ui.markdown")
 local render = require("plugins.utils.devops.ui.render")
 local user_picker = require("plugins.utils.devops.ui.user_picker")
 
+-- JSON null decodes to vim.NIL (truthy userdata), e.g. `line` on an outdated
+-- review comment; only accept real numbers.
+local function json_num(v) return type(v) == "number" and v or nil end
+
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("DevOpsDetail")
@@ -269,6 +273,8 @@ local function show(title, b, on_open)
       local row = vim.api.nvim_win_get_cursor(0)[1]
       local f = M.file_at(buf, row)
       if f then return M.open_pr_file(f) end
+      local ck = M.check_at(buf, row)
+      if ck then return require("plugins.utils.devops.ui.job_log").open(ck.ctx) end
       local t = M.link_at(buf, row)
       if not t then return end
       if t.kind == "jira_link" then M.open_issue(t.key) else M.open_pr(t.pr) end
@@ -353,6 +359,13 @@ function M.file_at(buf, row)
   local tags = tags_by_buf[buf]
   local t = tags and tags[row]
   if t and t.kind == "pr_file" then return t end
+end
+
+-- CI check row (Checks tab) under `row` in `buf`, or nil.
+function M.check_at(buf, row)
+  local tags = tags_by_buf[buf]
+  local t = tags and tags[row]
+  if t and t.kind == "pr_check" then return t end
 end
 
 -- Open the PR diff positioned on the file of a `pr_file` tag.
@@ -1097,8 +1110,10 @@ end
 ---------------------------------------------------------------------------
 -- GitHub PR
 ---------------------------------------------------------------------------
+local check_contexts
 local function checks_summary(rollup)
-  if type(rollup) ~= "table" or #rollup == 0 then return nil end
+  rollup = check_contexts(rollup)
+  if #rollup == 0 then return nil end
   local pass, fail, pend = 0, 0, 0
   for _, c in ipairs(rollup) do
     local s = c.conclusion or c.state or ""
@@ -1212,14 +1227,53 @@ local function mergeable_text(pr)
   return #parts > 0 and table.concat(parts, " · ") or nil
 end
 
-local function check_contexts(rollup)
+local function raw_contexts(rollup)
   if type(rollup) ~= "table" then return {} end
+  if vim.islist(rollup) then return rollup end -- `gh pr view --json` shape
   local contexts = rollup.contexts
   if type(contexts) ~= "table" then return {} end
   if vim.islist(contexts) then return contexts end
   if type(contexts.nodes) == "table" then return contexts.nodes end
   return {}
 end
+
+local function str(v) return type(v) == "string" and v or nil end
+
+-- Display name of a check, without status glyphs some workflows bake into
+-- job names ("✓ lint" would render as "✓  ✓ lint").
+local function check_name(ctx)
+  local name = str(ctx.name) or str(ctx.context) or str(ctx.__typename) or "check"
+  local glyphs = { "✓", "✔", "✅", "✗", "✘", "❌", "⚠", "●", "○" }
+  local changed = true
+  while changed do
+    changed = false
+    for _, g in ipairs(glyphs) do
+      if name:sub(1, #g) == g then name = vim.trim(name:sub(#g + 1)); changed = true end
+    end
+    -- emoji variation selector
+    if name:sub(1, 3) == "\239\184\143" then name = vim.trim(name:sub(4)); changed = true end
+  end
+  return name ~= "" and name or "check"
+end
+
+-- The rollup lists every run (re-runs, push + pull_request…); GitHub shows only
+-- the latest per workflow + job. Keep the newest, in first-seen order.
+function check_contexts(rollup)
+  local out, at = {}, {}
+  for _, c in ipairs(raw_contexts(rollup)) do
+    local key = (str(c.workflowName) or "") .. "\0" .. check_name(c)
+    local i = at[key]
+    if not i then
+      out[#out + 1] = c
+      at[key] = #out
+    elseif (str(c.startedAt) or "") > (str(out[i].startedAt) or "") then
+      out[i] = c
+    end
+  end
+  return out
+end
+M._check_contexts = check_contexts
+M._check_name = check_name
 
 local function check_display(ctx)
   local conclusion = ctx.conclusion
@@ -1423,16 +1477,44 @@ local function build_pr(pr, width, tab)
 
   if shown("checks") and #contexts > 0 then
     if not tabbed then b.divider("Checks") end
+    -- Group by workflow (first-seen order), like GitHub's checks list.
+    local groups, order = {}, {}
     for _, ctx in ipairs(contexts) do
-      local icon, hl_group, label = check_display(ctx)
-      local name = ctx.name or ctx.context or ctx.__typename or "check"
-      local icon_cell = render.pad(icon, 2) -- normalize ⏳ (2 cells) vs ✓/✗/○ (1 cell)
-      local trunc = render.truncate(name, 28)
-      local prefix = "  " .. icon_cell .. " "
-      local line = b.add(prefix .. render.pad(trunc, 28) .. " " .. label)
-      b.hl(line, 2, 2 + #icon, hl_group)
-      b.hl(line, #prefix, #prefix + #trunc, "DevOpsDetailTitle")
-      b.hl(line, #b.lines()[line] - #label, #b.lines()[line], hl_group)
+      local wf = str(ctx.workflowName) or ""
+      if not groups[wf] then groups[wf] = {}; order[#order + 1] = wf end
+      table.insert(groups[wf], ctx)
+    end
+    for i, wf in ipairs(order) do
+      if wf == "" then table.remove(order, i); order[#order + 1] = ""; break end
+    end
+    local namew = math.max(20, math.min(60, W - 20))
+    for gi, wf in ipairs(order) do
+      local indent = "  "
+      if #order > 1 or (tabbed and wf ~= "") then
+        if gi > 1 then b.add("") end
+        local fails = 0
+        for _, ctx in ipairs(groups[wf]) do
+          local _, h = check_display(ctx)
+          if h == "DevOpsErr" then fails = fails + 1 end
+        end
+        local head = "  " .. render.truncate(wf ~= "" and wf or "Other checks", W - 12)
+        local cnt = "  " .. #groups[wf] .. (fails > 0 and (" · ✗" .. fails) or "")
+        local hl = b.add(head .. cnt)
+        b.hl(hl, 2, #head, "DevOpsSectionHead")
+        b.hl(hl, #head, #head + #cnt, fails > 0 and "DevOpsErr" or "DevOpsDim")
+        indent = "    "
+      end
+      for _, ctx in ipairs(groups[wf]) do
+        local icon, hl_group, label = check_display(ctx)
+        local icon_cell = render.pad(icon, 2) -- normalize ⏳ (2 cells) vs ✓/✗/○ (1 cell)
+        local trunc = render.truncate(check_name(ctx), namew)
+        local prefix = indent .. icon_cell .. " "
+        local line = b.add(prefix .. render.pad(trunc, namew) .. " " .. label)
+        b.tag(line, line, { kind = "pr_check", ctx = ctx })
+        b.hl(line, #indent, #indent + #icon, hl_group)
+        b.hl(line, #prefix, #prefix + #trunc, "DevOpsDetailTitle")
+        b.hl(line, #b.lines()[line] - #label, #b.lines()[line], hl_group)
+      end
     end
   end
 
@@ -1462,9 +1544,10 @@ local function build_pr(pr, width, tab)
     -- Build threads: roots (no in_reply_to_id) + replies keyed by their root id.
     local replies, roots = {}, {}
     for _, c in ipairs(pr.reviewComments) do
-      if c.in_reply_to_id then
-        replies[c.in_reply_to_id] = replies[c.in_reply_to_id] or {}
-        table.insert(replies[c.in_reply_to_id], c)
+      local parent = json_num(c.in_reply_to_id)
+      if parent then
+        replies[parent] = replies[parent] or {}
+        table.insert(replies[parent], c)
       else
         roots[#roots + 1] = c
       end
@@ -1498,7 +1581,7 @@ local function build_pr(pr, width, tab)
       elseif is_me then
         status = "⏳ awaiting reply"; status_hl = "DevOpsWarn"
       end
-      local ln = c.line or c.original_line or c.position or c.original_position
+      local ln = json_num(c.line) or json_num(c.original_line) or json_num(c.position) or json_num(c.original_position)
       local prefix = indent .. (marker or "") .. (ln and ("L" .. ln .. "  ") or "")
       local hdr = prefix .. at
       local line = b.add(hdr .. (status and ("   " .. status) or ""))
@@ -1640,8 +1723,8 @@ local function build_pr(pr, width, tab)
           local sep = b.add(PAD .. "│")
           b.hl(sep, #PAD, #PAD + #"│", border_hl)
         end
-        local ln = c.line or c.original_line
-        local loc = (c.in_reply_to_id and "↳ reply on " or "📄 ") .. (c.path or "?") .. (ln and (":" .. ln) or "")
+        local ln = json_num(c.line) or json_num(c.original_line)
+        local loc = (json_num(c.in_reply_to_id) and "↳ reply on " or "📄 ") .. (c.path or "?") .. (ln and (":" .. ln) or "")
         local ll = b.add(rail .. render.truncate(loc, W - 7))
         b.hl(ll, #PAD, #PAD + #"│", border_hl)
         b.hl(ll, #rail, #b.lines()[ll], "DevOpsId")
@@ -1661,7 +1744,7 @@ local function build_pr(pr, width, tab)
       local first_c = ev.comments and ev.comments[1]
       if first_c and body == "" then
         -- 'r' replies in the comment's thread (a review body can't be replied to).
-        local root = (first_c.in_reply_to_id and rc_by_id[first_c.in_reply_to_id]) or first_c
+        local root = (json_num(first_c.in_reply_to_id) and rc_by_id[first_c.in_reply_to_id]) or first_c
         local replies = {}
         for _, c in ipairs(pr.reviewComments or {}) do
           if c.in_reply_to_id == root.id then replies[#replies + 1] = c end
@@ -1692,7 +1775,8 @@ end
 local function pr_reply(buf, repo, n, on_done)
   local tags = tags_by_buf[buf]
   local t = tags and tags[vim.api.nvim_win_get_cursor(0)[1]]
-  if not t then return false end
+  -- Only comment cards are repliable (checks / files / links are tagged too).
+  if not t or not ((t.kind == "thread" and t.root) or (t.kind == "conversation" and t.ev)) then return false end
   local me = gh.current_user_login()
   local lines, marks = {}, {}
   local function add(text, hl)
@@ -1716,7 +1800,7 @@ local function pr_reply(buf, repo, n, on_done)
 
   if t.kind == "thread" then
     local root = t.root
-    local ln = root.line or root.original_line
+    local ln = json_num(root.line) or json_num(root.original_line)
     local where = (root.path or "?") .. (ln and (":" .. ln) or "")
     -- Code context: the last lines of the diff hunk the thread is anchored to.
     local hunk = vim.split(root.diff_hunk or "", "\n", { plain = true, trimempty = true })
@@ -1958,6 +2042,8 @@ function M.open_pr(pr)
 
     -- Reply / refresh
     vim.keymap.set("n", "r", function()
+      local ck = M.check_at(buf, vim.api.nvim_win_get_cursor(0)[1])
+      if ck then return require("plugins.utils.devops.ui.job_log").rerun(ck.ctx.detailsUrl or ck.ctx.targetUrl) end
       if not pr_reply(buf, repo, n, function() M.open_pr(pr) end) then
         vim.notify("DevOps: no comment under the cursor to reply to (c = new comment)", vim.log.levels.INFO)
       end
@@ -2199,6 +2285,8 @@ function M.load_pr(pr, opts)
       end, M.pr_comment_preview(pr, "Commenting on"))
     end, { buffer = buf, nowait = true, desc = "Comment" })
     vim.keymap.set("n", "r", function()
+      local ck = M.check_at(buf, vim.api.nvim_win_get_cursor(0)[1])
+      if ck then return require("plugins.utils.devops.ui.job_log").rerun(ck.ctx.detailsUrl or ck.ctx.targetUrl) end
       if not pr_reply(buf, repo, n, function() M.load_pr(pr, opts) end) then
         vim.notify("DevOps: no comment under the cursor to reply to (c = new comment)", vim.log.levels.INFO)
       end
@@ -2259,5 +2347,9 @@ end
 -- Test hook (tests/nvim_spec.lua): the pure issue-card builder.
 M._build_issue = build_issue
 M._build_pr = build_pr
+M._pr_reply = pr_reply
+M.issue_keys = branch_issue_keys
+-- The standalone detail float (not the dashboard pane), if open.
+function M.close_float() if state.win and vim.api.nvim_win_is_valid(state.win) then close() end end
 
 return M
