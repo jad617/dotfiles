@@ -6,6 +6,7 @@
 --   vim.g.devops = {
 --     jira = { project = "DEVOPS" },   -- or jql = "project in (A,B) ..."
 --     layout = "float",                -- "float" | "tab"
+--     ui = { theme = "auto" },         -- follow the colorscheme (see M.defaults.ui)
 --     keys = { open = "<leader>dev" },
 --   }
 ---------------------------------------------------------------------------
@@ -24,6 +25,16 @@ M.defaults = {
     pr_limit = 30,
   },
   layout = "float", -- "float" | "tab"
+  ui = {
+    theme = "devops", -- "devops" (built-in palette) | "auto" (link to your colorscheme's groups)
+    highlights = {},  -- per-group overrides, e.g. { DevOpsChip = { link = "Visual" } }
+    -- Issue-type styles by name (case-insensitive): { bug = { icon = "", hl = "DevOpsErr" } }
+    issue_types = {},
+    -- Status icons: by status name (case-insensitive) or category ("new" | "indeterminate" | "done").
+    status_icons = {},
+    detail_tabs = true, -- split issue / PR details into tabs (<Tab> / <S-Tab>)
+    diff_overscroll = 2, -- scrolls past a file's edge (after the stop) to flip to the next/prev file
+  },
   diff = {
     -- Side-split git diff (follow-current-file mode) behaviour.
     live = true,     -- true: update as you type, without saving. false: refresh on save only.

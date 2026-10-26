@@ -5,6 +5,7 @@
 ---------------------------------------------------------------------------
 
 local M = {}
+require("plugins.utils.devops.ui.render") -- defines the DevOps* highlight groups
 
 local ns_mention = vim.api.nvim_create_namespace("devops_input_mention")
 
@@ -182,7 +183,6 @@ function M.open(title, initial, on_submit, opts)
     title_pos = "center",
   })
 
-  vim.api.nvim_set_hl(0, "DevOpsInputPreviewBorder", { link = "Comment", default = true })
   local pwin
   if preview and prev_h and prev_h >= 1 then
     pwin = open_preview(preview, vim.tbl_extend("force", relative, {
@@ -192,11 +192,6 @@ function M.open(title, initial, on_submit, opts)
 
   local win = vim.api.nvim_open_win(buf, true, win_config)
 
-  -- Colors: sage green text, orange border, purple title, yellow mentions
-  vim.api.nvim_set_hl(0, "DevOpsInputNormal", { fg = "#99bc80" })
-  vim.api.nvim_set_hl(0, "DevOpsInputBorder", { fg = "#ff9e64" })
-  vim.api.nvim_set_hl(0, "DevOpsInputTitle", { fg = "#c27fd7", bold = true })
-  vim.api.nvim_set_hl(0, "DevOpsMention", { fg = "#e5c07b", bold = true })
   vim.wo[win].winhighlight = "Normal:DevOpsInputNormal,FloatBorder:DevOpsInputBorder,FloatTitle:DevOpsInputTitle"
   vim.wo[win].wrap = true
   vim.wo[win].linebreak = true

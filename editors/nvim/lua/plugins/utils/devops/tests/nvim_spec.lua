@@ -195,6 +195,211 @@ eq(child_rows(detail._build_issue(epic, nil, nil, 120, kids)), { "E-4" }, "child
 pick("^● All")
 eq(#child_rows(detail._build_issue(epic, nil, nil, 120, kids)), 4, "children filter: All clears it")
 
+-- ── detail tabs, chips, status pill ────────────────────────────────────────
+local config = require("plugins.utils.devops.config")
+local cmts = { { id = "c1", author = { displayName = "Zed" }, created = "2026-01-01T00:00:00Z",
+  body = { type = "doc", content = { { type = "paragraph", content = { { type = "text", text = "hello there" } } } } } } }
+local prs = { { id = "#7", name = "fix it", status = "OPEN" } }
+story.fields.labels = { "infra", "urgent" }
+story.fields.components = { { name = "API" } }
+story.fields.description = { type = "doc", content = { { type = "paragraph", content = { { type = "text", text = "the desc" } } } } }
+
+b = detail._build_issue(story, prs, cmts, 120, nil, "overview")
+ok(text(b):find(" Overview ") and text(b):find(" Comments 1 ") and text(b):find(" Pull requests 1 "),
+  "tabs: tab bar lists Overview / Comments n / Pull requests n")
+ok(text(b):find("the desc") and not text(b):find("hello there") and not text(b):find("fix it"),
+  "tabs: Overview shows the description only")
+ok(text(b):find(" infra ") and text(b):find(" API "), "chips: labels and components rendered as chips")
+ok(b.lines()[1]:find(" new ") ~= nil, "header: status pill after the key")
+local cr
+b, cr = detail._build_issue(story, prs, cmts, 120, nil, "comments")
+ok(text(b):find("hello there") and not text(b):find("the desc"), "tabs: Comments tab shows comments only")
+ok(next(cr) ~= nil, "tabs: comment rows tracked on the Comments tab (r / e work)")
+b = detail._build_issue(story, prs, cmts, 120, nil, "prs")
+ok(text(b):find("fix it") and not text(b):find("hello there"), "tabs: Pull requests tab shows linked PRs")
+detail.set_tab("S-1", "comments")
+ok(text(detail._build_issue(story, prs, cmts, 120, nil)):find("hello there"), "tabs: set_tab selects the remembered tab")
+detail.set_tab("S-1", nil)
+
+config.options.ui.detail_tabs = false
+b = detail._build_issue(story, prs, cmts, 120, nil)
+ok(not text(b):find(" Overview ") and text(b):find("the desc") and text(b):find("hello there") and text(b):find("fix it"),
+  "tabs: detail_tabs=false renders everything in one scroll")
+config.options.ui.detail_tabs = true
+
+-- ── theme ──────────────────────────────────────────────────────────────────
+local theme = require("plugins.utils.devops.ui.theme")
+local res_auto = theme.resolve("auto")
+local res_dev = theme.resolve("devops")
+eq(vim.tbl_count(res_auto), vim.tbl_count(res_dev), "theme: auto palette covers every group")
+eq(res_auto.DevOpsOk.link, "DiagnosticOk", "theme: auto links to colorscheme groups")
+ok(res_auto.DevOpsPillDone.bg ~= nil, "theme: auto pills derive a background")
+config.options.ui.highlights = { DevOpsId = { fg = "#123456" } }
+theme.apply()
+eq(vim.api.nvim_get_hl(0, { name = "DevOpsId" }).fg, 0x123456, "theme: ui.highlights overrides win")
+config.options.ui.highlights = {}
+
+-- ── PR Files tab: ↵ opens the diff on that file ────────────────────────────
+local ghapi = require("plugins.utils.devops.github.api")
+local dv = require("plugins.utils.devops.ui.diff_viewer")
+local pr = { number = 9, title = "t", state = "OPEN", url = "u", repository = { nameWithOwner = "o/r" },
+  files = { { path = "a.lua", additions = 1, deletions = 0 }, { path = "dir/b.lua", additions = 2, deletions = 1 } } }
+b = detail._build_pr(pr, 120, "files")
+local frow
+for l, t in pairs(b.tags()) do if t.kind == "pr_file" and t.path == "dir/b.lua" then frow = l end end
+ok(frow and b.lines()[frow]:find("dir/b.lua"), "files: rows tagged with their path")
+local buf = vim.api.nvim_create_buf(false, true)
+detail.write_to_buf(buf, b)
+local orig_diff, orig_open = ghapi.pr_diff, dv.open
+local opened
+ghapi.pr_diff = function(_, _, cb)
+  cb(true, "diff --git a/a.lua b/a.lua\n--- a/a.lua\n+++ b/a.lua\n@@ -1 +1 @@\n-x\n+y\n"
+    .. "diff --git a/dir/b.lua b/dir/b.lua\n--- a/dir/b.lua\n+++ b/dir/b.lua\n@@ -1 +1 @@\n-x\n+y\n")
+end
+dv.open = function(_, title, o) opened = { title, o.focus_file, o.pr.repo } end
+detail.open_pr_file(detail.file_at(buf, frow))
+ghapi.pr_diff, dv.open = orig_diff, orig_open
+eq(opened, { "Diff #9", 2, "o/r" }, "files: ↵ opens the diff focused on that file")
+
+-- ── diff viewer: one file per page ─────────────────────────────────────────
+do
+  local function file(p, n)
+    local t = { "diff --git a/" .. p .. " b/" .. p, "--- a/" .. p, "+++ b/" .. p, "@@ -1," .. n .. " +1," .. n .. " @@" }
+    for i = 1, n do t[#t + 1] = " line " .. p .. " " .. i end
+    return table.concat(t, "\n")
+  end
+  local diff = file("a.lua", 5) .. "\n" .. file("b.lua", 60) .. "\n" .. file("c.lua", 4) .. "\n"
+  local dvw = require("plugins.utils.devops.ui.diff_viewer")
+  vim.o.scrolloff = 15
+  dvw.open(diff, "Diff", { focus_file = 3 })
+  local w
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    local t = vim.inspect(vim.api.nvim_win_get_config(win).title or "")
+    if t:find("· old") then w = win end
+  end
+  local function view()
+    return vim.api.nvim_win_call(w, function()
+      return { top = vim.fn.getline(vim.fn.line("w0")), above = vim.fn.foldclosed(vim.fn.line("w0")) ~= -1,
+        cur = vim.fn.getline(".") }
+    end)
+  end
+  local v = view()
+  ok(not v.above and v.top:find("^─ ─") and v.cur:find("c%.lua"), "diff pages: last file opens at its rules, no previous file")
+  vim.api.nvim_set_current_win(w)
+  vim.api.nvim_feedkeys("[f", "x", false)
+  v = view()
+  ok(not v.above and v.cur:find("b%.lua"), "diff pages: [f shows the previous file at the top")
+  vim.api.nvim_feedkeys("G", "x", false)
+  local clock, real_now = 1e6, dvw._now
+  dvw._now = function() return clock end
+  local function bump(dt)
+    clock = clock + dt
+    vim.api.nvim_feedkeys("j", "x", false)
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = vim.api.nvim_get_current_buf() })
+  end
+  local function marker()
+    local t = ""
+    local nsp = vim.api.nvim_get_namespaces().DevOpsDiffPage
+    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(w), nsp, 0, -1, { details = true })) do
+      for _, vl in ipairs(m[4].virt_lines or {}) do
+        for _, c in ipairs(vl) do t = t .. c[1] end
+      end
+    end
+    return t
+  end
+  bump(0)
+  ok(view().cur:find("line b%.lua 60") and marker():find("END") and marker():find("▱▱"),
+    "diff pages: hitting the end is a stop (banner, empty meter)")
+  for _ = 1, 3 do bump(30) end
+  ok(view().cur:find("line b%.lua 60") and marker():find("▱▱"), "diff pages: a momentum burst after the stop does not count")
+  bump(400)
+  ok(view().cur:find("line b%.lua 60") and marker():find("▰▱"), "diff pages: the 1st separate scroll fills the meter")
+  bump(400)
+  ok(view().cur:find("c%.lua"), "diff pages: the 2nd separate scroll flips to the next file")
+  vim.api.nvim_feedkeys("[f", "x", false)
+  vim.api.nvim_feedkeys("G", "x", false)
+  clock = clock + 2000
+  bump(0)
+  bump(150)
+  bump(150)
+  ok(view().cur:find("c%.lua"), "diff pages: a steady wheel flips after 3 scrolls (stop + 2)")
+  local rows = 0
+  local nsp = vim.api.nvim_get_namespaces().DevOpsDiffPage
+  for _, m in ipairs(vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(w), nsp, 0, -1, { details = true })) do
+    if not m[4].virt_lines_above then rows = #(m[4].virt_lines or {}) end
+  end
+  local th = vim.api.nvim_win_text_height(w, {}).all
+  ok(rows > 2 and th >= vim.api.nvim_win_get_height(w), "diff pages: a short file's end banner is pinned to the bottom row")
+  dvw._now = real_now
+  vim.api.nvim_feedkeys("q", "x", false)
+end
+
+-- ── diff viewer: banner on long pages, titles, placeholders, unified ───────
+do
+  local fake_eof = { opts = { disabled_filetypes = {} } }
+  package.loaded["scrollEOF"] = fake_eof
+  local function mod(p, n)
+    local t = { "diff --git a/" .. p .. " b/" .. p, "--- a/" .. p, "+++ b/" .. p, "@@ -1," .. n .. " +1," .. n .. " @@" }
+    for i = 1, n do t[#t + 1] = " line " .. i end
+    return table.concat(t, "\n")
+  end
+  local function add(p, n)
+    local t = { "diff --git a/" .. p .. " b/" .. p, "new file mode 100644", "--- /dev/null", "+++ b/" .. p, "@@ -0,0 +1," .. n .. " @@" }
+    for i = 1, n do t[#t + 1] = "+added " .. i end
+    return table.concat(t, "\n")
+  end
+  local dvw = require("plugins.utils.devops.ui.diff_viewer")
+  dvw.open(mod("a.lua", 5) .. "\n" .. add("docs/very/deep/nested/path/release.md", 200) .. "\n", "Diff", { focus_file = 2 })
+  local L, R
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    local t = vim.inspect(vim.api.nvim_win_get_config(win).title or "")
+    if t:find("· old") then L = win elseif t:find("· new") then R = win end
+  end
+  ok(fake_eof.opts.disabled_filetypes.devops_diff and vim.bo[vim.api.nvim_win_get_buf(L)].filetype == "devops_diff",
+    "diff: buffers are exempted from scrollEOF")
+  ok(vim.wo[L].scrolloffpad == 0, "diff: scrolloffpad is 0 in diff windows")
+  local title = vim.api.nvim_win_get_config(R).title
+  local ttext = type(title) == "table" and (title[1][1] .. title[2][1]) or tostring(title)
+  ok(ttext:find("%.md · new") and ttext:find("…") and not ttext:find("──"),
+    "diff: pane title is the file path (trimmed from the left) · side")
+  local ph = vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(L), vim.api.nvim_get_namespaces().DevOpsDiffPlaceholder, 0, -1, { details = true })
+  ok(#ph == 1 and ph[1][4].virt_text[1][1]:find("new file"), "diff: the old pane of a new file shows a placeholder")
+  -- the end banner (last virtual row under the page) fits inside the window
+  local function banner_visible(win, pat)
+    local buf = vim.api.nvim_win_get_buf(win)
+    local nsp = vim.api.nvim_get_namespaces().DevOpsDiffPage
+    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, nsp, 0, -1, { details = true })) do
+      local d = m[4]
+      if d.virt_lines and not d.virt_lines_above then
+        local txt = ""
+        for _, c in ipairs(d.virt_lines[#d.virt_lines]) do txt = txt .. c[1] end
+        local w0 = vim.api.nvim_win_call(win, function() return vim.fn.line("w0") end)
+        local rows = vim.api.nvim_win_text_height(win, { start_row = w0 - 1, end_row = m[2] }).all + #d.virt_lines
+        return txt:find(pat) ~= nil and rows <= vim.api.nvim_win_get_height(win)
+      end
+    end
+    return false
+  end
+  vim.api.nvim_set_current_win(R)
+  vim.api.nvim_feedkeys("G", "x", false)
+  ok(banner_visible(R, "END OF DIFF"), "diff: the end banner is on screen at the end of a long file")
+  vim.api.nvim_feedkeys("\t", "x", false) -- unified
+  local U
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.inspect(vim.api.nvim_win_get_config(win).title or ""):find("· unified") then U = win end
+  end
+  ok(U ~= nil, "diff unified: title shows the file · unified")
+  if U then
+    vim.api.nvim_set_current_win(U)
+    vim.api.nvim_feedkeys("G", "x", false)
+    ok(banner_visible(U, "END OF DIFF"), "diff unified: end banner on screen at the end of a long file")
+    vim.api.nvim_feedkeys("[f", "x", false)
+    ok(banner_visible(U, "END"), "diff unified: short file shows its end banner")
+    vim.api.nvim_feedkeys("q", "x", false)
+  end
+  package.loaded["scrollEOF"] = nil
+end
+
 -- ── report ─────────────────────────────────────────────────────────────────
 print(("\n%d passed, %d failed"):format(passed, failed))
 os.exit(failed == 0 and 0 or 1)

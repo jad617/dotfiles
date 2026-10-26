@@ -294,55 +294,8 @@ end
 ---------------------------------------------------------------------------
 
 local function set_hl()
-  local hls = {
-    DevOpsTitle          = { fg = "#99bc80", bold = true },
-    DevOpsSection        = { fg = "#7aa2f7", bold = true },
-    DevOpsSectionActive  = { fg = "#99bc80", bold = true },
-    DevOpsSectionBar     = { fg = "#99bc80", bold = true },
-    DevOpsGroup          = { fg = "#565f89", bold = true },
-    DevOpsKey            = { fg = "#e0af68" },
-    DevOpsDim            = { fg = "#565f89" },
-    DevOpsId             = { fg = "#7dcfff", bold = true },
-    DevOpsStatusTodo     = { fg = "#9aa5ce" },
-    DevOpsStatusProgress = { fg = "#e0af68" },
-    DevOpsStatusDone     = { fg = "#9ece6a" },
-    DevOpsPrOpen         = { fg = "#9ece6a" },
-    DevOpsPrDraft        = { fg = "#565f89" },
-    DevOpsLabel          = { fg = "#7aa2f7" },
-    DevOpsColumn         = { fg = "#bb9af7", bold = true },
-    DevOpsColumnNew      = { fg = "#7dcfff", bold = true },
-    DevOpsColumnTodo     = { fg = "#9aa5ce", bold = true },
-    DevOpsColumnHold     = { fg = "#ff9e64", bold = true },
-    DevOpsColumnProgress = { fg = "#e0af68", bold = true },
-    DevOpsColumnReview   = { fg = "#bb9af7", bold = true },
-    DevOpsColumnQa       = { fg = "#f7768e", bold = true },
-    DevOpsColumnMonitor  = { fg = "#7aa2f7", bold = true },
-    DevOpsColumnDone     = { fg = "#9ece6a", bold = true },
-    DevOpsCount          = { fg = "#565f89" },
-    DevOpsIcon           = { fg = "#7aa2f7" },
-    DevOpsBorder         = { fg = "#3b4261" },
-    DevOpsBorderActive   = { fg = "#99bc80" },
-    DevOpsWinbar         = { fg = "#ff8050", bold = true },
-    DevOpsBadge          = { fg = "#ff8050" },
-    DevOpsCommentBorder  = { fg = "#7aa2f7" },
-    DevOpsReplyBorder    = { fg = "#e0af68" },
-    DevOpsReplyLabel     = { fg = "#e0af68", bold = true },
-    DevOpsDetailTitle    = { fg = "#c0caf5", bold = true },
-    DevOpsSectionHead    = { fg = "#7aa2f7", bold = true },
-    DevOpsOk             = { fg = "#9ece6a" },
-    DevOpsErr            = { fg = "#f7768e" },
-    DevOpsWarn           = { fg = "#e0af68" },
-    DevOpsPill           = { fg = "#1a1b26", bg = "#7aa2f7", bold = true },
-    DevOpsAction         = { fg = "#f7768e" },
-    DevOpsMdHeader       = { fg = "#7aa2f7", bold = true },
-    DevOpsMdBold         = { bold = true },
-    DevOpsMdItalic       = { italic = true },
-    DevOpsMdCode         = { fg = "#9ece6a", bg = "#1f2335" },
-    DevOpsMdCodeBlock    = { fg = "#9ece6a", bg = "#1f2335" },
-    DevOpsMdListBullet   = { fg = "#e0af68", bold = true },
-    DevOpsMdQuote        = { fg = "#787c99", italic = true },
-  }
-  for name, val in pairs(hls) do vim.api.nvim_set_hl(0, name, val) end
+  local ok, theme = pcall(require, "plugins.utils.devops.ui.theme")
+  if ok then theme.apply() end
   M.apply_diff_theme()
 end
 set_hl()
@@ -376,7 +329,72 @@ end
 local TYPE_ICON = {
   Story = "", Task = "", Bug = "", Epic = "", ["Sub-task"] = "", Subtask = "",
 }
-function M.issue_icon(type_name) return TYPE_ICON[type_name] or "" end
+local TYPE_HL = {
+  story = "DevOpsTypeStory", task = "DevOpsTypeTask", bug = "DevOpsTypeBug", epic = "DevOpsTypeEpic",
+  ["sub-task"] = "DevOpsTypeSubtask", subtask = "DevOpsTypeSubtask",
+}
+
+local function ui_opts()
+  local ok, config = pcall(require, "plugins.utils.devops.config")
+  return ok and type(config.options) == "table" and config.options.ui or {}
+end
+
+-- Case-insensitive lookup in a user-config table.
+local function lookup(tbl, name)
+  if type(tbl) ~= "table" or type(name) ~= "string" then return nil end
+  if tbl[name] ~= nil then return tbl[name] end
+  local lname = name:lower()
+  for k, v in pairs(tbl) do
+    if type(k) == "string" and k:lower() == lname then return v end
+  end
+end
+
+function M.issue_icon(type_name)
+  local o = lookup(ui_opts().issue_types, type_name)
+  if type(o) == "table" and o.icon then return o.icon end
+  return TYPE_ICON[type_name] or ""
+end
+
+-- Highlight group for an issue-type icon (per-type colour; configurable).
+function M.issue_icon_hl(type_name)
+  local o = lookup(ui_opts().issue_types, type_name)
+  if type(o) == "table" and o.hl then return o.hl end
+  return type(type_name) == "string" and TYPE_HL[type_name:lower()] or "DevOpsIcon"
+end
+
+local STATUS_ICON = {
+  new = "\u{f10c}", indeterminate = "\u{f042}", done = "\u{f058}",
+  ["in review"] = "\u{f06e}", review = "\u{f06e}", blocked = "\u{f05e}",
+  ["on hold"] = "\u{f28b}", hold = "\u{f28b}", qa = "\u{f0c3}",
+}
+
+-- Icon for a Jira status: user override by name → category, then built-ins
+-- by name → category.
+function M.status_icon(status_name, category_key)
+  local user = ui_opts().status_icons
+  return lookup(user, status_name) or lookup(user, category_key)
+    or lookup(STATUS_ICON, status_name) or STATUS_ICON[category_key or "new"] or STATUS_ICON.new
+end
+
+-- Filled "pill" group for a status category (header badge).
+function M.status_pill_hl(category_key)
+  if category_key == "done" then return "DevOpsPillDone" end
+  if category_key == "indeterminate" then return "DevOpsPillProgress" end
+  return "DevOpsPillTodo"
+end
+
+local PRIORITY = {
+  highest = { "\u{f102}", "DevOpsPriorityHigh" }, high = { "\u{f106}", "DevOpsPriorityHigh" },
+  critical = { "\u{f102}", "DevOpsPriorityHigh" }, blocker = { "\u{f05e}", "DevOpsPriorityHigh" },
+  medium = { "\u{f068}", "DevOpsPriorityMedium" },
+  low = { "\u{f107}", "DevOpsPriorityLow" }, lowest = { "\u{f103}", "DevOpsPriorityLow" },
+}
+-- Icon + highlight for a Jira priority name (nil icon when unknown).
+function M.priority(name)
+  local p = type(name) == "string" and PRIORITY[name:lower()]
+  if p then return p[1], p[2] end
+  return nil, nil
+end
 
 function M.truncate(s, w)
   s = s or ""

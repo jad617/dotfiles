@@ -117,10 +117,92 @@ local function builder()
   function b.tag(from, to, data)
     for l = from, to do T[l] = data end
   end
+  -- "label   ⟨chip⟩ ⟨chip⟩" row: each item rendered as a padded, filled chip.
+  function b.chips(label, items, hl)
+    if type(items) ~= "table" or #items == 0 then return end
+    local prefix = "  " .. render.pad(label, 11) .. " "
+    local text, spans = prefix, {}
+    for i, it in ipairs(items) do
+      if i > 1 then text = text .. " " end
+      local chip = " " .. tostring(it) .. " "
+      spans[#spans + 1] = { #text, #text + #chip }
+      text = text .. chip
+    end
+    local line = b.add(text)
+    b.hl(line, 0, #prefix, "DevOpsDim")
+    for _, s in ipairs(spans) do b.hl(line, s[1], s[2], hl or "DevOpsChip") end
+    return line
+  end
+  -- Detail tab bar: ` Overview `  ` Comments 3 ` …, the active one filled.
+  function b.tabbar(tabs, active)
+    local text, spans = "  ", {}
+    for i, t in ipairs(tabs) do
+      if i > 1 then text = text .. " " end
+      local cell = " " .. t.label .. " "
+      spans[#spans + 1] = { #text, #text + #cell, t.id == active }
+      text = text .. cell
+    end
+    local hint = "   ⇥ / ⇤ switch"
+    local line = b.add(text .. hint)
+    for _, s in ipairs(spans) do b.hl(line, s[1], s[2], s[3] and "DevOpsTabActive" or "DevOpsTabInactive") end
+    b.hl(line, #text, #text + #hint, "DevOpsDim")
+    return line
+  end
   function b.lines() return L end
   function b.highlights() return H end
   function b.tags() return T end
   return b
+end
+
+---------------------------------------------------------------------------
+-- Detail tabs. The active tab is remembered per item (issue key / "repo#n"),
+-- so a refresh or navigating back keeps you on the same tab.
+---------------------------------------------------------------------------
+local ISSUE_TABS = { "overview", "comments", "prs" }
+local PR_TABS = { "overview", "conversation", "checks", "files" }
+local active_tabs = {}
+
+local function tabs_enabled()
+  local ok, config = pcall(require, "plugins.utils.devops.config")
+  local ui = ok and config.options and config.options.ui or {}
+  return ui.detail_tabs ~= false
+end
+
+local function current_tab(id, ids)
+  local t = active_tabs[id]
+  for _, x in ipairs(ids) do if x == t then return t end end
+  return ids[1]
+end
+
+--- Select a detail tab for an item before (re)rendering it, e.g. "comments".
+function M.set_tab(id, tab) active_tabs[id] = tab end
+M.tabs_enabled = tabs_enabled
+
+-- Move the item's active tab by `dir` (+1 / -1), wrapping.
+local function cycle_tab(id, ids, dir)
+  local cur = current_tab(id, ids)
+  for i, x in ipairs(ids) do
+    if x == cur then
+      active_tabs[id] = ids[(i - 1 + dir) % #ids + 1]
+      return active_tabs[id]
+    end
+  end
+end
+
+-- Map <Tab>/<S-Tab> in a detail buffer to cycle tabs, then rerender() and put
+-- the cursor back at the top.
+local function map_tab_keys(buf, id, ids, rerender)
+  if not tabs_enabled() then return end
+  local function go(dir)
+    return function()
+      cycle_tab(id, ids, dir)
+      rerender()
+      local win = vim.fn.bufwinid(buf)
+      if win ~= -1 then pcall(vim.api.nvim_win_set_cursor, win, { 1, 0 }) end
+    end
+  end
+  vim.keymap.set("n", "<Tab>", go(1), { buffer = buf, nowait = true, desc = "Next detail tab" })
+  vim.keymap.set("n", "<S-Tab>", go(-1), { buffer = buf, nowait = true, desc = "Previous detail tab" })
 end
 
 -- Cover ~75% of the editor, centered (consistent large popup).
@@ -184,10 +266,14 @@ local function show(title, b, on_open)
     end
     require("plugins.utils.devops.ui.pane_nav").map(buf)
     vim.keymap.set("n", "<CR>", function()
-      local t = M.link_at(buf, vim.api.nvim_win_get_cursor(0)[1])
+      local row = vim.api.nvim_win_get_cursor(0)[1]
+      local f = M.file_at(buf, row)
+      if f then return M.open_pr_file(f) end
+      local t = M.link_at(buf, row)
       if not t then return end
       if t.kind == "jira_link" then M.open_issue(t.key) else M.open_pr(t.pr) end
     end, { buffer = buf, nowait = true, desc = "Open linked item" })
+    vim.keymap.set("n", "<2-LeftMouse>", "<CR>", { buffer = buf, remap = true, desc = "Open linked item" })
   end
   if on_open then on_open(buf) end
 end
@@ -262,6 +348,28 @@ function M.link_at(buf, row)
   if t and (t.kind == "jira_link" or t.kind == "pr_link") then return t end
 end
 
+-- Changed-file row (PR Files section) under `row` in `buf`, or nil.
+function M.file_at(buf, row)
+  local tags = tags_by_buf[buf]
+  local t = tags and tags[row]
+  if t and t.kind == "pr_file" then return t end
+end
+
+-- Open the PR diff positioned on the file of a `pr_file` tag.
+function M.open_pr_file(t)
+  local repo = t.pr.repository and t.pr.repository.nameWithOwner
+  local n = t.pr.number
+  if not repo or not n then return end
+  gh.pr_diff(repo, n, function(ok, diff_text, err)
+    if not ok then return errors.show("DevOps: " .. (err or "diff failed")) end
+    local idx
+    for i, f in ipairs(diff_viewer.parse_files(diff_text)) do
+      if f.new_path == t.path or f.old_path == t.path or f.path == t.path then idx = i; break end
+    end
+    diff_viewer.open(diff_text, "Diff #" .. n, { pr = { repo = repo, number = n }, focus_file = idx })
+  end)
+end
+
 -- The Parent link of the issue rendered in `buf` (wherever the cursor is), or nil.
 function M.parent_link(buf)
   for _, t in pairs(tags_by_buf[buf] or {}) do
@@ -314,6 +422,7 @@ local function str(x) return type(x) == "string" and x or nil end
 -- Per-epic child-issue filter ('F'): { label, match = fn(issue) }. Survives
 -- re-renders; `last_children` feeds the picker with what's on screen.
 local child_filters, last_children = {}, {}
+local last_comments = {} -- issue key → last rendered comments (for the `c` preview)
 
 -- "Child issues" panel: tri-colour progress bar + one openable row per child.
 -- `children` nil = still loading. The bar always covers all children; `filter`
@@ -379,13 +488,14 @@ local function add_children_section(b, children, width, filter)
     local cf = tbl(it.fields)
     local icon = render.issue_icon(str(tbl(cf.issuetype).name))
     local key = str(it.key) or "?"
-    local status = render.fit(str(tbl(cf.status).name) or "", 14)
+    local sname = str(tbl(cf.status).name) or ""
+    local status = render.fit(render.status_icon(sname, cat_of(it)) .. " " .. sname, 16)
     local assignee = render.fit(str(tbl(cf.assignee).displayName) or "Unassigned", 18)
     local prefix = "   " .. icon .. "  "
     local head = prefix .. render.pad(key, max_key) .. "  " .. status .. "  " .. assignee .. "  "
     local summary = render.truncate(str(cf.summary) or "", math.max(10, avail - vim.fn.strdisplaywidth(head) - 2))
     local row = b.add(head .. summary)
-    b.hl(row, 3, 3 + #icon, "DevOpsIcon")
+    b.hl(row, 3, 3 + #icon, render.issue_icon_hl(str(tbl(cf.issuetype).name)))
     b.hl(row, #prefix, #prefix + #key, "DevOpsId")
     local s_start = #prefix + #render.pad(key, max_key) + 2
     b.hl(row, s_start, s_start + #status, render.status_hl(cat_of(it)))
@@ -440,80 +550,127 @@ function M.pick_children_filter(parent_key, children, rerender)
   end)
 end
 
-local function build_issue(issue, prs, comments, width, children)
+-- Names of a list of Jira objects ({ name = … }), skipping null entries.
+local function names_of(list)
+  local out = {}
+  for _, x in ipairs(tbl(list)) do
+    if type(x) == "table" and str(x.name) then out[#out + 1] = x.name end
+  end
+  return out
+end
+
+local function build_issue(issue, prs, comments, width, children, tab)
   local f = issue.fields or {}
   local b = builder()
+  local tabbed = tabs_enabled()
+  tab = tabbed and (tab or current_tab(issue.key or "?", ISSUE_TABS)) or nil
+  local function shown(t) return not tabbed or tab == t end
+  if comments and issue.key then last_comments[issue.key] = comments end
 
-  -- Header: type icon + key, then the summary as the card title.
-  local icon = render.issue_icon(f.issuetype and f.issuetype.name)
+  -- Header: type icon + key + status pill, then the summary as the card title.
+  local type_name = f.issuetype and f.issuetype.name
+  local icon = render.issue_icon(type_name)
   local key = issue.key or "?"
-  local hl = b.add("  " .. icon .. "  " .. key)
-  b.hl(hl, 2, 2 + #icon, "DevOpsIcon")
-  b.hl(hl, #("  " .. icon .. "  "), #("  " .. icon .. "  ") + #key, "DevOpsId")
+  local cat = f.status and f.status.statusCategory and f.status.statusCategory.key
+  local sname = field_path(issue, "status.name", "?")
+  local lead = "  " .. icon .. "  "
+  local head = lead .. key .. "   "
+  local pill = " " .. render.status_icon(sname, cat) .. " " .. sname .. " "
+  local hl = b.add(head .. pill)
+  b.hl(hl, 2, 2 + #icon, render.issue_icon_hl(type_name))
+  b.hl(hl, #lead, #lead + #key, "DevOpsId")
+  b.hl(hl, #head, #head + #pill, render.status_pill_hl(cat))
   local tl = b.add("  " .. (f.summary or ""))
   b.hl(tl, 0, #b.lines()[tl], "DevOpsDetailTitle")
   b.add("")
 
-  -- Metadata block.
-  local cat = f.status and f.status.statusCategory and f.status.statusCategory.key
-  b.field("Status", field_path(issue, "status.name", "?"), render.status_hl(cat))
-  b.field("Type", field_path(issue, "issuetype.name", nil))
-  b.field("Assignee", field_path(issue, "assignee.displayName", "Unassigned"))
-  b.field("Reporter", field_path(issue, "reporter.displayName", nil))
-  b.field("Priority", field_path(issue, "priority.name", nil))
-  b.field("Sprint", active_sprint_name(f), "DevOpsWarn")
-  if type(f.parent) == "table" and str(f.parent.key) then
-    local pf = tbl(f.parent.fields)
-    local picon = render.issue_icon(str(tbl(pf.issuetype).name))
-    local hint = "   (↵ / P open)"
-    local pfx = picon ~= "" and (picon .. "  ") or ""
-    local line = b.field("Parent", pfx .. f.parent.key .. "  " .. (str(pf.summary) or "") .. hint)
-    local vstart = #("  " .. render.pad("Parent", 11) .. " ")
-    b.hl(line, vstart, vstart + #picon, "DevOpsIcon")
-    b.hl(line, vstart + #pfx, vstart + #pfx + #f.parent.key, "DevOpsId")
-    b.hl(line, #b.lines()[line] - #hint, #b.lines()[line], "DevOpsDim")
-    b.tag(line, line, { kind = "jira_link", key = f.parent.key, parent = true, epic = is_epic_type(pf.issuetype) })
+  if tabbed then
+    local function count(x) return x == nil and "…" or tostring(#x) end
+    b.tabbar({
+      { id = "overview", label = "Overview" },
+      { id = "comments", label = "Comments " .. count(comments) },
+      { id = "prs", label = "Pull requests " .. count(prs) },
+    }, tab)
+    b.add("")
   end
-  if type(f.labels) == "table" and #f.labels > 0 then
-    b.field("Labels", table.concat(f.labels, "  "), "DevOpsLabel")
-  end
-  b.field("Updated", (f.updated or ""):sub(1, 10))
 
-  -- Linked PRs.
-  b.divider("Linked PRs")
-  if prs == nil then
-    local l = b.add("   loading…")
-    b.hl(l, 0, #b.lines()[l], "DevOpsDim")
-  elseif #prs == 0 then
-    local l = b.add("   none")
-    b.hl(l, 0, #b.lines()[l], "DevOpsDim")
-  else
-    for _, pr in ipairs(prs) do
-      local stt = pr.status or pr.state or ""
-      local ok = stt == "MERGED" or stt == "OPEN"
-      local l = b.add(("   %s  %s  [%s]"):format(pr.id or "", pr.name or pr.title or "", stt))
-      b.hl(l, 3, 3 + #(pr.id or ""), "DevOpsId")
-      b.hl(l, #b.lines()[l] - #stt - 1, #b.lines()[l], ok and "DevOpsOk" or "DevOpsWarn")
-      local last = l
-      if pr.url then
-        last = b.add("       " .. pr.url)
-        b.hl(last, 0, #b.lines()[last], "DevOpsDim")
+  -- Metadata block.
+  if shown("overview") then
+    b.field("Type", type_name)
+    b.field("Assignee", field_path(issue, "assignee.displayName", "Unassigned"))
+    b.field("Reporter", field_path(issue, "reporter.displayName", nil))
+    local pname = field_path(issue, "priority.name", nil)
+    if pname then
+      local picon, phl = render.priority(pname)
+      local line = b.field("Priority", picon and (picon .. "  " .. pname) or pname)
+      if picon then
+        local vstart = #("  " .. render.pad("Priority", 11) .. " ")
+        b.hl(line, vstart, vstart + #picon, phl)
       end
-      local target = pr_from_url(pr.url)
-      if target then b.tag(l, last, { kind = "pr_link", pr = target }) end
+    end
+    b.field("Sprint", active_sprint_name(f), "DevOpsWarn")
+    if type(f.parent) == "table" and str(f.parent.key) then
+      local pf = tbl(f.parent.fields)
+      local picon = render.issue_icon(str(tbl(pf.issuetype).name))
+      local hint = "   (↵ / P open)"
+      local pfx = picon ~= "" and (picon .. "  ") or ""
+      local line = b.field("Parent", pfx .. f.parent.key .. "  " .. (str(pf.summary) or "") .. hint)
+      local vstart = #("  " .. render.pad("Parent", 11) .. " ")
+      b.hl(line, vstart, vstart + #picon, render.issue_icon_hl(str(tbl(pf.issuetype).name)))
+      b.hl(line, vstart + #pfx, vstart + #pfx + #f.parent.key, "DevOpsId")
+      b.hl(line, #b.lines()[line] - #hint, #b.lines()[line], "DevOpsDim")
+      b.tag(line, line, { kind = "jira_link", key = f.parent.key, parent = true, epic = is_epic_type(pf.issuetype) })
+    end
+    b.chips("Labels", type(f.labels) == "table" and f.labels or nil, "DevOpsChipLabel")
+    b.chips("Components", names_of(f.components))
+    b.chips("Fix version", names_of(f.fixVersions))
+    b.field("Updated", (f.updated or ""):sub(1, 10))
+  end
+
+  -- Linked PRs (own tab; between metadata and description when untabbed).
+  local function prs_section()
+    if not tabbed then b.divider("Linked PRs") end
+    if prs == nil then
+      local l = b.add("   loading…")
+      b.hl(l, 0, #b.lines()[l], "DevOpsDim")
+    elseif #prs == 0 then
+      local l = b.add("   no linked pull requests")
+      b.hl(l, 0, #b.lines()[l], "DevOpsDim")
+    else
+      for i, pr in ipairs(prs) do
+        if tabbed and i > 1 then b.add("") end
+        local stt = pr.status or pr.state or ""
+        local ok = stt == "MERGED" or stt == "OPEN"
+        local l = b.add(("   %s  %s  [%s]"):format(pr.id or "", pr.name or pr.title or "", stt))
+        b.hl(l, 3, 3 + #(pr.id or ""), "DevOpsId")
+        b.hl(l, #b.lines()[l] - #stt - 1, #b.lines()[l], ok and "DevOpsOk" or "DevOpsWarn")
+        local last = l
+        if pr.url then
+          last = b.add("       " .. pr.url)
+          b.hl(last, 0, #b.lines()[last], "DevOpsDim")
+        end
+        local target = pr_from_url(pr.url)
+        if target then b.tag(l, last, { kind = "pr_link", pr = target }) end
+      end
+    end
+  end
+  if not tabbed then prs_section() end
+
+  -- Description (+ an epic's child issues, like Jira's web view).
+  local desc_start, desc_end
+  if shown("overview") then
+    b.divider("Description")
+    desc_start = #b.lines() + 1
+    for _, line in ipairs(adf.adf_to_lines(f.description)) do b.add("  " .. (line:gsub("\r", ""))) end
+    desc_end = #b.lines()
+
+    if has_children_panel(issue) then
+      if children then last_children[issue.key] = children end
+      add_children_section(b, children, width, child_filters[issue.key])
     end
   end
 
-  -- Description.
-  b.divider("Description")
-  local desc_start = #b.lines() + 1
-  for _, line in ipairs(adf.adf_to_lines(f.description)) do b.add("  " .. (line:gsub("\r", ""))) end
-  local desc_end = #b.lines()
-
-  if has_children_panel(issue) then
-    if children then last_children[issue.key] = children end
-    add_children_section(b, children, width, child_filters[issue.key])
-  end
+  if tabbed and tab == "prs" then prs_section() end
 
   -- Comments.
   local comment_rows = {} -- 1-based line → comment object
@@ -627,7 +784,8 @@ local function build_issue(issue, prs, comments, width, children)
     b.hl(bl, 0, #pad + #bottom, border_hl)
   end
 
-  b.divider("Comments")
+  if not shown("comments") then return b, comment_rows, desc_start and { desc_start, desc_end } or nil end
+  if not tabbed then b.divider("Comments") end
   if comments == nil then
     local l = b.add("   loading…")
     b.hl(l, 0, #b.lines()[l], "DevOpsDim")
@@ -655,7 +813,7 @@ local function build_issue(issue, prs, comments, width, children)
     end
   end
 
-  return b, comment_rows, { desc_start, desc_end }
+  return b, comment_rows, desc_start and { desc_start, desc_end } or nil
 end
 
 --- Set up a CursorMoved autocmd that bounds the cursorline highlight to the
@@ -727,6 +885,7 @@ local function setup_issue_keys(buf, ctx)
   end
 
   map("o", function() vim.ui.open(browse) end, "Open in browser")
+  if ctx.rerender_tab then map_tab_keys(buf, ctx.key, ISSUE_TABS, ctx.rerender_tab) end
 
   map("P", function()
     local link = M.parent_link(buf)
@@ -750,10 +909,7 @@ local function setup_issue_keys(buf, ctx)
     local iopts = ctx.input_opts()
     iopts.compact = true
     -- Preview the latest comments so the new one has context.
-    local seen, cmts = {}, {}
-    for _, cm in pairs(ctx.comment_rows() or {}) do
-      if not seen[cm] then seen[cm] = true; cmts[#cmts + 1] = cm end
-    end
+    local cmts = vim.list_slice(last_comments[ctx.key] or {})
     table.sort(cmts, function(a, b2) return (a.created or "") < (b2.created or "") end)
     if #cmts > 0 then
       local lines = {}
@@ -885,6 +1041,9 @@ function M.open_issue(key)
       return errors.show("DevOps: " .. (err or ("failed to load " .. key)))
     end
     local project_key = key:match("^(%u[%u%d_]*)%-")
+    -- Linked PRs, comments and child issues arrive async; rebuild as each completes.
+    local async_dev_prs, async_gh_prs, async_comments, async_children
+    local rebuild
     local function setup_keys(buf)
       setup_issue_keys(buf, {
         key = key,
@@ -893,8 +1052,16 @@ function M.open_issue(key)
         desc_range = function() return state.desc_range end,
         input_opts = function() return { on_mention = jira_mention() } end,
         refresh = function() M.open_issue(key) end,
+        rerender_tab = function() rebuild() end,
         get_cursor_row = function() return vim.api.nvim_win_get_cursor(state.win)[1] end,
       })
+    end
+    rebuild = function()
+      if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
+      local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, nil, async_children)
+      state.comment_rows = cr_new
+      state.desc_range = dr_new
+      show("Jira · " .. issue.key, b_new, setup_keys)
     end
 
     local b_initial, cr_initial, dr_initial = build_issue(issue, nil, nil)
@@ -903,15 +1070,6 @@ function M.open_issue(key)
     show("Jira · " .. issue.key, b_initial, function(buf)
       setup_keys(buf)
       setup_comment_cursorline(state.win, buf, function() return state.comment_rows end)
-      -- Linked PRs, comments and child issues arrive async; rebuild as each completes.
-      local async_dev_prs, async_gh_prs, async_comments, async_children
-      local function rebuild()
-        if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
-        local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, nil, async_children)
-        state.comment_rows = cr_new
-        state.desc_range = dr_new
-        show("Jira · " .. issue.key, b_new, setup_keys)
-      end
       if has_children_panel(issue) then
         api.children(issue.key, function(ok2, kids)
           async_children = ok2 and kids or {}
@@ -1115,100 +1273,131 @@ local function open_pr_links(pr)
   vim.ui.select(urls, { prompt = "Open link:" }, function(u) if u then vim.ui.open(u) end end)
 end
 
-local function build_pr(pr, width)
+local function pr_tab_id(pr)
+  return tostring(pr.repository and pr.repository.nameWithOwner or "?") .. "#" .. tostring(pr.number or "?")
+end
+
+local PR_STATE_PILL = { OPEN = "DevOpsPillDone", MERGED = "DevOpsPill", CLOSED = "DevOpsPillTodo" }
+
+local function build_pr(pr, width, tab)
   local b = builder()
   active_pr = pr -- remember for keymaps (gx links)
   local W = width or math.max(60, math.floor(vim.o.columns * 0.75))
+  local tabbed = tabs_enabled()
+  tab = tabbed and (tab or current_tab(pr_tab_id(pr), PR_TABS)) or nil
+  local function shown(t) return not tabbed or tab == t end
   local draft = pr.isDraft
   local icon = draft and "" or ""
 
-  local hl = b.add("  " .. icon .. "  #" .. tostring(pr.number or "?"))
+  -- Header: icon + number + state pill, then the title.
+  local stateStr = draft and "DRAFT" or (pr.state or "?")
+  local lead = "  " .. icon .. "  "
+  local num = "#" .. tostring(pr.number or "?")
+  local head = lead .. num .. "   "
+  local pill = " " .. stateStr .. " "
+  local hl = b.add(head .. pill)
   b.hl(hl, 2, 2 + #icon, draft and "DevOpsPrDraft" or "DevOpsPrOpen")
-  b.hl(hl, #("  " .. icon .. "  "), #b.lines()[hl], "DevOpsId")
+  b.hl(hl, #lead, #lead + #num, "DevOpsId")
+  b.hl(hl, #head, #head + #pill, draft and "DevOpsPillMuted" or (PR_STATE_PILL[stateStr] or "DevOpsPillMuted"))
   local tl = b.add("  " .. (pr.title or ""))
   b.hl(tl, 0, #b.lines()[tl], "DevOpsDetailTitle")
   b.add("")
 
-  local stateStr = draft and "DRAFT" or (pr.state or "?")
-  b.field("State", stateStr, draft and "DevOpsPrDraft" or "DevOpsPrOpen")
-  -- Review: GitHub's decision plus why (your verdict, approvals vs required,
-  -- pending code owners) once reviews/rules have loaded.
-  local readiness, level
-  if pr.reviews ~= nil then
-    local rules = pr.mergeRules or {}
-    readiness, level = threads.merge_readiness({
-      decision = pr.reviewDecision,
-      verdicts = threads.review_verdicts(pr.reviews),
-      author = pr.author and pr.author.login,
-      me = gh.current_user_login(),
-      required = rules.required,
-      code_owners = rules.code_owners,
-      owner_pending = rules.owner_pending,
-    })
-  end
-  if readiness then
-    b.field("Review", readiness, ({ ok = "DevOpsOk", err = "DevOpsErr" })[level] or "DevOpsWarn")
-  elseif pr.reviewDecision and pr.reviewDecision ~= "" then
-    local rd = REVIEW_LABEL[pr.reviewDecision] or pr.reviewDecision
-    b.field("Review", rd, pr.reviewDecision == "APPROVED" and "DevOpsOk"
-      or (pr.reviewDecision == "CHANGES_REQUESTED" and "DevOpsErr" or "DevOpsWarn"))
-  end
-  b.field("Author", pr.author and pr.author.login or nil)
-  if pr.repository and pr.repository.nameWithOwner then
-    b.field("Repo", pr.repository.nameWithOwner, "DevOpsId")
-  end
-  local assignees = nil
-  if pr.assignees ~= nil then
-    assignees = {}
-    for _, assignee in ipairs(pr.assignees or {}) do
-      assignees[#assignees + 1] = gh_person_name(assignee)
+  local contexts = check_contexts(pr.statusCheckRollup)
+  if tabbed then
+    local function count(x, loaded) return loaded and tostring(x) or "…" end
+    local n_conv = count_items(pr.comments) + (type(pr.reviewComments) == "table" and #pr.reviewComments or 0)
+    local fails = 0
+    for _, c in ipairs(contexts) do
+      local _, chl = check_display(c)
+      if chl == "DevOpsErr" then fails = fails + 1 end
     end
-    b.field("Assignees", #assignees > 0 and table.concat(assignees, ", ") or "None")
-  end
-  if pr.headRefName then
-    b.field("Branch", pr.headRefName .. "  →  " .. (pr.baseRefName or "?"))
-  end
-  if pr.additions or pr.deletions then
-    b.field("Diff", ("+%d  -%d"):format(pr.additions or 0, pr.deletions or 0), "DevOpsWarn")
-  end
-  if pr.comments ~= nil then b.field("Comments", tostring(count_items(pr.comments))) end
-  local mergeable = mergeable_text(pr)
-  local mergeable_hl = nil
-  if mergeable then
-    if mergeable:find("conflict", 1, true) or mergeable:find("dirty", 1, true) then
-      mergeable_hl = "DevOpsErr"
-    elseif mergeable:find("mergeable", 1, true) or mergeable:find("clean", 1, true) then
-      mergeable_hl = "DevOpsOk"
-    else
-      mergeable_hl = "DevOpsWarn"
-    end
-  end
-  b.field("Mergeable", mergeable, mergeable_hl)
-  local pass, fail, pend = checks_summary(pr.statusCheckRollup)
-  if pass then
-    local parts = {}
-    if pass > 0 then parts[#parts + 1] = "✓ " .. pass end
-    if fail > 0 then parts[#parts + 1] = "✗ " .. fail end
-    if pend > 0 then parts[#parts + 1] = "● " .. pend end
-    b.field("Checks", table.concat(parts, "   "), fail > 0 and "DevOpsErr" or "DevOpsOk")
-  end
-  if type(pr.labels) == "table" and #pr.labels > 0 then
-    local names = {}
-    for _, l in ipairs(pr.labels) do names[#names + 1] = l.name end
-    b.field("Labels", table.concat(names, "  "), "DevOpsLabel")
+    b.tabbar({
+      { id = "overview", label = "Overview" },
+      { id = "conversation", label = "Conversation " .. count(n_conv, pr.comments ~= nil) },
+      { id = "checks", label = "Checks " .. count(#contexts, pr.statusCheckRollup ~= nil) .. (fails > 0 and (" ✗" .. fails) or "") },
+      { id = "files", label = "Files " .. count(type(pr.files) == "table" and #pr.files or 0, pr.files ~= nil) },
+    }, tab)
+    b.add("")
   end
 
-  local linked_keys = branch_issue_keys(pr.headRefName, pr.title, pr.body)
-  if #linked_keys > 0 then
-    b.divider("Linked Jira Issues  (↵ open)")
-    for _, key in ipairs(linked_keys) do
-      local l = b.add("  🔗  " .. key)
-      b.hl(l, #"  🔗  ", #"  🔗  " + #key, "DevOpsId")
-      b.tag(l, l, { kind = "jira_link", key = key })
+  local function overview_fields()
+    -- Review: GitHub's decision plus why (your verdict, approvals vs required,
+    -- pending code owners) once reviews/rules have loaded.
+    local readiness, level
+    if pr.reviews ~= nil then
+      local rules = pr.mergeRules or {}
+      readiness, level = threads.merge_readiness({
+        decision = pr.reviewDecision,
+        verdicts = threads.review_verdicts(pr.reviews),
+        author = pr.author and pr.author.login,
+        me = gh.current_user_login(),
+        required = rules.required,
+        code_owners = rules.code_owners,
+        owner_pending = rules.owner_pending,
+      })
+    end
+    if readiness then
+      b.field("Review", readiness, ({ ok = "DevOpsOk", err = "DevOpsErr" })[level] or "DevOpsWarn")
+    elseif pr.reviewDecision and pr.reviewDecision ~= "" then
+      local rd = REVIEW_LABEL[pr.reviewDecision] or pr.reviewDecision
+      b.field("Review", rd, pr.reviewDecision == "APPROVED" and "DevOpsOk"
+        or (pr.reviewDecision == "CHANGES_REQUESTED" and "DevOpsErr" or "DevOpsWarn"))
+    end
+    b.field("Author", pr.author and pr.author.login or nil)
+    if pr.repository and pr.repository.nameWithOwner then
+      b.field("Repo", pr.repository.nameWithOwner, "DevOpsId")
+    end
+    local assignees = nil
+    if pr.assignees ~= nil then
+      assignees = {}
+      for _, assignee in ipairs(pr.assignees or {}) do
+        assignees[#assignees + 1] = gh_person_name(assignee)
+      end
+      b.field("Assignees", #assignees > 0 and table.concat(assignees, ", ") or "None")
+    end
+    if pr.headRefName then
+      b.field("Branch", pr.headRefName .. "  →  " .. (pr.baseRefName or "?"))
+    end
+    if pr.additions or pr.deletions then
+      b.field("Diff", ("+%d  -%d"):format(pr.additions or 0, pr.deletions or 0), "DevOpsWarn")
+    end
+    if pr.comments ~= nil then b.field("Comments", tostring(count_items(pr.comments))) end
+    local mergeable = mergeable_text(pr)
+    local mergeable_hl = nil
+    if mergeable then
+      if mergeable:find("conflict", 1, true) or mergeable:find("dirty", 1, true) then
+        mergeable_hl = "DevOpsErr"
+      elseif mergeable:find("mergeable", 1, true) or mergeable:find("clean", 1, true) then
+        mergeable_hl = "DevOpsOk"
+      else
+        mergeable_hl = "DevOpsWarn"
+      end
+    end
+    b.field("Mergeable", mergeable, mergeable_hl)
+    local pass, fail, pend = checks_summary(pr.statusCheckRollup)
+    if pass then
+      local parts = {}
+      if pass > 0 then parts[#parts + 1] = "✓ " .. pass end
+      if fail > 0 then parts[#parts + 1] = "✗ " .. fail end
+      if pend > 0 then parts[#parts + 1] = "● " .. pend end
+      b.field("Checks", table.concat(parts, "   "), fail > 0 and "DevOpsErr" or "DevOpsOk")
+    end
+    b.chips("Labels", names_of(pr.labels), "DevOpsChipLabel")
+
+    local linked_keys = branch_issue_keys(pr.headRefName, pr.title, pr.body)
+    if #linked_keys > 0 then
+      b.divider("Linked Jira Issues  (↵ open)")
+      for _, key in ipairs(linked_keys) do
+        local l = b.add("  🔗  " .. key)
+        b.hl(l, #"  🔗  ", #"  🔗  " + #key, "DevOpsId")
+        b.tag(l, l, { kind = "jira_link", key = key })
+      end
     end
   end
+  if shown("overview") then overview_fields() end
 
-  if pr.reviews ~= nil or pr.reviewRequests ~= nil then
+  if (pr.reviews ~= nil or pr.reviewRequests ~= nil) and shown("overview") then
     local reviewers = review_rows(pr)
     b.divider("Reviewers")
     if #reviewers == 0 then
@@ -1232,9 +1421,8 @@ local function build_pr(pr, width)
     end
   end
 
-  local contexts = check_contexts(pr.statusCheckRollup)
-  if #contexts > 0 then
-    b.divider("Checks")
+  if shown("checks") and #contexts > 0 then
+    if not tabbed then b.divider("Checks") end
     for _, ctx in ipairs(contexts) do
       local icon, hl_group, label = check_display(ctx)
       local name = ctx.name or ctx.context or ctx.__typename or "check"
@@ -1248,9 +1436,9 @@ local function build_pr(pr, width)
     end
   end
 
-  if type(pr.files) == "table" and #pr.files > 0 then
-    b.divider("Files (" .. #pr.files .. ")")
-    local max_show = 20
+  if shown("files") and type(pr.files) == "table" and #pr.files > 0 then
+    if not tabbed then b.divider("Files (" .. #pr.files .. ")") end
+    local max_show = tabbed and math.huge or 20
     local pathw = math.max(20, W - 16) -- reserve ~16 cols for the +N -N counts
     for i, f in ipairs(pr.files) do
       if i > max_show then
@@ -1262,13 +1450,14 @@ local function build_pr(pr, width)
       local plus, minus = "+" .. (f.additions or 0), "-" .. (f.deletions or 0)
       local prefix = "  " .. render.pad(path, pathw) .. "  "
       local line = b.add(prefix .. plus .. " " .. minus)
+      b.tag(line, line, { kind = "pr_file", path = f.path, pr = pr })
       b.hl(line, 2, 2 + #path, "DevOpsId")
       b.hl(line, #prefix, #prefix + #plus, "DevOpsOk")
       b.hl(line, #prefix + #plus + 1, #prefix + #plus + 1 + #minus, "DevOpsErr")
     end
   end
 
-  if type(pr.reviewComments) == "table" and #pr.reviewComments > 0 then
+  if shown("conversation") and type(pr.reviewComments) == "table" and #pr.reviewComments > 0 then
     local me = gh.current_user_login()
     -- Build threads: roots (no in_reply_to_id) + replies keyed by their root id.
     local replies, roots = {}, {}
@@ -1333,15 +1522,17 @@ local function build_pr(pr, width)
     end
   end
 
-  b.divider("Description")
-  local body = markdown.clean(pr.body or "")
-  if body == "" then body = "_No description_" end
-  local md = markdown.render(body, "  ", W - 4)
-  for i, line in ipairs(md.lines) do
-    local li = b.add(line)
-    for _, h in ipairs(md.highlights) do
-      if h.line == i - 1 then
-        b.hl(li, h.col_start, h.col_end, h.hl)
+  if shown("overview") then
+    b.divider("Description")
+    local body = markdown.clean(pr.body or "")
+    if body == "" then body = "_No description_" end
+    local md = markdown.render(body, "  ", W - 4)
+    for i, line in ipairs(md.lines) do
+      local li = b.add(line)
+      for _, h in ipairs(md.highlights) do
+        if h.line == i - 1 then
+          b.hl(li, h.col_start, h.col_end, h.hl)
+        end
       end
     end
   end
@@ -1387,7 +1578,7 @@ local function build_pr(pr, width)
 
   table.sort(timeline, function(a, b) return a.time < b.time end)
 
-  if #timeline > 0 then
+  if shown("conversation") and #timeline > 0 then
     b.divider("Activity")
     local PAD = "  "
     for _, ev in ipairs(timeline) do
@@ -1718,10 +1909,14 @@ function M.open_pr(pr)
   local repo = pr.repository and pr.repository.nameWithOwner
   local n = pr.number
   local title = "GitHub · #" .. (n or "?")
+  local current = pr -- latest (enriched) data, re-rendered on a tab switch
 
-  local function setup_keys(buf)
+  local setup_keys
+  local function rerender_now() show(title, build_pr(current), setup_keys) end
+  setup_keys = function(buf)
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, desc = "Open in browser" })
     vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, desc = "Open a link from the PR" })
+    map_tab_keys(buf, pr_tab_id(pr), PR_TABS, rerender_now)
 
     if not repo or not n then return end
 
@@ -1826,7 +2021,7 @@ function M.open_pr(pr)
   show(title, build_pr(pr), function(buf)
     setup_keys(buf)
     enrich_pr(repo, n, pr,
-      function(full) show(title, build_pr(full), setup_keys) end,
+      function(full) current = full; show(title, build_pr(full), setup_keys) end,
       function()
         return gen == pr_view_gen and state.buf and vim.api.nvim_buf_is_valid(state.buf)
       end)
@@ -1858,6 +2053,7 @@ function M.load_issue(key, opts)
     -- Track rows for context-aware edit actions (populated after build)
     local issue_comment_rows = {}
     local issue_desc_range = nil
+    local rerender_now
 
     -- Get content pane width for card rendering
     local function content_width()
@@ -1878,6 +2074,7 @@ function M.load_issue(key, opts)
         end,
         refresh = function() M.load_issue(key, opts) end,
         rerender = opts.on_rerender,
+        rerender_tab = function() rerender_now() end,
         get_cursor_row = function() return vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())[1] end,
         open_parent = opts.on_parent,
         nowait = true,
@@ -1888,6 +2085,14 @@ function M.load_issue(key, opts)
     end
 
     local wants_children = has_children_panel(issue)
+    local async_dev_prs, async_gh_prs, async_comments, async_children
+    -- Re-render with whatever has arrived so far (tab switch).
+    rerender_now = function()
+      local b_new, cr_new, dr_new = build_issue(issue, merge_issue_prs(async_dev_prs, async_gh_prs), async_comments, content_width(), async_children)
+      issue_comment_rows = cr_new
+      issue_desc_range = dr_new
+      on_update(b_new, make_keys)
+    end
     local b_initial, cr_initial, dr_initial = build_issue(issue, nil, nil, content_width())
     issue_comment_rows = cr_initial
     issue_desc_range = dr_initial
@@ -1895,10 +2100,10 @@ function M.load_issue(key, opts)
 
     -- Async enrichment — use cached data if available
     local cached = detail_cache_get(key)
-    local async_dev_prs = cached and cached.dev_prs or nil
-    local async_gh_prs = cached and cached.gh_prs or nil
-    local async_comments = cached and cached.comments or nil
-    local async_children = cached and cached.children or nil
+    async_dev_prs = cached and cached.dev_prs or nil
+    async_gh_prs = cached and cached.gh_prs or nil
+    async_comments = cached and cached.comments or nil
+    async_children = cached and cached.children or nil
 
     -- If all enrichment is cached, rebuild immediately
     if async_dev_prs and async_comments and (async_children or not wants_children) then
@@ -1955,10 +2160,14 @@ function M.load_pr(pr, opts)
 
   local repo = pr.repository and pr.repository.nameWithOwner
   local n = pr.number
+  local current = pr -- latest (enriched) data, re-rendered on a tab switch
 
-  local function make_keys(buf)
+  local make_keys
+  local function rerender_now() on_update(build_pr(current, pr_w), make_keys) end
+  make_keys = function(buf)
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, nowait = true, desc = "Open in browser" })
     vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, nowait = true, desc = "Open a link from the PR" })
+    map_tab_keys(buf, pr_tab_id(pr), PR_TABS, rerender_now)
     if not repo or not n then return end
     vim.keymap.set("n", "a", function()
       gh.pr_approve(repo, n, function(ok, _, err)
@@ -2043,11 +2252,12 @@ function M.load_pr(pr, opts)
   pr_view_gen = pr_view_gen + 1
   local gen = pr_view_gen
   enrich_pr(repo, n, pr,
-    function(full) on_update(build_pr(full, pr_w), make_keys) end,
+    function(full) current = full; on_update(build_pr(full, pr_w), make_keys) end,
     function() return gen == pr_view_gen end)
 end
 
 -- Test hook (tests/nvim_spec.lua): the pure issue-card builder.
 M._build_issue = build_issue
+M._build_pr = build_pr
 
 return M
