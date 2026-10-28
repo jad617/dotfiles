@@ -9,6 +9,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/jad617/dotfiles/main/init.sh
 ```
 
 Idempotent — safe to re-run. Installs packages, creates symlinks, and configures the system.
+By default it only installs what's missing; run `./init.sh --upgrade` to also upgrade everything it manages.
 
 ## Structure
 
