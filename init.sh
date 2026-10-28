@@ -7,7 +7,14 @@
 # =============================================================================
 set -euo pipefail
 
-DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Run from a checkout → use it. Piped from curl (`bash <(curl …)`) the script
+# lives in /dev/fd, so fall back to the standard clone location.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [[ -d "$SCRIPT_DIR/.git" && -f "$SCRIPT_DIR/init.sh" ]]; then
+    DOTFILES="$SCRIPT_DIR"
+else
+    DOTFILES="$HOME/nodestack/dotfiles"
+fi
 
 # -----------------------------------------------------------------------------
 # Detect OS
@@ -20,7 +27,11 @@ elif [[ -f /etc/os-release ]]; then
     . /etc/os-release
     if [[ "${ID:-}" == "nixos" ]]; then
         echo "==> NixOS detected — delegating to nixos/init.sh"
-        exec "$(dirname "${BASH_SOURCE[0]}")/nixos/init.sh"
+        [[ -x "$DOTFILES/nixos/init.sh" ]] || {
+            echo "Clone the repo first: git clone https://github.com/jad617/dotfiles.git $DOTFILES"
+            exit 1
+        }
+        exec "$DOTFILES/nixos/init.sh"
     elif [[ "${ID:-}" == "pop" ]]; then
         OS="popos"
     else
@@ -58,6 +69,9 @@ clone_if_missing() {
 
 cmd_exists() { command -v "$1" &>/dev/null; }
 
+# Latest release tag of a GitHub repo, e.g. gh_latest jesseduffield/lazygit → v0.55.1
+gh_latest() { curl -fsSL "https://api.github.com/repos/$1/releases/latest" | jq -r '.tag_name'; }
+
 # -----------------------------------------------------------------------------
 # Go — official installer (same on both OS)
 # -----------------------------------------------------------------------------
@@ -90,6 +104,9 @@ install_go() {
 # Clone dotfiles
 # -----------------------------------------------------------------------------
 mkdir -p ~/nodestack
+if [[ "$OS" != "macos" ]] && ! cmd_exists git; then
+    sudo apt update && sudo apt install -y git
+fi
 clone_if_missing "https://github.com/jad617/dotfiles.git" "$DOTFILES"
 
 # =============================================================================
@@ -122,7 +139,17 @@ install_macos() {
         node \
         go \
         uv \
-        tree-sitter-cli
+        tree-sitter-cli \
+        fzf \
+        jq \
+        yq \
+        lazygit \
+        btop \
+        pipx \
+        p7zip \
+        nmap \
+        mtr \
+        ipcalc
 
     brew install --cask wezterm@nightly
 
@@ -162,14 +189,33 @@ install_linux() {
         unzip \
         jq \
         fontconfig \
-        nodejs \
-        npm
+        fzf \
+        btop \
+        pipx \
+        p7zip-full \
+        nmap \
+        mtr-tiny \
+        ipcalc \
+        ca-certificates \
+        gnupg
 
-    mkdir -p ~/bin
+    mkdir -p ~/bin ~/.local/bin
+
+    # Debian/Ubuntu ship fd and bat as fdfind / batcat; expose the usual names.
+    cmd_exists fd || ln -sf "$(command -v fdfind)" ~/.local/bin/fd
+    cmd_exists bat || ln -sf "$(command -v batcat)" ~/.local/bin/bat
+
+    # Node.js LTS from NodeSource — apt's nodejs is too old (Copilot CLI needs ≥ 22)
+    local node_major=0
+    cmd_exists node && node_major=$(node -p 'process.versions.node.split(".")[0]')
+    if ((node_major < 22)); then
+        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+        sudo apt install -y nodejs
+    fi
 
     # eza (macOS: brew)
     if ! cmd_exists eza; then
-        EZA_VER=$(curl -s https://api.github.com/repos/eza-community/eza/releases/latest | jq -r '.tag_name')
+        EZA_VER=$(gh_latest eza-community/eza)
         curl -L "https://github.com/eza-community/eza/releases/download/${EZA_VER}/eza_x86_64-unknown-linux-musl.tar.gz" -o /tmp/eza.tar.gz
         tar -xzf /tmp/eza.tar.gz -C /tmp
         sudo mv /tmp/eza /usr/local/bin/
@@ -205,11 +251,27 @@ install_linux() {
 
     # zellij (macOS: brew)
     if ! cmd_exists zellij; then
-        ZELLIJ_VER=$(curl -s https://api.github.com/repos/zellij-org/zellij/releases/latest | jq -r '.tag_name')
+        ZELLIJ_VER=$(gh_latest zellij-org/zellij)
         curl -L "https://github.com/zellij-org/zellij/releases/download/${ZELLIJ_VER}/zellij-x86_64-unknown-linux-musl.tar.gz" -o /tmp/zellij.tar.gz
         tar -xzf /tmp/zellij.tar.gz -C /tmp
         sudo mv /tmp/zellij /usr/local/bin/
         rm /tmp/zellij.tar.gz
+    fi
+
+    # lazygit (macOS: brew)
+    if ! cmd_exists lazygit; then
+        local lg_ver
+        lg_ver=$(gh_latest jesseduffield/lazygit)
+        curl -fsSL "https://github.com/jesseduffield/lazygit/releases/download/${lg_ver}/lazygit_${lg_ver#v}_Linux_x86_64.tar.gz" -o /tmp/lazygit.tar.gz
+        tar -xzf /tmp/lazygit.tar.gz -C /tmp lazygit
+        sudo install /tmp/lazygit /usr/local/bin/
+        rm -f /tmp/lazygit /tmp/lazygit.tar.gz
+    fi
+
+    # yq — mikefarah's Go yq, same as brew (apt's yq is a different tool)
+    if ! cmd_exists yq; then
+        sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
+        sudo chmod +x /usr/local/bin/yq
     fi
 
     install_go
@@ -257,11 +319,21 @@ install_devops_macos() {
         kubectl \
         derailed/k9s/k9s \
         mysql-client@8.0 \
-        helm
+        helm \
+        azure-cli \
+        eksctl \
+        argocd \
+        actionlint \
+        yamllint \
+        tfsec \
+        maven \
+        dotnet \
+        dotnet@8 \
+        deno
 
-    # Claude CLI
+    # Claude CLI — native installer (npm install is deprecated)
     if ! cmd_exists claude; then
-        npm install -g @anthropic-ai/claude-code
+        curl -fsSL https://claude.ai/install.sh | bash
     fi
 
     # GitHub CLI
@@ -319,28 +391,62 @@ install_devops_linux() {
         rm kubectl
     fi
 
-    # helm
+    # helm — v4, matching brew
     if ! cmd_exists helm; then
-        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
     fi
 
     # k9s (macOS: brew)
     if ! cmd_exists k9s; then
-        K9S_VER=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest | jq -r '.tag_name')
-        curl -L "https://github.com/derailed/k9s/releases/download/${K9S_VER}/k9s_linux_amd64.tar.gz" -o /tmp/k9s.tar.gz
+        K9S_VER=$(gh_latest derailed/k9s)
+        curl -L "https://github.com/derailed/k9s/releases/download/${K9S_VER}/k9s_Linux_amd64.tar.gz" -o /tmp/k9s.tar.gz
         tar -xzf /tmp/k9s.tar.gz -C /tmp
         sudo mv /tmp/k9s /usr/local/bin/
         rm /tmp/k9s.tar.gz
     fi
 
-    # ansible
-    if ! cmd_exists ansible; then
-        sudo apt install -y ansible
+    # ansible, yamllint, maven, .NET 8 SDK (Ubuntu feed)
+    sudo apt install -y ansible yamllint maven dotnet-sdk-8.0
+
+    # Azure CLI (Microsoft's apt repo)
+    if ! cmd_exists az; then
+        curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
     fi
 
-    # Claude CLI
+    # eksctl
+    if ! cmd_exists eksctl; then
+        curl -fsSL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz" | tar -xz -C /tmp
+        sudo install /tmp/eksctl /usr/local/bin/
+        rm -f /tmp/eksctl
+    fi
+
+    # argocd
+    if ! cmd_exists argocd; then
+        sudo curl -fsSL https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 -o /usr/local/bin/argocd
+        sudo chmod +x /usr/local/bin/argocd
+    fi
+
+    # actionlint
+    if ! cmd_exists actionlint; then
+        (cd /tmp && bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash))
+        sudo install /tmp/actionlint /usr/local/bin/
+        rm -f /tmp/actionlint
+    fi
+
+    # tfsec
+    if ! cmd_exists tfsec; then
+        sudo curl -fsSL https://github.com/aquasecurity/tfsec/releases/latest/download/tfsec-linux-amd64 -o /usr/local/bin/tfsec
+        sudo chmod +x /usr/local/bin/tfsec
+    fi
+
+    # deno → ~/.local/bin (already on PATH via my_aliases.sh)
+    if ! cmd_exists deno; then
+        curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.local" sh -s -- -y --no-modify-path
+    fi
+
+    # Claude CLI — native installer (npm install is deprecated)
     if ! cmd_exists claude; then
-        npm install -g @anthropic-ai/claude-code
+        curl -fsSL https://claude.ai/install.sh | bash
     fi
 
     # GitHub CLI
@@ -350,14 +456,14 @@ install_devops_linux() {
         sudo apt update && sudo apt install -y gh
     fi
 
-    # Copilot CLI
+    # Copilot CLI (needs Node ≥ 22 — installed in install_linux)
     if ! cmd_exists copilot; then
-        npm install -g @github/copilot
+        sudo npm install -g @github/copilot
     fi
 
     # tree-sitter CLI — required by nvim-treesitter (main branch) for parser compilation
     if ! cmd_exists tree-sitter; then
-        npm install -g tree-sitter-cli
+        sudo npm install -g tree-sitter-cli
     fi
     # sudo apt install -y mysql-client
 
