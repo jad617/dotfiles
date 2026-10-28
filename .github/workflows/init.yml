@@ -1,0 +1,64 @@
+name: init.sh
+
+on:
+  push:
+    branches: [main]
+    paths: [init.sh, .github/workflows/init.yml]
+  pull_request:
+    paths: [init.sh, .github/workflows/init.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: init-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck --severity=warning init.sh
+
+  bootstrap:
+    needs: shellcheck
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      # Release lookups use it instead of the 60/hour anonymous API limit
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dry run (fresh machine)
+        run: ./init.sh --dry-run
+
+      - name: Install
+        run: ./init.sh --verbose
+
+      - name: Re-run changes nothing
+        run: |
+          ./init.sh | tee "$RUNNER_TEMP/second-run.txt"
+          grep -q "Result     0 installed · 0 upgraded" "$RUNNER_TEMP/second-run.txt"
+
+      - name: Upgrade dry run
+        run: ./init.sh --upgrade --dry-run
+
+      # Informational: runner images ship their own copies of many tools,
+      # so shadowing warnings are expected here. Errors still fail the job.
+      - name: Doctor
+        run: ./init.sh --doctor
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: init-logs-${{ matrix.os }}
+          path: ~/.local/state/dotfiles/

@@ -9,7 +9,19 @@ bash <(curl -fsSL https://raw.githubusercontent.com/jad617/dotfiles/main/init.sh
 ```
 
 Idempotent — safe to re-run. Installs packages, creates symlinks, and configures the system.
-By default it only installs what's missing; run `./init.sh --upgrade` to also upgrade everything it manages.
+Supports macOS and Ubuntu (incl. Pop!_OS), on x86_64 and arm64.
+
+| Command | What it does |
+|---|---|
+| `./init.sh` | install what's missing; never upgrades |
+| `./init.sh --upgrade` | also upgrade everything it manages (skips tools already at the latest release) |
+| `./init.sh --dry-run` | show what would change, change nothing (combine with `--upgrade`) |
+| `./init.sh --doctor` | read-only check: PATH shadowing, stale apt keys, broken links, default shell, dirty repo |
+| `--only base,devops` / `--skip links` | limit to sections: `base`, `devops`, `shell`, `links` |
+| `--verbose` | stream command output instead of logging it |
+
+Output is a compact checklist; full command output goes to `~/.local/state/dotfiles/init-*.log`.
+CI (`.github/workflows/init.yml`) runs shellcheck and a fresh install + idempotency check on Ubuntu and macOS.
 
 ## Structure
 
