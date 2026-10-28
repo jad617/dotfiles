@@ -68,8 +68,6 @@ fi
 }
 echo "==> Detected OS: $OS · mode: $($UPGRADE && echo upgrade || echo install)"
 
-# Homebrew's `brew install` upgrades outdated formulae unless told not to.
-$UPGRADE || export HOMEBREW_NO_INSTALL_UPGRADE=1
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -114,6 +112,25 @@ apt_install() {
     elif ((${#missing[@]})); then
         sudo apt install -y "${missing[@]}"
     fi
+}
+
+# Homebrew: install only what's missing (`brew install` would upgrade or
+# complain about installed ones); in upgrade mode install + upgrade them all.
+# Names must be canonical (no aliases), e.g. kubernetes-cli not kubectl.
+brew_install() {
+    local kind=--formula
+    if [[ "$1" == --cask ]]; then kind=--cask; shift; fi
+    if $UPGRADE; then
+        brew install "$kind" "$@"
+        brew upgrade "$kind" "$@" || true
+        return
+    fi
+    local installed missing=() p
+    installed=$(brew list "$kind" -1)
+    for p in "$@"; do
+        grep -qx "${p##*/}" <<<"$installed" || missing+=("$p")
+    done
+    if ((${#missing[@]})); then brew install "$kind" "${missing[@]}"; fi
 }
 
 # Install / upgrade a single binary from a URL into /usr/local/bin.
@@ -189,7 +206,7 @@ install_macos() {
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
 
-    brew install \
+    brew_install \
         zsh-syntax-highlighting \
         htop \
         wget \
@@ -218,14 +235,13 @@ install_macos() {
         p7zip \
         nmap \
         mtr \
-        ipcalc \
-        maccy
+        ipcalc
 
-    local casks=(wezterm@nightly font-meslo-lg-nerd-font)
+    local casks=(wezterm@nightly font-meslo-lg-nerd-font maccy)
     [[ -d "/Applications/Rectangle.app" ]] || casks+=(rectangle)
-    brew install --cask "${casks[@]}"
-    # Casks aren't upgraded by `brew install`; nightly builds need --greedy.
-    if $UPGRADE; then brew upgrade --cask --greedy wezterm@nightly font-meslo-lg-nerd-font rectangle || true; fi
+    brew_install --cask "${casks[@]}"
+    # Self-updating / nightly casks are only upgraded with --greedy.
+    if $UPGRADE; then brew upgrade --cask --greedy "${casks[@]}" || true; fi
 
     install_fzf
 }
@@ -387,13 +403,12 @@ install_devops_macos() {
         rm -f /tmp/AWSCLIV2.pkg
     fi
 
-    brew tap hashicorp/tap
-    brew install \
+    brew_install \
         hashicorp/tap/terraform \
         hashicorp/tap/vault \
         terraform-docs \
         ansible \
-        kubectl \
+        kubernetes-cli \
         derailed/k9s/k9s \
         mysql-client@8.0 \
         helm \
