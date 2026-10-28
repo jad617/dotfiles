@@ -2,7 +2,10 @@ return {
   {
     "iamcco/markdown-preview.nvim",
     enabled = true,
-    build = "cd app && npm install",
+    build = function()
+      require("lazy").load({ plugins = { "markdown-preview.nvim" } })
+      vim.fn["mkdp#util#install"]()
+    end,
     ft = { "markdown" },
     init = function()
       vim.g.mkdp_auto_start = 0 -- manual only
