@@ -114,6 +114,30 @@ apt_install() {
     fi
 }
 
+# Third-party apt repo. The signing key is re-fetched every run: vendors rotate
+# keys (HashiCorp did in 2026) and a stale keyring silently freezes the repo.
+# apt update only runs when the key or the source line actually changed.
+# Usage: apt_repo <list name> <key url> <source line with signed-by=keyring>
+apt_repo() {
+    local list="/etc/apt/sources.list.d/$1.list" key_url=$2 line=$3
+    local keyring=${line#*signed-by=}
+    keyring=${keyring%%[] ]*}
+    local tmp changed=false
+    tmp=$(mktemp)
+    curl -fsSL "$key_url" | gpg --batch --yes --dearmor -o "$tmp"
+    if ! cmp -s "$tmp" "$keyring"; then
+        sudo install -m 644 "$tmp" "$keyring"
+        echo "  key updated: $keyring"
+        changed=true
+    fi
+    rm -f "$tmp"
+    if [[ "$(cat "$list" 2>/dev/null)" != "$line" ]]; then
+        echo "$line" | sudo tee "$list" >/dev/null
+        changed=true
+    fi
+    if $changed; then sudo apt update; fi
+}
+
 # Homebrew: install only what's missing (`brew install` would upgrade or
 # complain about installed ones); in upgrade mode install + upgrade them all.
 # Names must be canonical (no aliases), e.g. kubernetes-cli not kubectl.
@@ -332,11 +356,8 @@ install_linux() {
     fi
 
     # wezterm (apt repo)
-    if [[ ! -f /etc/apt/sources.list.d/wezterm.list ]]; then
-        curl -fsSL https://apt.fury.io/wez/gpg.key | sudo gpg --yes --dearmor -o /usr/share/keyrings/wezterm-fury.gpg
-        echo 'deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *' | sudo tee /etc/apt/sources.list.d/wezterm.list
-        sudo apt update
-    fi
+    apt_repo wezterm https://apt.fury.io/wez/gpg.key \
+        'deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *'
     apt_install wezterm-nightly
 
     # zellij (macOS: brew)
@@ -459,19 +480,12 @@ install_devops_linux() {
     fi
 
     # HashiCorp apt repo (terraform + vault)
-    if [[ ! -f /etc/apt/sources.list.d/hashicorp.list ]]; then
-        curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --batch --no-tty --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-        echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" |
-            sudo tee /etc/apt/sources.list.d/hashicorp.list
-        sudo apt update
-    fi
+    apt_repo hashicorp https://apt.releases.hashicorp.com/gpg \
+        "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
 
     # GitHub CLI apt repo
-    if [[ ! -f /etc/apt/sources.list.d/github-cli.list ]]; then
-        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo gpg --yes --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list
-        sudo apt update
-    fi
+    apt_repo github-cli https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
 
     # Azure CLI — Microsoft's script adds their apt repo, then apt keeps it current
     if ! cmd_exists az; then
