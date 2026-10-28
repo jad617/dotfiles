@@ -808,10 +808,10 @@ do
   local pr = { number = 1, title = "t", state = "OPEN", comments = {}, reviews = {},
     reviewComments = { { id = 1, path = "a.lua", line = vim.NIL, original_line = 7, position = vim.NIL,
       body = "old", user = { login = "bob" }, in_reply_to_id = vim.NIL } } }
-  for _, tab in ipairs({ "conversation", "overview" }) do
+  for _, tab in ipairs({ "comments", "overview" }) do
     local okb, out = pcall(d._build_pr, pr, 100, tab)
     ok(okb, "outdated comment: " .. tab .. " renders (" .. tostring(not okb and out or "") .. ")")
-    if okb and tab == "conversation" then
+    if okb and tab == "comments" then
       local text = table.concat(type(out.lines) == "function" and out.lines() or out.lines, "\n")
       ok(text:find("L7"), "outdated comment: falls back to original_line")
     end
@@ -882,6 +882,87 @@ do
   ok(d.check_at(buf, row) ~= nil, "reply: cursor is on a tagged check row")
   local okc, res = pcall(d._pr_reply, buf, "o/r", 1, function() end)
   ok(okc and res == false, "reply: r on a check row returns false instead of crashing")
+end
+
+-- ── ↵ on a Reviewers row jumps to that reviewer's comment(s) ──────────────
+do
+  local d = require("plugins.utils.devops.ui.detail")
+  local pr = {
+    number = 7, title = "t", state = "OPEN", repository = { nameWithOwner = "o/r" }, author = { login = "me" },
+    reviews = { { author = { login = "bob" }, state = "COMMENTED", body = "", createdAt = "2026-01-02T00:00:00Z" } },
+    reviewComments = { { id = 1, user = { login = "bob" }, path = "a/b.lua", line = 3, body = "nit", created_at = "2026-01-02T00:00:00Z" } },
+    comments = { { author = { login = "ann" }, body = "hi", createdAt = "2026-01-01T00:00:00Z" },
+      { author = { login = "ann" }, body = "again", createdAt = "2026-01-03T00:00:00Z" } },
+    reviewRequests = { { login = "ann" } },
+  }
+  local function row_of(out, pat)
+    for i, l in ipairs(out.lines()) do if l:find(pat) then return i end end
+  end
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_set_current_buf(buf)
+  local out = d._build_pr(pr, 100, "overview")
+  d.write_to_buf(buf, out)
+  local bob = d.reviewer_at(buf, row_of(out, "^  bob "))
+  ok(bob and #bob.comments == 1, "reviewers: bob's row tagged with his 1 comment")
+  ok(out.lines()[row_of(out, "^  bob ")]:find("1 comment"), "reviewers: comment count hint")
+  eq(#(d.reviewer_at(buf, row_of(out, "^  ann ")) or {}).comments, 2, "reviewers: ann has 2 comments")
+
+  local conv = d._build_pr(pr, 100, "comments")
+  local function rerender() d.write_to_buf(buf, d._build_pr(pr, 100)) end
+  d.set_tab("o/r#7", "overview")
+  d.write_to_buf(buf, out)
+  -- Register the rerender the way open_pr/load_pr do (via their keymap setup).
+  d._set_rerender(buf, rerender)
+  d.open_reviewer_comments(buf, bob)
+  eq(vim.api.nvim_win_get_cursor(0)[1], row_of(conv, "@bob"), "reviewers: single comment → jumps directly")
+
+  local orig, seen = vim.ui.select, nil
+  vim.ui.select = function(items, _, cb) seen = items; cb(items[2]) end
+  d.write_to_buf(buf, out)
+  d.open_reviewer_comments(buf, d.reviewer_at(buf, row_of(out, "^  ann ")))
+  vim.ui.select = orig
+  ok(seen and #seen == 2, "reviewers: several comments → picker")
+  ok(vim.api.nvim_get_current_line():find("ann commented"), "reviewers: picked comment is under the cursor")
+  local second
+  for i, l in ipairs(conv.lines()) do if l:find("ann commented") then second = i end end
+  eq(vim.api.nvim_win_get_cursor(0)[1], second, "reviewers: picker jumps to the chosen (2nd) comment")
+
+  -- Comments tab = people's words; Activity tab = bare reviews, bots, pushes.
+  table.insert(pr.comments, { author = { login = "github-actions" }, body = "coverage 90%", createdAt = "2026-01-04T00:00:00Z" })
+  pr.commits = { { oid = "abcdef1234", messageHeadline = "wip", committedDate = "2026-01-05T00:00:00Z", authors = { { login = "me" } } } }
+  local ctext = table.concat(d._build_pr(pr, 100, "comments").lines(), "\n")
+  local atext = table.concat(d._build_pr(pr, 100, "activity").lines(), "\n")
+  ok(ctext:find(" Comments 3 ") and ctext:find(" Activity 3 "), "tabs: Comments and Activity counts")
+  ok(ctext:find("ann commented") and ctext:find("Code review threads") and not ctext:find("coverage"),
+    "comments tab: people's comments + inline threads, no bots")
+  ok(atext:find("github%-actions") and atext:find("bob reviewed") and atext:find("pushed abcdef1")
+    and not atext:find("ann commented"), "activity tab: bot comment, bare review and push only")
+
+  -- Copilot's review is a real comment; a thread I answered last awaits the reviewer.
+  local gha = require("plugins.utils.devops.github.api")
+  local o_me = gha.current_user_login
+  gha.current_user_login = function() return "me" end
+  local cp = { number = 8, title = "t", state = "OPEN", comments = {},
+    reviews = { { author = { login = "copilot-pull-request-reviewer" }, state = "COMMENTED", body = "Copilot reviewed 2 files" } },
+    reviewComments = { { id = 5, user = { login = "Copilot", type = "Bot" }, path = "x.yml", line = 9, body = "unsafe quoting" },
+      { id = 6, in_reply_to_id = 5, user = { login = "me" }, path = "x.yml", line = 9, body = "fixed" } } }
+  local cl = d._build_pr(cp, 100, "comments").lines()
+  gha.current_user_login = o_me
+  local ctext2 = table.concat(cl, "\n")
+  ok(ctext2:find("Copilot reviewed 2 files"), "comments tab: Copilot's review counts as a comment")
+  local root_l, reply_l
+  for _, l in ipairs(cl) do
+    if l:find("@Copilot") then root_l = l end
+    if l:find("↳.*@me") then reply_l = l end
+  end
+  ok(root_l and root_l:find("awaiting reply") and not reply_l:find("awaiting"),
+    "inline thread: status only on the root (my reply last → awaiting reply)")
+  cp.threadStates = { [5] = { resolved = true, outdated = true } }
+  gha.current_user_login = function() return "me" end
+  local rtext = table.concat(d._build_pr(cp, 100, "comments").lines(), "\n")
+  gha.current_user_login = o_me
+  ok(rtext:find("0 open, 1 resolved") and rtext:find("✓ x.yml:9  @Copilot · 1 reply · outdated")
+    and not rtext:find("fixed") and not rtext:find("awaiting"), "inline thread: resolved one collapses to a line")
 end
 
 

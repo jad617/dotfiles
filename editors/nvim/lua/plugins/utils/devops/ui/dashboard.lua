@@ -1676,6 +1676,8 @@ local function open_detail()
     if file then return detail.open_pr_file(file) end
     local ck = detail.check_at(state.content.buf, row)
     if ck then return require("plugins.utils.devops.ui.job_log").open(ck.ctx) end
+    local rv = detail.reviewer_at(state.content.buf, row)
+    if rv then return detail.open_reviewer_comments(state.content.buf, rv) end
     local link = detail.link_at(state.content.buf, row)
     if not link then return end
     if link.kind == "jira_link" then return follow_jira_link(link) end
