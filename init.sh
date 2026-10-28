@@ -538,6 +538,15 @@ install_devops_linux() {
         install_bin tfsec https://github.com/aquasecurity/tfsec/releases/latest/download/tfsec-linux-amd64
     fi
 
+    # terraform-docs (macOS: brew)
+    if want terraform-docs; then
+        local tfd_ver
+        tfd_ver=$(gh_latest terraform-docs/terraform-docs)
+        curl -fsSL "https://github.com/terraform-docs/terraform-docs/releases/download/${tfd_ver}/terraform-docs-${tfd_ver}-linux-amd64.tar.gz" | tar -xz -C /tmp terraform-docs
+        sudo install /tmp/terraform-docs /usr/local/bin/
+        rm -f /tmp/terraform-docs
+    fi
+
     # deno → ~/.local/bin (already on PATH via my_aliases.sh)
     if ! cmd_exists deno; then
         curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.local" sh -s -- -y --no-modify-path
