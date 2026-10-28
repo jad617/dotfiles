@@ -337,6 +337,36 @@ function M.set_file_viewed(pr_id, path, viewed, cb)
   end)
 end
 
+-- Review-thread state keyed by the thread's root comment id (REST `id` ==
+-- GraphQL `databaseId`). cb(ok, { [id] = { resolved = bool, outdated = bool } })
+function M.pr_thread_states(repo, number, cb)
+  local owner, name = repo:match("^([^/]+)/(.+)$")
+  if not owner then return vim.schedule(function() cb(false) end) end
+  local query = [[
+query($o: String!, $r: String!, $n: Int!) {
+  repository(owner: $o, name: $r) {
+    pullRequest(number: $n) {
+      reviewThreads(first: 100) {
+        nodes { isResolved isOutdated comments(first: 1) { nodes { databaseId } } }
+      }
+    }
+  }
+}]]
+  gh_json({ "api", "graphql", "-f", "o=" .. owner, "-f", "r=" .. name, "-F", "n=" .. tostring(number),
+    "-f", "query=" .. query }, function(ok, data)
+    local pr = ok and data and data.data and data.data.repository and data.data.repository.pullRequest
+    if not pr then return cb(false) end
+    local out = {}
+    for _, t in ipairs(pr.reviewThreads and pr.reviewThreads.nodes or {}) do
+      local first = t.comments and t.comments.nodes and t.comments.nodes[1]
+      if first and first.databaseId then
+        out[first.databaseId] = { resolved = t.isResolved == true, outdated = t.isOutdated == true }
+      end
+    end
+    cb(true, out)
+  end)
+end
+
 -- Inline review (code-thread) comments. cb(ok, comments[], err)
 function M.pr_review_comments(repo, number, cb)
   gh_json({ "api", "repos/" .. repo .. "/pulls/" .. tostring(number) .. "/comments?per_page=100" }, cb)

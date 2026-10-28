@@ -61,9 +61,13 @@ end
 -- Returns the highlight data for the caller to apply.
 ---------------------------------------------------------------------------
 local tags_by_buf = setmetatable({}, { __mode = "k" })
+local marks_by_buf = setmetatable({}, { __mode = "k" })
+-- buf → function() that re-renders the PR view in that buffer (set by its keymaps).
+local rerender_by_buf = setmetatable({}, { __mode = "k" })
 
 function M.write_to_buf(buf, b)
   tags_by_buf[buf] = b.tags and b.tags() or nil
+  marks_by_buf[buf] = b.marks and b.marks() or nil
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, b.lines())
   vim.bo[buf].modifiable = false
@@ -121,6 +125,13 @@ local function builder()
   function b.tag(from, to, data)
     for l = from, to do T[l] = data end
   end
+  -- Remember the first line a source object (e.g. a PR comment) renders at,
+  -- so keymaps can jump to it.
+  local M_ = {}
+  function b.mark(obj, line)
+    if obj ~= nil and M_[obj] == nil then M_[obj] = line end
+  end
+  function b.marks() return M_ end
   -- "label   ⟨chip⟩ ⟨chip⟩" row: each item rendered as a padded, filled chip.
   function b.chips(label, items, hl)
     if type(items) ~= "table" or #items == 0 then return end
@@ -163,7 +174,7 @@ end
 -- so a refresh or navigating back keeps you on the same tab.
 ---------------------------------------------------------------------------
 local ISSUE_TABS = { "overview", "comments", "prs" }
-local PR_TABS = { "overview", "conversation", "checks", "files" }
+local PR_TABS = { "overview", "comments", "activity", "checks", "files" }
 local active_tabs = {}
 
 local function tabs_enabled()
@@ -233,6 +244,7 @@ local function show(title, b, on_open)
   end
   local buf = state.buf
   tags_by_buf[buf] = b.tags and b.tags() or nil
+  marks_by_buf[buf] = b.marks and b.marks() or nil
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
@@ -275,6 +287,8 @@ local function show(title, b, on_open)
       if f then return M.open_pr_file(f) end
       local ck = M.check_at(buf, row)
       if ck then return require("plugins.utils.devops.ui.job_log").open(ck.ctx) end
+      local rv = M.reviewer_at(buf, row)
+      if rv then return M.open_reviewer_comments(buf, rv) end
       local t = M.link_at(buf, row)
       if not t then return end
       if t.kind == "jira_link" then M.open_issue(t.key) else M.open_pr(t.pr) end
@@ -366,6 +380,13 @@ function M.check_at(buf, row)
   local tags = tags_by_buf[buf]
   local t = tags and tags[row]
   if t and t.kind == "pr_check" then return t end
+end
+
+-- Reviewer row (Reviewers section) under `row` in `buf`, or nil.
+function M.reviewer_at(buf, row)
+  local tags = tags_by_buf[buf]
+  local t = tags and tags[row]
+  if t and t.kind == "pr_reviewer" then return t end
 end
 
 -- Open the PR diff positioned on the file of a `pr_file` tag.
@@ -1212,6 +1233,43 @@ local function review_rows(pr)
   return rows
 end
 
+-- Everything `key` (a login) wrote on the PR: conversation comments, review
+-- bodies and inline review comments, oldest first. Each item keeps its source
+-- object (`src`) so the rendered line can be found via the builder's marks.
+local function reviewer_comments(pr, key)
+  local items = {}
+  local function snippet(body)
+    for l in (markdown.clean(body or "")):gmatch("[^\n]+") do
+      l = vim.trim(l)
+      if l ~= "" then return l end
+    end
+    return ""
+  end
+  local function login(p) return type(p) == "table" and (p.login or p.slug or p.name) or nil end
+  for _, c in ipairs(type(pr.comments) == "table" and pr.comments or {}) do
+    if login(c.author) == key and snippet(c.body) ~= "" then
+      items[#items + 1] = { src = c, kind = "💬 comment", time = c.createdAt or "", text = snippet(c.body) }
+    end
+  end
+  for _, r in ipairs(type(pr.reviews) == "table" and pr.reviews or {}) do
+    if login(r.author) == key and snippet(r.body) ~= "" then
+      local what = (r.state == "APPROVED" and "✓ approved") or (r.state == "CHANGES_REQUESTED" and "✗ changes")
+        or "● review"
+      items[#items + 1] = { src = r, kind = what, time = r.createdAt or r.submittedAt or "", text = snippet(r.body) }
+    end
+  end
+  for _, c in ipairs(type(pr.reviewComments) == "table" and pr.reviewComments or {}) do
+    if (login(c.user) or login(c.author)) == key and snippet(c.body) ~= "" then
+      local ln = json_num(c.line) or json_num(c.original_line)
+      local loc = (c.path or "?"):match("[^/]+$") .. (ln and (":" .. ln) or "")
+      items[#items + 1] = { src = c, kind = "📄 " .. loc, time = c.created_at or c.createdAt or "", text = snippet(c.body) }
+    end
+  end
+  table.sort(items, function(a, b) return a.time < b.time end)
+  return items
+end
+M._reviewer_comments = reviewer_comments
+
 local function count_items(items)
   return type(items) == "table" and #items or 0
 end
@@ -1331,6 +1389,74 @@ local function pr_tab_id(pr)
   return tostring(pr.repository and pr.repository.nameWithOwner or "?") .. "#" .. tostring(pr.number or "?")
 end
 
+-- Bots (CI, coverage, dependency updates…) post noise, not conversation.
+-- Copilot's review suggestions are real review feedback, so they count as comments.
+local function is_bot(person)
+  if type(person) ~= "table" then return false end
+  local login = (person.login or ""):lower()
+  if login:match("copilot") then return false end
+  if person.is_bot == true or person.type == "Bot" or person.__typename == "Bot" then return true end
+  return login:match("%[bot%]$") ~= nil or login == "github-actions"
+    or login:match("^dependabot") ~= nil or login:match("^renovate") ~= nil
+end
+
+-- PR timeline (comments, reviews, commits; oldest first) split into the
+-- real conversation — people's comments and reviews with a message — and the
+-- trivial activity: bare approvals, bot comments and pushes.
+local function pr_timeline(pr)
+  local timeline = {}
+  for _, c in ipairs(pr.comments or {}) do
+    timeline[#timeline + 1] = {
+      kind = "comment",
+      author = c.author and c.author.login or "?",
+      person = c.author,
+      body = c.body or "",
+      time = c.createdAt or "",
+      src = c,
+    }
+  end
+  -- A review's message often lives in its inline comments (empty review body).
+  local review_groups = threads.review_comment_groups(pr.reviews, pr.reviewComments)
+  local rc_by_id = {}
+  for _, c in ipairs(pr.reviewComments or {}) do rc_by_id[c.id] = c end
+  for _, r in ipairs(pr.reviews or {}) do
+    local rev_body = r.body or ""
+    if rev_body ~= "" or (r.state and r.state ~= "PENDING") then
+      timeline[#timeline + 1] = {
+        kind = "review",
+        author = r.author and r.author.login or "?",
+        person = r.author,
+        body = rev_body,
+        state = r.state or "",
+        time = r.createdAt or r.submittedAt or "",
+        comments = review_groups[r],
+        src = r,
+      }
+    end
+  end
+  for _, c in ipairs(pr.commits or {}) do
+    local author = "?"
+    if c.authors and #c.authors > 0 then author = c.authors[1].login or c.authors[1].name or "?" end
+    timeline[#timeline + 1] = {
+      kind = "commit",
+      author = author,
+      body = c.messageHeadline or "",
+      oid = c.oid or "",
+      time = c.committedDate or c.authoredDate or "",
+    }
+  end
+
+  table.sort(timeline, function(a, b) return a.time < b.time end)
+
+  local comment_events, activity_events = {}, {}
+  for _, ev in ipairs(timeline) do
+    local real = ev.kind ~= "commit" and not is_bot(ev.person) and markdown.clean(ev.body) ~= ""
+    local list = real and comment_events or activity_events
+    list[#list + 1] = ev
+  end
+  return comment_events, activity_events, rc_by_id
+end
+
 local PR_STATE_PILL = { OPEN = "DevOpsPillDone", MERGED = "DevOpsPill", CLOSED = "DevOpsPillTodo" }
 
 local function build_pr(pr, width, tab)
@@ -1360,7 +1486,8 @@ local function build_pr(pr, width, tab)
   local contexts = check_contexts(pr.statusCheckRollup)
   if tabbed then
     local function count(x, loaded) return loaded and tostring(x) or "…" end
-    local n_conv = count_items(pr.comments) + (type(pr.reviewComments) == "table" and #pr.reviewComments or 0)
+    local real, trivial = pr_timeline(pr)
+    local n_conv = #real + (type(pr.reviewComments) == "table" and #pr.reviewComments or 0)
     local fails = 0
     for _, c in ipairs(contexts) do
       local _, chl = check_display(c)
@@ -1368,7 +1495,8 @@ local function build_pr(pr, width, tab)
     end
     b.tabbar({
       { id = "overview", label = "Overview" },
-      { id = "conversation", label = "Conversation " .. count(n_conv, pr.comments ~= nil) },
+      { id = "comments", label = "Comments " .. count(n_conv, pr.comments ~= nil) },
+      { id = "activity", label = "Activity " .. count(#trivial, pr.comments ~= nil) },
       { id = "checks", label = "Checks " .. count(#contexts, pr.statusCheckRollup ~= nil) .. (fails > 0 and (" ✗" .. fails) or "") },
       { id = "files", label = "Files " .. count(type(pr.files) == "table" and #pr.files or 0, pr.files ~= nil) },
     }, tab)
@@ -1453,7 +1581,7 @@ local function build_pr(pr, width, tab)
 
   if (pr.reviews ~= nil or pr.reviewRequests ~= nil) and shown("overview") then
     local reviewers = review_rows(pr)
-    b.divider("Reviewers")
+    b.divider("Reviewers  (↵ jump to comments)")
     if #reviewers == 0 then
       local line = b.add("   none")
       b.hl(line, 0, #b.lines()[line], "DevOpsDim")
@@ -1471,6 +1599,14 @@ local function build_pr(pr, width, tab)
         b.hl(line, 2, 2 + #trunc, reviewer.is_me and "DevOpsOk" or "DevOpsDetailTitle")
         local vstart = 2 + #name + 2
         b.hl(line, vstart, vstart + #verdict, reviewer.hl)
+        local comments = reviewer_comments(pr, reviewer.key)
+        if #comments > 0 then
+          local hint = "   " .. #comments .. (#comments == 1 and " comment" or " comments")
+          local text = b.lines()[line]
+          b.lines()[line] = text .. hint
+          b.hl(line, #text, #text + #hint, "DevOpsDim")
+          b.tag(line, line, { kind = "pr_reviewer", key = reviewer.key, name = reviewer.name, pr = pr, comments = comments })
+        end
       end
     end
   end
@@ -1539,72 +1675,6 @@ local function build_pr(pr, width, tab)
     end
   end
 
-  if shown("conversation") and type(pr.reviewComments) == "table" and #pr.reviewComments > 0 then
-    local me = gh.current_user_login()
-    -- Build threads: roots (no in_reply_to_id) + replies keyed by their root id.
-    local replies, roots = {}, {}
-    for _, c in ipairs(pr.reviewComments) do
-      local parent = json_num(c.in_reply_to_id)
-      if parent then
-        replies[parent] = replies[parent] or {}
-        table.insert(replies[parent], c)
-      else
-        roots[#roots + 1] = c
-      end
-    end
-    b.divider("Review Comments (" .. #pr.reviewComments .. ")")
-    local groups, order = {}, {}
-    for _, c in ipairs(roots) do
-      local p = c.path or "?"
-      if not groups[p] then groups[p] = {} order[#order + 1] = p end
-      table.insert(groups[p], c)
-    end
-    local function add_body(c, indent)
-      local cbody = markdown.clean(c.body or "")
-      if cbody == "" then return end
-      local mdc = markdown.render(cbody, indent, W - #indent - 2)
-      for i, l in ipairs(mdc.lines) do
-        local li = b.add(l)
-        for _, h in ipairs(mdc.highlights) do
-          if h.line == i - 1 then b.hl(li, h.col_start, h.col_end, h.hl) end
-        end
-      end
-    end
-    local function comment_header(c, indent, marker)
-      local author = (c.user and c.user.login) or (c.author and c.author.login) or "?"
-      local is_me = (author == me)
-      local at = "@" .. author .. (is_me and " (you)" or "")
-      local thread = replies[c.id] or {}
-      local status, status_hl
-      if #thread > 0 then
-        status = "↩ replied (" .. #thread .. ")"; status_hl = "DevOpsOk"
-      elseif is_me then
-        status = "⏳ awaiting reply"; status_hl = "DevOpsWarn"
-      end
-      local ln = json_num(c.line) or json_num(c.original_line) or json_num(c.position) or json_num(c.original_position)
-      local prefix = indent .. (marker or "") .. (ln and ("L" .. ln .. "  ") or "")
-      local hdr = prefix .. at
-      local line = b.add(hdr .. (status and ("   " .. status) or ""))
-      b.hl(line, #prefix, #prefix + #at, is_me and "DevOpsOk" or "DevOpsKey")
-      if status then b.hl(line, #hdr + 3, #hdr + 3 + #status, status_hl) end
-      return thread
-    end
-    for _, p in ipairs(order) do
-      local pl = b.add("  " .. render.truncate(p, W - 4))
-      b.hl(pl, 2, #b.lines()[pl], "DevOpsId")
-      for _, c in ipairs(groups[p]) do
-        local first = #b.lines() + 1
-        local thread = comment_header(c, "    ")
-        add_body(c, "      ")
-        for _, r in ipairs(thread) do
-          comment_header(r, "      ", "↳ ")
-          add_body(r, "         ")
-        end
-        b.tag(first, #b.lines(), { kind = "thread", root = c, replies = thread })
-      end
-    end
-  end
-
   if shown("overview") then
     b.divider("Description")
     local body = markdown.clean(pr.body or "")
@@ -1620,143 +1690,253 @@ local function build_pr(pr, width, tab)
     end
   end
 
-  -- Timeline: merge comments, reviews, and commits in chronological order
-  local timeline = {}
-  for _, c in ipairs(pr.comments or {}) do
-    timeline[#timeline + 1] = {
-      kind = "comment",
-      author = c.author and c.author.login or "?",
-      body = c.body or "",
-      time = c.createdAt or "",
-    }
-  end
-  -- A review's message often lives in its inline comments (empty review body).
-  local review_groups = threads.review_comment_groups(pr.reviews, pr.reviewComments)
-  local rc_by_id = {}
-  for _, c in ipairs(pr.reviewComments or {}) do rc_by_id[c.id] = c end
-  for _, r in ipairs(pr.reviews or {}) do
-    local rev_body = r.body or ""
-    if rev_body ~= "" or (r.state and r.state ~= "PENDING") then
-      timeline[#timeline + 1] = {
-        kind = "review",
-        author = r.author and r.author.login or "?",
-        body = rev_body,
-        state = r.state or "",
-        time = r.createdAt or r.submittedAt or "",
-        comments = review_groups[r],
-      }
+  local comment_events, activity_events, rc_by_id = pr_timeline(pr)
+
+  local PAD = "  "
+  local function render_card(ev)
+    b.add("")
+    local ts = format_time(ev.time)
+
+    -- Per-kind icon, action label, action highlight, and border colour.
+    local icon, action, action_hl, border_hl
+    if ev.kind == "comment" then
+      icon, action, action_hl, border_hl = "💬", "commented", "DevOpsDim", "DevOpsCommentBorder"
+    elseif ev.kind == "review" then
+      action = (ev.state == "APPROVED" and "approved")
+        or (ev.state == "CHANGES_REQUESTED" and "requested changes")
+        or (ev.state == "DISMISSED" and "dismissed review")
+        or "reviewed"
+      action_hl = (ev.state == "APPROVED" and "DevOpsOk")
+        or (ev.state == "CHANGES_REQUESTED" and "DevOpsErr")
+        or "DevOpsWarn"
+      border_hl = action_hl
+      icon = ev.state == "APPROVED" and "✓" or (ev.state == "CHANGES_REQUESTED" and "✗" or "●")
+    else -- commit
+      icon, action, action_hl, border_hl = "⊙", "pushed " .. ev.oid:sub(1, 7), "DevOpsId", "DevOpsBorder"
+    end
+
+    local card_first = #b.lines() + 1
+    -- ╭─ <icon> <author> <action> · <time>
+    local head = PAD .. "╭─ " .. icon .. " "
+    local author_start = #head
+    head = head .. ev.author .. " "
+    local action_start = #head
+    head = head .. action
+    local action_end = #head
+    local ts_start = action_end + #" · "
+    head = head .. " · " .. ts
+    local hline = b.add(head)
+    if ev.src then b.mark(ev.src, hline) end
+    b.hl(hline, #PAD, author_start, border_hl)
+    b.hl(hline, author_start, author_start + #ev.author, "DevOpsKey")
+    b.hl(hline, action_start, action_end, action_hl)
+    b.hl(hline, ts_start, ts_start + #ts, "DevOpsDim")
+
+    -- │  body…  (cleaned, rendered, truncated)
+    local rail = PAD .. "│  "
+    local body = markdown.clean(ev.body)
+    if body ~= "" then
+      -- card content width = window − rail ("  │  " = 5) − right margin
+      local md = markdown.render(body, "", W - 7)
+      for i, bl in ipairs(md.lines) do
+        local li = b.add(rail .. bl)
+        b.hl(li, #PAD, #PAD + #"│", border_hl)
+        for _, h in ipairs(md.highlights) do
+          if h.line == i - 1 then b.hl(li, #rail + h.col_start, #rail + h.col_end, h.hl) end
+        end
+      end
+    end
+
+    -- Where this review's inline comments are (their text is under Comments).
+    for ci, c in ipairs(ev.comments or {}) do
+      if body ~= "" and ci == 1 then
+        local sep = b.add(PAD .. "│")
+        b.hl(sep, #PAD, #PAD + #"│", border_hl)
+      end
+      local ln = json_num(c.line) or json_num(c.original_line)
+      local loc = (json_num(c.in_reply_to_id) and "↳ reply on " or "📄 ") .. (c.path or "?") .. (ln and (":" .. ln) or "")
+      local ll = b.add(rail .. render.truncate(loc, W - 7))
+      b.mark(c, ll)
+      b.hl(ll, #PAD, #PAD + #"│", border_hl)
+      b.hl(ll, #rail, #b.lines()[ll], "DevOpsId")
+    end
+
+    -- ╰─
+    local bot = b.add(PAD .. "╰─")
+    b.hl(bot, #PAD, #(PAD .. "╰─"), border_hl)
+    local first_c = ev.comments and ev.comments[1]
+    if first_c and body == "" then
+      -- 'r' replies in the comment's thread (a review body can't be replied to).
+      local root = (json_num(first_c.in_reply_to_id) and rc_by_id[first_c.in_reply_to_id]) or first_c
+      local replies = {}
+      for _, c in ipairs(pr.reviewComments or {}) do
+        if c.in_reply_to_id == root.id then replies[#replies + 1] = c end
+      end
+      b.tag(card_first, bot, { kind = "thread", root = root, replies = replies })
+    elseif ev.kind ~= "commit" then
+      b.tag(card_first, bot, { kind = "conversation", ev = ev })
     end
   end
-  for _, c in ipairs(pr.commits or {}) do
-    local author = "?"
-    if c.authors and #c.authors > 0 then author = c.authors[1].login or c.authors[1].name or "?" end
-    timeline[#timeline + 1] = {
-      kind = "commit",
-      author = author,
-      body = c.messageHeadline or "",
-      oid = c.oid or "",
-      time = c.committedDate or c.authoredDate or "",
-    }
-  end
 
-  table.sort(timeline, function(a, b) return a.time < b.time end)
-
-  if shown("conversation") and #timeline > 0 then
-    b.divider("Activity")
-    local PAD = "  "
-    for _, ev in ipairs(timeline) do
+  -- Comments: what people wrote (PR comments, review messages, inline threads).
+  local n_rc = type(pr.reviewComments) == "table" and #pr.reviewComments or 0
+  if shown("comments") and (#comment_events > 0 or n_rc > 0) then
+    if not tabbed then b.divider("Comments (" .. (#comment_events + n_rc) .. ")") end
+    for _, ev in ipairs(comment_events) do render_card(ev) end
+    if n_rc > 0 then
+      local me = gh.current_user_login()
+      -- Build threads: roots (no in_reply_to_id) + replies keyed by their root id.
+      local replies, roots = {}, {}
+      for _, c in ipairs(pr.reviewComments) do
+        local parent = json_num(c.in_reply_to_id)
+        if parent then
+          replies[parent] = replies[parent] or {}
+          table.insert(replies[parent], c)
+        else
+          roots[#roots + 1] = c
+        end
+      end
       b.add("")
-      local ts = format_time(ev.time)
-
-      -- Per-kind icon, action label, action highlight, and border colour.
-      local icon, action, action_hl, border_hl
-      if ev.kind == "comment" then
-        icon, action, action_hl, border_hl = "💬", "commented", "DevOpsDim", "DevOpsCommentBorder"
-      elseif ev.kind == "review" then
-        action = (ev.state == "APPROVED" and "approved")
-          or (ev.state == "CHANGES_REQUESTED" and "requested changes")
-          or (ev.state == "DISMISSED" and "dismissed review")
-          or "reviewed"
-        action_hl = (ev.state == "APPROVED" and "DevOpsOk")
-          or (ev.state == "CHANGES_REQUESTED" and "DevOpsErr")
-          or "DevOpsWarn"
-        border_hl = action_hl
-        icon = ev.state == "APPROVED" and "✓" or (ev.state == "CHANGES_REQUESTED" and "✗" or "●")
-      else -- commit
-        icon, action, action_hl, border_hl = "⊙", "pushed " .. ev.oid:sub(1, 7), "DevOpsId", "DevOpsBorder"
+      -- Resolved threads collapse to one line (GitHub hides them by default).
+      local tstates = type(pr.threadStates) == "table" and pr.threadStates or {}
+      local open, resolved = {}, {}
+      for _, c in ipairs(roots) do
+        local st = tstates[c.id] or {}
+        table.insert(st.resolved and resolved or open, c)
       end
-
-      local card_first = #b.lines() + 1
-      -- ╭─ <icon> <author> <action> · <time>
-      local head = PAD .. "╭─ " .. icon .. " "
-      local author_start = #head
-      head = head .. ev.author .. " "
-      local action_start = #head
-      head = head .. action
-      local action_end = #head
-      local ts_start = action_end + #" · "
-      head = head .. " · " .. ts
-      local hline = b.add(head)
-      b.hl(hline, #PAD, author_start, border_hl)
-      b.hl(hline, author_start, author_start + #ev.author, "DevOpsKey")
-      b.hl(hline, action_start, action_end, action_hl)
-      b.hl(hline, ts_start, ts_start + #ts, "DevOpsDim")
-
-      -- │  body…  (cleaned, rendered, truncated)
-      local rail = PAD .. "│  "
-      local body = markdown.clean(ev.body)
-      if body ~= "" then
-        -- card content width = window − rail ("  │  " = 5) − right margin
-        local md = markdown.render(body, "", W - 7)
-        for i, bl in ipairs(md.lines) do
-          local li = b.add(rail .. bl)
-          b.hl(li, #PAD, #PAD + #"│", border_hl)
-          for _, h in ipairs(md.highlights) do
-            if h.line == i - 1 then b.hl(li, #rail + h.col_start, #rail + h.col_end, h.hl) end
+      local sub = "  Code review threads · comments on diff lines (" .. #open .. " open"
+        .. (#resolved > 0 and (", " .. #resolved .. " resolved") or "") .. ")"
+      local sl = b.add(sub)
+      b.hl(sl, 0, #sub, "DevOpsSectionHead")
+      local groups, order = {}, {}
+      for _, c in ipairs(open) do
+        local p = c.path or "?"
+        if not groups[p] then groups[p] = {} order[#order + 1] = p end
+        table.insert(groups[p], c)
+      end
+      local function add_body(c, indent)
+        local cbody = markdown.clean(c.body or "")
+        if cbody == "" then return end
+        local mdc = markdown.render(cbody, indent, W - #indent - 2)
+        for i, l in ipairs(mdc.lines) do
+          local li = b.add(l)
+          for _, h in ipairs(mdc.highlights) do
+            if h.line == i - 1 then b.hl(li, h.col_start, h.col_end, h.hl) end
           end
         end
       end
-
-      -- Inline comments submitted with this review.
-      for ci, c in ipairs(ev.comments or {}) do
-        if body ~= "" or ci > 1 then
-          local sep = b.add(PAD .. "│")
-          b.hl(sep, #PAD, #PAD + #"│", border_hl)
-        end
-        local ln = json_num(c.line) or json_num(c.original_line)
-        local loc = (json_num(c.in_reply_to_id) and "↳ reply on " or "📄 ") .. (c.path or "?") .. (ln and (":" .. ln) or "")
-        local ll = b.add(rail .. render.truncate(loc, W - 7))
-        b.hl(ll, #PAD, #PAD + #"│", border_hl)
-        b.hl(ll, #rail, #b.lines()[ll], "DevOpsId")
-        local cmd = markdown.render(markdown.clean(c.body or ""), "  ", W - 9)
-        for i, bl in ipairs(cmd.lines) do
-          local li = b.add(rail .. bl)
-          b.hl(li, #PAD, #PAD + #"│", border_hl)
-          for _, h in ipairs(cmd.highlights) do
-            if h.line == i - 1 then b.hl(li, #rail + h.col_start, #rail + h.col_end, h.hl) end
+      local function login_of(c) return (c.user and c.user.login) or (c.author and c.author.login) or "?" end
+      local function comment_header(c, indent, marker)
+        local author = login_of(c)
+        local is_me = (author == me)
+        local at = "@" .. author .. (is_me and " (you)" or "")
+        local thread = replies[c.id] or {}
+        -- Status only on the thread root: whose turn it is.
+        local status, status_hl
+        if not marker then
+          local last = thread[#thread] or c
+          if (tstates[c.id] or {}).outdated then
+            status = "outdated"; status_hl = "DevOpsDim"
+          elseif login_of(last) == me then
+            status = "⏳ awaiting reply"; status_hl = "DevOpsWarn"
+          elseif #thread > 0 then
+            status = "↩ replied (" .. #thread .. ")"; status_hl = "DevOpsOk"
           end
         end
+        local ln = json_num(c.line) or json_num(c.original_line) or json_num(c.position) or json_num(c.original_position)
+        local prefix = indent .. (marker or "") .. (ln and ("L" .. ln .. "  ") or "")
+        local hdr = prefix .. at
+        local line = b.add(hdr .. (status and ("   " .. status) or ""))
+        b.mark(c, line)
+        b.hl(line, #prefix, #prefix + #at, is_me and "DevOpsOk" or "DevOpsKey")
+        if status then b.hl(line, #hdr + 3, #hdr + 3 + #status, status_hl) end
+        return thread
       end
-
-      -- ╰─
-      local bot = b.add(PAD .. "╰─")
-      b.hl(bot, #PAD, #(PAD .. "╰─"), border_hl)
-      local first_c = ev.comments and ev.comments[1]
-      if first_c and body == "" then
-        -- 'r' replies in the comment's thread (a review body can't be replied to).
-        local root = (json_num(first_c.in_reply_to_id) and rc_by_id[first_c.in_reply_to_id]) or first_c
-        local replies = {}
-        for _, c in ipairs(pr.reviewComments or {}) do
-          if c.in_reply_to_id == root.id then replies[#replies + 1] = c end
+      for _, p in ipairs(order) do
+        local pl = b.add("  " .. render.truncate(p, W - 4))
+        b.hl(pl, 2, #b.lines()[pl], "DevOpsId")
+        for _, c in ipairs(groups[p]) do
+          local first = #b.lines() + 1
+          local thread = comment_header(c, "    ")
+          add_body(c, "      ")
+          for _, r in ipairs(thread) do
+            comment_header(r, "      ", "↳ ")
+            add_body(r, "         ")
+          end
+          b.tag(first, #b.lines(), { kind = "thread", root = c, replies = thread })
         end
-        b.tag(card_first, bot, { kind = "thread", root = root, replies = replies })
-      elseif ev.kind ~= "commit" then
-        b.tag(card_first, bot, { kind = "conversation", ev = ev })
+      end
+      if #resolved > 0 then
+        b.add("")
+        local rh = "  ✓ Resolved (" .. #resolved .. ")"
+        local rl = b.add(rh)
+        b.hl(rl, 0, #rh, "DevOpsDim")
+        for _, c in ipairs(resolved) do
+          local thread = replies[c.id] or {}
+          local ln = json_num(c.line) or json_num(c.original_line)
+          local loc = (c.path or "?"):match("[^/]+$") .. (ln and (":" .. ln) or "")
+          local meta = "@" .. login_of(c)
+            .. (#thread > 0 and (" · " .. #thread .. (#thread == 1 and " reply" or " replies")) or "")
+            .. ((tstates[c.id] or {}).outdated and " · outdated" or "")
+          local first_l = (markdown.clean(c.body or "")):match("[^\n]+") or ""
+          local head = "    ✓ " .. loc .. "  " .. meta .. "  "
+          local line = b.add(head .. render.truncate(vim.trim(first_l), math.max(10, W - vim.fn.strdisplaywidth(head) - 4)))
+          b.hl(line, 0, #head, "DevOpsDim")
+          b.hl(line, #"    ✓ ", #"    ✓ " + #loc, "DevOpsId")
+          b.mark(c, line)
+          for _, r in ipairs(thread) do b.mark(r, line) end
+          b.tag(line, line, { kind = "thread", root = c, replies = thread })
+        end
       end
     end
+  end
+
+  -- Activity: bare approvals / review states, bot comments, pushes.
+  if shown("activity") and #activity_events > 0 then
+    if not tabbed then b.divider("Activity") end
+    for _, ev in ipairs(activity_events) do render_card(ev) end
   end
 
   return b
+end
+
+-- Switch `buf`'s PR view to the Conversation tab and put the cursor on the
+-- line where `src` (a comment / review object) is rendered.
+local function jump_to_comment(buf, pr, src)
+  local line = (marks_by_buf[buf] or {})[src]
+  local rerender = rerender_by_buf[buf]
+  if tabs_enabled() and rerender then
+    -- Real comments live in Comments; a bot's comment only in Activity.
+    for _, tab in ipairs({ "comments", "activity" }) do
+      active_tabs[pr_tab_id(pr)] = tab
+      rerender()
+      line = (marks_by_buf[buf] or {})[src]
+      if line then break end
+    end
+  end
+  local win = vim.fn.bufwinid(buf)
+  if not line or win == -1 then
+    return vim.notify("DevOps: comment not found in the conversation", vim.log.levels.WARN)
+  end
+  vim.api.nvim_set_current_win(win)
+  pcall(vim.api.nvim_win_set_cursor, win, { line, 0 })
+  vim.cmd("normal! zt")
+end
+
+--- ↵ on a Reviewers row: jump to that reviewer's only comment, or pick one.
+function M.open_reviewer_comments(buf, t)
+  local items = t.comments or {}
+  if #items == 0 then return end
+  if #items == 1 then return jump_to_comment(buf, t.pr, items[1].src) end
+  vim.ui.select(items, {
+    prompt = "Comments by " .. (t.name or t.key),
+    format_item = function(it)
+      local ts = it.time ~= "" and format_time(it.time) or ""
+      return it.kind .. "  " .. (ts ~= "" and (ts .. "  ") or "") .. render.truncate(it.text, 70)
+    end,
+  }, function(it)
+    if it then jump_to_comment(buf, t.pr, it.src) end
+  end)
 end
 
 -- Cache of enriched PR data, keyed "repo#n", so re-opening a PR (nav back/forth)
@@ -1939,8 +2119,8 @@ local function enrich_pr(repo, n, base, render, still_valid)
   local cached = pr_full_cache[key]
   if cached and still_valid() then render(cached) end
 
-  local core, extra, rc, rules = nil, nil, nil, nil
-  local pending_extra = 3 -- pr_view_extra + review comments + merge rules
+  local core, extra, rc, rules, tstates = nil, nil, nil, nil, nil
+  local pending_extra = 4 -- pr_view_extra + review comments + merge rules + thread states
   local painted_core = cached ~= nil -- cached already shows everything
 
   local function paint(full)
@@ -1953,9 +2133,11 @@ local function enrich_pr(repo, n, base, render, still_valid)
     end
     data.reviewComments = rc or {}
     data.mergeRules = rules or (cached and cached.mergeRules)
+    data.threadStates = tstates or (cached and cached.threadStates)
     if full then
       local same = cached and cached.updatedAt and cached.updatedAt == data.updatedAt
         and #(cached.reviewComments or {}) == #(rc or {})
+        and vim.deep_equal(cached.threadStates, data.threadStates)
       pr_full_cache[key] = data
       if same then return end -- identical to the cached paint; don't rebuild
     end
@@ -1987,6 +2169,11 @@ local function enrich_pr(repo, n, base, render, still_valid)
     pending_extra = pending_extra - 1
     maybe_paint()
   end)
+  gh.pr_thread_states(repo, n, function(ok, d)
+    tstates = ok and d or nil
+    pending_extra = pending_extra - 1
+    maybe_paint()
+  end)
 end
 
 function M.open_pr(pr)
@@ -1998,6 +2185,7 @@ function M.open_pr(pr)
   local setup_keys
   local function rerender_now() show(title, build_pr(current), setup_keys) end
   setup_keys = function(buf)
+    rerender_by_buf[buf] = rerender_now
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, desc = "Open in browser" })
     vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, desc = "Open a link from the PR" })
     map_tab_keys(buf, pr_tab_id(pr), PR_TABS, rerender_now)
@@ -2251,6 +2439,7 @@ function M.load_pr(pr, opts)
   local make_keys
   local function rerender_now() on_update(build_pr(current, pr_w), make_keys) end
   make_keys = function(buf)
+    rerender_by_buf[buf] = rerender_now
     vim.keymap.set("n", "o", function() vim.ui.open(pr.url) end, { buffer = buf, nowait = true, desc = "Open in browser" })
     vim.keymap.set("n", "gx", function() open_pr_links(active_pr or pr) end, { buffer = buf, nowait = true, desc = "Open a link from the PR" })
     map_tab_keys(buf, pr_tab_id(pr), PR_TABS, rerender_now)
@@ -2348,6 +2537,7 @@ end
 M._build_issue = build_issue
 M._build_pr = build_pr
 M._pr_reply = pr_reply
+function M._set_rerender(buf, fn) rerender_by_buf[buf] = fn end
 M.issue_keys = branch_issue_keys
 -- The standalone detail float (not the dashboard pane), if open.
 function M.close_float() if state.win and vim.api.nvim_win_is_valid(state.win) then close() end end
