@@ -795,6 +795,104 @@ install_go() {
     fi
 }
 
+# -----------------------------------------------------------------------------
+# WezTerm with per-split floating panes — built from the jad617/wezterm fork
+# with cargo into ~/.local/bin. The packaged nightly (apt / brew cask) stays
+# installed for the app launcher, terminfo and icons, and is pointed at this
+# build. Skipped when cargo already built the branch's current commit.
+# -----------------------------------------------------------------------------
+WEZTERM_REPO=https://github.com/jad617/wezterm
+WEZTERM_BRANCH=floating-splits
+WEZTERM_BINS=(wezterm wezterm-gui wezterm-mux-server)
+
+# Commit of the fork that cargo last built into ~/.local, from its install record
+wezterm_built_rev() {
+    jq -r --arg src "(git+$WEZTERM_REPO?branch=$WEZTERM_BRANCH#" '
+        .installs | keys[] | select(startswith("wezterm-gui ") and contains($src))
+        | sub(".*#"; "") | rtrimstr(")")' "$HOME/.local/.crates2.json" 2>/dev/null | head -n 1 || true
+}
+
+install_wezterm_fork() {
+    local gui="$HOME/.local/bin/wezterm-gui" built head
+    built=$(wezterm_built_rev)
+
+    if [[ -n "$built" && -x "$gui" ]] && ! $UPGRADE; then
+        ok "wezterm (floating panes)"
+    elif ! head=$(git ls-remote "$WEZTERM_REPO" "refs/heads/$WEZTERM_BRANCH" | cut -f1) || [[ -z "$head" ]]; then
+        warn "wezterm (floating panes)" "branch $WEZTERM_BRANCH not found on $WEZTERM_REPO"
+        return 0
+    elif [[ "$built" == "$head" && -x "$gui" ]]; then
+        ok "wezterm (floating panes)"
+    else
+        # rustup's toolchain: distro cargo can be too old for WezTerm
+        if [[ ! -x "$HOME/.cargo/bin/cargo" ]] && step rustup install "$HOME/.cargo/bin/cargo"; then
+            curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs |
+                sh -s -- -y --no-modify-path --profile minimal
+            done_step
+        fi
+
+        # Build dependencies, as listed by the fork's get-deps (macOS: the
+        # Xcode command line tools that Homebrew already needs)
+        if [[ "$OS" != "macos" ]]; then
+            apt_install cmake gcc g++ pkg-config libegl1-mesa-dev libssl-dev \
+                libfontconfig1-dev libwayland-dev libx11-xcb-dev libxcb-ewmh-dev \
+                libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev \
+                libxcb-render0-dev libxcb-xkb-dev libxcb-util-dev libxkbcommon-dev \
+                libxkbcommon-x11-dev xorg-dev
+        fi
+
+        LATEST_VER=${head:0:9}
+        if step "wezterm (floating panes)" "$([[ -x "$gui" ]] && echo upgrade || echo install)" "$gui"; then
+            # --force: replaces binaries cargo didn't install (e.g. a manual build)
+            "$HOME/.cargo/bin/cargo" install --locked --force --root "$HOME/.local" \
+                --git "$WEZTERM_REPO" --branch "$WEZTERM_BRANCH" "${WEZTERM_BINS[@]}"
+            done_step
+        fi
+    fi
+
+    wezterm_fork_launcher
+}
+
+# Point the packaged WezTerm launcher at the fork build
+wezterm_fork_launcher() {
+    [[ -x "$HOME/.local/bin/wezterm-gui" ]] || return 0
+    if [[ "$OS" == "macos" ]]; then
+        # The Dock/Spotlight app and brew's `wezterm` symlink both run the
+        # bundle's binaries, so swap them in (brew upgrades swap them back,
+        # and the next run redoes this)
+        local app=/Applications/WezTerm.app bin stale=false
+        [[ -d "$app" ]] || return 0
+        for bin in "${WEZTERM_BINS[@]}"; do
+            cmp -s "$HOME/.local/bin/$bin" "$app/Contents/MacOS/$bin" || stale=true
+        done
+        if $stale && step "WezTerm.app → floating panes build" update "$app/Contents/MacOS/wezterm-gui"; then
+            for bin in "${WEZTERM_BINS[@]}"; do
+                cp "$HOME/.local/bin/$bin" "$app/Contents/MacOS/$bin"
+            done
+            # Replacing binaries invalidates the bundle signature; re-sign ad hoc
+            codesign --force --deep --sign - "$app"
+            done_step
+        elif ! $stale; then
+            ok "WezTerm.app"
+        fi
+    else
+        # User-level copy of the packaged desktop entry, which takes precedence
+        # over it (same file name), running the build in ~/.local/bin
+        local src=/usr/share/applications/org.wezfurlong.wezterm.desktop
+        local dst="$HOME/.local/share/applications/org.wezfurlong.wezterm.desktop" want
+        [[ -f "$src" ]] || return 0
+        want=$(sed -e "s|^TryExec=wezterm\$|TryExec=$HOME/.local/bin/wezterm|" \
+            -e "s|^Exec=wezterm |Exec=$HOME/.local/bin/wezterm |" "$src")
+        if [[ "$(cat "$dst" 2>/dev/null)" == "$want" ]]; then
+            ok "wezterm launcher"
+        elif step "wezterm launcher" update "$dst"; then
+            mkdir -p "$(dirname "$dst")"
+            printf '%s\n' "$want" >"$dst"
+            done_step
+        fi
+    fi
+}
+
 # =============================================================================
 # macOS — base tools
 # =============================================================================
@@ -844,6 +942,8 @@ install_macos() {
     local casks=(wezterm@nightly font-meslo-lg-nerd-font maccy)
     [[ -d "/Applications/Rectangle.app" ]] || casks+=(rectangle)
     brew_install --cask "${casks[@]}"
+
+    install_wezterm_fork
 
     install_fzf
 }
@@ -954,6 +1054,7 @@ install_linux() {
     apt_repo wezterm https://apt.fury.io/wez/gpg.key \
         'deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *'
     apt_install wezterm-nightly
+    install_wezterm_fork
 
     gh_tool zellij zellij-org/zellij _zellij
     gh_tool lazygit jesseduffield/lazygit _lazygit

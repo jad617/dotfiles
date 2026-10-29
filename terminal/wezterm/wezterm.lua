@@ -651,4 +651,39 @@ if wezterm.target_triple:find("linux") then
 	})
 end
 
+--------------------------------------------------------------------------------
+-- Floating pane (jad617/wezterm floating-pane build only)
+-- Alt+i toggles a float over the current split, spawned in its cwd. Each
+-- split has its own float, which follows it when zoomed (Ctrl+a z).
+-- Replaces the Snacks terminal float in Neovim. Guarded so stock WezTerm
+-- builds, which don't know the action, still load this config.
+--------------------------------------------------------------------------------
+if wezterm.has_action("ToggleFloatingPane") then
+	-- Inset from the split it floats over: 90% wide, 97% tall
+	config.floating_pane_padding = {
+		left = "5%",
+		right = "5%",
+		top = "1.5%",
+		bottom = "1.5%",
+	}
+	config.floating_pane_border = {
+		left_width = 2,
+		right_width = 2,
+		top_height = 2,
+		bottom_height = 2,
+		left_color = "#ff5f1f",
+		right_color = "#ff5f1f",
+		top_color = "#ff5f1f",
+		bottom_color = "#ff5f1f",
+	}
+	table.insert(config.keys, { key = "i", mods = "ALT", action = action.ToggleFloatingPane })
+	-- Leader commands act on the split behind the float; Ctrl+a a <key>
+	-- runs the same command inside the float (split, zoom, close, ...)
+	if wezterm.has_action("FloatingPaneLeader") then
+		table.insert(config.keys, { key = "a", mods = "LEADER", action = action.FloatingPaneLeader })
+		-- Typed quickly, Ctrl is still held for the second a
+		table.insert(config.keys, { key = "a", mods = "LEADER|CTRL", action = action.FloatingPaneLeader })
+	end
+end
+
 return config
