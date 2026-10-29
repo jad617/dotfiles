@@ -1658,9 +1658,17 @@ wezterm_drop_package() {
 # /Applications/WezTerm.app assembled like ci/deploy.sh: the bundle template,
 # shell integration and completions, compiled terminfo and the fork binaries,
 # ad-hoc signed. Built beside the old app and moved into place, so a running
-# WezTerm keeps its (now unlinked) files.
+# WezTerm keeps its (now unlinked) files. Without admin rights an app we own is
+# updated by swapping its Contents, otherwise it goes to ~/Applications.
 wezterm_macos_app() {
-    local app=/Applications/WezTerm.app new=/Applications/.WezTerm.app.new bin res sums
+    local app=/Applications/WezTerm.app new tmp="" bin res sums swap=app
+    if [[ -w /Applications ]]; then
+        new=/Applications/.WezTerm.app.new
+    elif [[ -d "$app" && -w "$app" && -w "$app/Contents" ]]; then
+        swap=contents
+    else
+        app=$HOME/Applications/WezTerm.app new=$HOME/Applications/.WezTerm.app.new
+    fi
     # codesign rewrites the bundled binaries, so compare checksums of
     # ~/.local/bin recorded at packaging time instead of the files themselves
     sums=$(cd "$HOME/.local/bin" && shasum "${WEZTERM_BINS[@]}")
@@ -1669,12 +1677,13 @@ wezterm_macos_app() {
         ok "WezTerm.app"
         return 0
     fi
-    if [[ ! -w /Applications ]] && ! $DRY_RUN; then
-        warn "WezTerm.app" "/Applications isn't writable (needs admin rights) — rerun ./init.sh as an admin"
-        return 0
-    fi
     if step "WezTerm.app" "$([[ -d "$app" ]] && echo update || echo install)" "$app/Contents/MacOS/wezterm-gui"; then
         wezterm_fork_src "$(wezterm_built_rev)"
+        if [[ "$swap" == contents ]]; then
+            tmp=$(mktemp -d) new=$tmp/WezTerm.app
+        else
+            mkdir -p "${app%/*}"
+        fi
         rm -rf "$new"
         cp -R "$WEZTERM_SRC/assets/macos/WezTerm.app" "$new"
         # Upstream omits the bundled MetalANGLE libraries too
@@ -1689,10 +1698,17 @@ wezterm_macos_app() {
         done
         printf '%s\n' "$sums" >"$res/fork-bins.sha"
         codesign --force --deep --sign - "$new"
-        rm -rf "$app.old"
-        if [[ -e "$app" ]]; then mv "$app" "$app.old"; fi
-        mv "$new" "$app"
-        rm -rf "$app.old"
+        if [[ "$swap" == contents ]]; then
+            rm -rf "$app/Contents.old"
+            mv "$app/Contents" "$app/Contents.old"
+            mv "$new/Contents" "$app/Contents"
+            rm -rf "$app/Contents.old" "$tmp"
+        else
+            rm -rf "$app.old"
+            if [[ -e "$app" ]]; then mv "$app" "$app.old"; fi
+            mv "$new" "$app"
+            rm -rf "$app.old"
+        fi
         [[ -z "$WEZTERM_SRC_TMP" ]] || rm -rf "$WEZTERM_SRC_TMP"
         done_step
     fi
