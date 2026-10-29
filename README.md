@@ -18,7 +18,14 @@ Supports macOS and Ubuntu (incl. Pop!_OS), on x86_64 and arm64.
 | `./init.sh --dry-run` | show what would change, change nothing (combine with `--upgrade`) |
 | `./init.sh --doctor` | read-only check: PATH shadowing, stale apt keys, broken links, default shell, dirty repo |
 | `--only base,devops` / `--skip links` | limit to sections: `base`, `devops`, `shell`, `links` |
+| `./init.sh --select` | checklist of every app, grouped by source (brew, apt, cargo, …); unchecked apps are omitted |
+| `--omit-app wezterm,dotnet` / `--add-app wezterm` | omit apps / manage them again without the checklist |
+| `--yes` | skip the first-run checklist and install every app (automatic without a terminal) |
 | `--verbose` | stream command output instead of logging it |
+
+The first interactive run shows the `--select` checklist. Omitted apps are saved in
+`~/.config/dotfiles/omitted-apps` and skipped on every install and upgrade (never uninstalled);
+the summary lists them with the command to add them back.
 
 Output is a compact checklist; full command output goes to `~/.local/state/dotfiles/init-*.log`.
 CI (`.github/workflows/init.yml`) runs shellcheck and a fresh install + idempotency check on Ubuntu and macOS.

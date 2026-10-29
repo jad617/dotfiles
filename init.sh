@@ -15,6 +15,8 @@ set -Eeuo pipefail
 
 SECTIONS="base devops shell links"
 
+omit_file_pretty() { local f="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/omitted-apps"; printf '%s' "${f/#"$HOME"/\~}"; }
+
 usage() {
     cat <<EOF
 Usage: ./init.sh [mode] [options]
@@ -24,17 +26,27 @@ Modes:
   --upgrade, -u       also upgrade everything it manages to the latest
   --dry-run, -n       show what install/upgrade would change; change nothing
   --doctor            check the setup: PATH shadowing, apt keys, links, shell
+  --select            pick the apps to install from a checklist (saved)
 
 Options:
   --only <list>       run only these sections (comma-separated)
   --skip <list>       skip these sections
                       sections: ${SECTIONS// /, }
+  --yes, -y           no checklist on the first run: install every app
+                      (alias --non-interactive; automatic without a terminal)
+  --omit-app <list>   stop installing / upgrading these apps (saved)
+  --add-app <list>    manage these omitted apps again (saved)
   --verbose, -v       stream every command's output instead of logging it
   --help, -h          show this help
 
 Examples:
   ./init.sh --upgrade --only devops
   ./init.sh --upgrade --dry-run
+  ./init.sh --omit-app wezterm,dotnet
+
+Omitted apps are remembered in $(omit_file_pretty) and are never
+uninstalled, only no longer installed or upgraded. The first interactive
+run shows the --select checklist (skip it with --yes).
 EOF
 }
 
@@ -44,6 +56,10 @@ DRY_RUN=false
 DOCTOR=false
 ONLY=""
 SKIP=""
+SELECT=false
+ASSUME_YES=false
+OMIT_ADD=""
+OMIT_DEL=""
 while (($#)); do
     case "$1" in
     install | --install) ;;
@@ -51,6 +67,18 @@ while (($#)); do
     -n | --dry-run) DRY_RUN=true ;;
     doctor | --doctor) DOCTOR=true ;;
     -v | --verbose) VERBOSE=true ;;
+    --select) SELECT=true ;;
+    -y | --yes | --non-interactive) ASSUME_YES=true ;;
+    --omit-app=*) OMIT_ADD+=",${1#*=}" ;;
+    --add-app=*) OMIT_DEL+=",${1#*=}" ;;
+    --omit-app | --add-app)
+        [[ -n "${2:-}" ]] || {
+            echo "$1 needs a comma-separated list of apps"
+            exit 1
+        }
+        if [[ "$1" == --omit-app ]]; then OMIT_ADD+=",$2"; else OMIT_DEL+=",$2"; fi
+        shift
+        ;;
     --only=*) ONLY=${1#*=} ;;
     --skip=*) SKIP=${1#*=} ;;
     --only | --skip)
@@ -174,10 +202,10 @@ fi
 SPIN=$($TTY && ! $VERBOSE && echo true || echo false)
 
 N_INSTALLED=0 N_UPGRADED=0 N_OK=0 N_MAYBE=0 N_WARN=0 N_ERR=0 LINKS_OK=0
-SECTION_OK=() INSTALLED_LIST=() UPGRADED_LIST=() MAYBE_LIST=() STEP_TIMES=()
+SECTION_OK=() SECTION_OMIT=() INSTALLED_LIST=() UPGRADED_LIST=() MAYBE_LIST=() STEP_TIMES=()
 STEP_LABEL="" STEP_VERB="" STEP_BIN="" STEP_SUM="" STEP_VER="" STEP_START=0
 LATEST_VER=""
-SPIN_PID="" SUDO_PID="" SHELL_CHANGED=false
+SPIN_PID="" SUDO_PID="" SHELL_CHANGED=false PICKER_ON=false
 
 out() { printf '%s\n' "$*" >&3; }
 pretty_path() { printf '%s' "${1/#"$HOME"/\~}"; }
@@ -219,10 +247,16 @@ ok() {
 }
 
 flush_ok() {
-    ((${#SECTION_OK[@]})) || return 0
-    wrap "    " "up to date: $(join ", " "${SECTION_OK[@]}")" |
-        sed "1s/^/  ${C_DIM}· /; 2,\$s/^/${C_DIM}/; s/\$/${C_RESET}/" >&3
-    SECTION_OK=()
+    if ((${#SECTION_OK[@]})); then
+        wrap "    " "up to date: $(join ", " "${SECTION_OK[@]}")" |
+            sed "1s/^/  ${C_DIM}· /; 2,\$s/^/${C_DIM}/; s/\$/${C_RESET}/" >&3
+        SECTION_OK=()
+    fi
+    if ((${#SECTION_OMIT[@]})); then
+        wrap "    " "omitted: $(join ", " "${SECTION_OMIT[@]}")" |
+            sed "1s/^/  ${C_DIM}− /; 2,\$s/^/${C_DIM}/; s/\$/${C_RESET}/" >&3
+        SECTION_OMIT=()
+    fi
 }
 
 warn() {
@@ -454,6 +488,7 @@ on_error() {
 
 on_exit() {
     stop_spin
+    if $PICKER_ON; then printf '\e[?1049l' >&3; fi
     if [[ -n "$SUDO_PID" ]]; then kill "$SUDO_PID" 2>/dev/null || true; fi
     if $TTY; then printf '\e[?25h' >&3; fi
 }
@@ -464,6 +499,224 @@ if $SPIN; then printf '\e[?25l' >&3; fi # hide the cursor while spinning
 
 want_section() {
     [[ -z "$ONLY" || ",$ONLY," == *",$1,"* ]] && [[ ",$SKIP," != *",$1,"* ]]
+}
+
+# -----------------------------------------------------------------------------
+# Apps — everything optional, grouped by where it comes from. Any app can be
+# omitted (--select checklist, --omit-app / --add-app); the choice is saved
+# and applies to install and upgrade runs. Omitted apps are never removed.
+# -----------------------------------------------------------------------------
+BREW_BASE=(zsh-syntax-highlighting htop wget luajit pwgen bat fd ripgrep tmux watch
+    pyenv pyenv-virtualenv eza zoxide jandedobbeleer/oh-my-posh/oh-my-posh zellij node go uv
+    tree-sitter-cli jq yq lazygit btop pipx p7zip nmap mtr ipcalc)
+BREW_CASKS=(font-meslo-lg-nerd-font maccy rectangle)
+BREW_DEVOPS=(hashicorp/tap/terraform hashicorp/tap/vault terraform-docs ansible kubernetes-cli
+    derailed/k9s/k9s mysql-client@8.0 helm gh azure-cli eksctl argocd actionlint yamllint tfsec
+    maven dotnet dotnet@8 deno)
+# The script itself needs these, so they can't be omitted
+APT_CORE=(zsh curl git unzip jq fontconfig ca-certificates gnupg procps)
+APT_BASE=(zsh-syntax-highlighting htop wget bat fd-find ripgrep tmux wl-clipboard wofi wtype
+    btop pipx p7zip-full nmap mtr-tiny ipcalc)
+APT_DEVOPS=(terraform vault gh azure-cli ansible yamllint maven dotnet-sdk-8.0)
+
+app_ids() {
+    local p
+    for p; do printf '%s ' "${p##*/}"; done
+}
+
+# One line per source: "<source>|<app> <app> …" (picker order)
+app_catalog() {
+    if [[ "$OS" == "macos" ]]; then
+        echo "brew|$(app_ids "${BREW_BASE[@]}" "${BREW_DEVOPS[@]}")"
+        echo "brew cask|${BREW_CASKS[*]}"
+        echo "brew --HEAD|neovim"
+        echo "cargo · jad617 fork|wezterm"
+        echo "git clone|fzf tpm"
+        echo "official installer|aws claude"
+        echo "npm|copilot"
+        echo "pip|pynvim"
+    else
+        echo "apt|$(app_ids "${APT_BASE[@]}" "${APT_DEVOPS[@]}")"
+        echo "apt · NodeSource|node"
+        echo "GitHub release|eza zoxide oh-my-posh zellij lazygit yq cliphist helm k9s eksctl argocd actionlint tfsec terraform-docs"
+        echo "official tarball / installer|go neovim kubectl aws uv pyenv deno claude"
+        echo "cargo · jad617 fork|wezterm"
+        echo "git clone|fzf tpm"
+        echo "source build|keyd"
+        echo "npm|copilot tree-sitter-cli"
+        echo "pip|pynvim"
+        echo "font download|font-meslo-lg-nerd-font"
+    fi
+}
+
+app_source() {
+    local src list
+    while IFS='|' read -r src list; do
+        if [[ " $list " == *" $1 "* ]]; then
+            printf '%s' "$src"
+            return
+        fi
+    done < <(app_catalog)
+}
+
+OMIT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/omitted-apps"
+OMIT=""
+if [[ -f "$OMIT_FILE" ]]; then
+    OMIT=$(grep -v '^[[:space:]]*\(#\|$\)' "$OMIT_FILE" | tr '\n' ' ' || true)
+    OMIT=$(echo $OMIT) # trim
+fi
+
+omitted() { [[ " $OMIT " == *" $1 "* ]]; }
+
+# True when the user omitted the app; noted for the section's "omitted" line.
+skip_app() {
+    omitted "$1" || return 1
+    SECTION_OMIT+=("$1")
+}
+
+save_omit() {
+    $DRY_RUN && return 0
+    mkdir -p "$(dirname "$OMIT_FILE")"
+    {
+        echo "# Apps init.sh doesn't install or upgrade, one per line."
+        echo "# Change with ./init.sh --select, --omit-app or --add-app."
+        if [[ -n "$OMIT" ]]; then printf '%s\n' $OMIT; fi
+    } >"$OMIT_FILE"
+}
+
+# Checklist of every app by source: unchecked = omitted. Returns 1 on quit.
+pick_apps() {
+    local rows=() ids=() on=() src list id n=0 r
+    while IFS='|' read -r src list; do
+        rows+=("h|$src")
+        for id in $list; do
+            ids+=("$id")
+            if omitted "$id"; then on+=(0); else on+=(1); fi
+            rows+=("i|$n")
+            n=$((n + 1))
+        done
+    done < <(app_catalog)
+    local total=${#rows[@]} cur=1 top=0 height key k2 buf mark sel i d
+    exec 5</dev/tty
+    PICKER_ON=true
+    printf '\e[?1049h\e[?25l' >&3
+    while :; do
+        height=$(($(tput lines 2>/dev/null || echo 24) - 7))
+        ((height < 5)) && height=5
+        ((cur < top)) && top=$cur
+        ((cur >= top + height)) && top=$((cur - height + 1))
+        # keep a source heading visible above its first app
+        if ((top > 0)) && [[ ${rows[top - 1]} == h\|* ]] && ((cur - top + 1 < height)); then top=$((top - 1)); fi
+        sel=0
+        for i in "${on[@]}"; do ((sel += i)); done
+        buf="  ${C_BOLD}Choose the apps to install${C_RESET} ${C_DIM}· $sel/$n selected${C_RESET}"$'\e[K\n'
+        buf+="  ${C_DIM}Unchecked apps are skipped on install and upgrade — saved, never uninstalled${C_RESET}"$'\e[K\n\e[K\n'
+        for ((r = top; r < top + height && r < total; r++)); do
+            if [[ ${rows[r]} == h\|* ]]; then
+                buf+="  ${C_BOLD}${C_BLUE}${rows[r]#h|}${C_RESET}"$'\e[K\n'
+            else
+                i=${rows[r]#i|}
+                if ((on[i])); then mark="${C_GREEN}[x]${C_RESET}"; else mark="${C_DIM}[ ]${C_RESET}"; fi
+                if ((r == cur)); then
+                    buf+="  ${C_CYAN}›${C_RESET} $mark ${C_BOLD}${ids[i]}${C_RESET}"$'\e[K\n'
+                else
+                    buf+="    $mark ${ids[i]}"$'\e[K\n'
+                fi
+            fi
+        done
+        buf+=$'\e[K\n'"  ${C_DIM}↑↓/jk move · space toggle · a all · n none · enter save · q quit${C_RESET}"
+        printf '\e[H%s\e[J' "$buf" >&3
+        IFS= read -rsn1 key <&5 || key=q
+        if [[ "$key" == $'\e' ]]; then
+            read -rsn2 k2 <&5 || true
+            key+=$k2
+        fi
+        d=0
+        case "$key" in
+        $'\e[A' | k) d=-1 ;;
+        $'\e[B' | j) d=1 ;;
+        ' ')
+            i=${rows[cur]#i|}
+            on[i]=$((1 - on[i]))
+            ;;
+        a) for ((i = 0; i < n; i++)); do on[i]=1; done ;;
+        n) for ((i = 0; i < n; i++)); do on[i]=0; done ;;
+        '') break ;;
+        q | Q | $'\e') d=q ;;
+        esac
+        if [[ "$d" == q ]]; then
+            printf '\e[?1049l' >&3
+            PICKER_ON=false
+            exec 5<&-
+            return 1
+        fi
+        r=$cur
+        while ((d)); do
+            r=$((r + d))
+            ((r < 0 || r >= total)) && break
+            if [[ ${rows[r]} == i\|* ]]; then
+                cur=$r
+                break
+            fi
+        done
+    done
+    printf '\e[?1049l' >&3
+    PICKER_ON=false
+    exec 5<&-
+    # Keep saved apps this OS doesn't know (e.g. from the other OS)
+    local keep="" all=" ${ids[*]} "
+    for id in $OMIT; do [[ "$all" == *" $id "* ]] || keep+=" $id"; done
+    for ((i = 0; i < n; i++)); do ((on[i])) || keep+=" ${ids[i]}"; done
+    OMIT=$(echo $keep)
+}
+
+if ! $DOCTOR; then
+    if [[ -n "$OMIT_ADD$OMIT_DEL" ]]; then
+        known=" $(app_catalog | cut -d'|' -f2 | tr '\n' ' ') "
+        for a in ${OMIT_ADD//,/ } ${OMIT_DEL//,/ }; do
+            [[ "$known" == *" $a "* ]] || {
+                out "Unknown app: $a"
+                out ""
+                out "Apps on $OS_NAME, by source:"
+                while IFS='|' read -r src list; do
+                    wrap "      " "  $src: $list" >&3
+                done < <(app_catalog)
+                exit 1
+            }
+        done
+        for a in ${OMIT_ADD//,/ }; do omitted "$a" || OMIT+=" $a"; done
+        new=""
+        for a in $OMIT; do [[ ",$OMIT_DEL," == *",$a,"* ]] || new+=" $a"; done
+        OMIT=$(echo $new)
+        save_omit
+    fi
+    # First interactive run (nothing saved yet), or --select: show the checklist
+    if $SELECT || { [[ ! -f "$OMIT_FILE" && -z "$OMIT_ADD$OMIT_DEL" && -z "${CI:-}" ]] && ! $DRY_RUN && ! $ASSUME_YES; }; then
+        if $TTY && [[ -t 0 ]]; then
+            if pick_apps; then
+                save_omit
+            elif $SELECT; then
+                out "  Cancelled — nothing changed"
+                exit 0
+            fi
+            if $SPIN; then printf '\e[?25l' >&3; else printf '\e[?25h' >&3; fi
+        elif $SELECT; then
+            out "--select needs an interactive terminal; use --omit-app / --add-app instead"
+            exit 1
+        fi
+    fi
+fi
+
+# Summary rows: what's omitted and how to bring it back
+omit_rows() {
+    local G=$1 items=() a
+    if [[ -z "$OMIT" ]]; then
+        panel_row "$G" "Apps" "${C_CYAN}./init.sh --select${C_RESET} ${C_DIM}to opt out of apps you don't want${C_RESET}"
+        return
+    fi
+    for a in $OMIT; do items+=("$a ${C_DIM}($(app_source "$a"))${C_RESET}"); done
+    panel_row "$G" "Omitted" "$(join ", " "${items[@]}")"
+    panel_row "$G" "Add back" "${C_CYAN}./init.sh --add-app $(join , $OMIT)${C_RESET} ${C_DIM}or pick again:${C_RESET} ${C_CYAN}./init.sh --select${C_RESET}"
 }
 
 # -----------------------------------------------------------------------------
@@ -485,6 +738,9 @@ if [[ -n "$ONLY$SKIP" ]] && ! $DOCTOR; then
     sel=""
     for s in $SECTIONS; do want_section "$s" && sel+="${sel:+, }$s"; done
     panel_row "${C_BLUE}│ ${C_RESET}" "Sections" "${sel:-none}"
+fi
+if [[ -n "$OMIT" ]] && ! $DOCTOR; then
+    panel_row "${C_BLUE}│ ${C_RESET}" "Omitting" "${OMIT// /, } ${C_DIM}(--add-app or --select to change)${C_RESET}"
 fi
 if $VERBOSE; then
     panel_row "${C_BLUE}╰─${C_RESET}" "Output" "${C_DIM}verbose${C_RESET}"
@@ -595,7 +851,10 @@ deb_ver() {
 # apt: install only the missing packages (plain `apt install` would also
 # upgrade installed ones); in upgrade mode also upgrade the outdated ones.
 apt_install() {
-    local missing=() outdated=() changes=() p line upgradable=""
+    local missing=() outdated=() changes=() p line upgradable="" keep=()
+    for p in "$@"; do skip_app "$p" || keep+=("$p"); done
+    ((${#keep[@]})) || return 0
+    set -- "${keep[@]}"
     for p in "$@"; do
         dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q "install ok installed" || missing+=("$p")
     done
@@ -663,6 +922,10 @@ brew_install() {
         kind=--cask greedy=(--greedy)
         shift
     fi
+    local keep=() p
+    for p in "$@"; do skip_app "${p##*/}" || keep+=("$p"); done
+    ((${#keep[@]})) || return 0
+    set -- "${keep[@]}"
     local installed missing=() present=() outdated=() p
     installed=$(brew list "$kind" -1)
     for p in "$@"; do
@@ -710,6 +973,7 @@ install_tar_bin() {
 # gh_tool <command> <owner/repo> <function that installs it, given the tag>
 gh_tool() {
     local cmd=$1 repo=$2 fn=$3 tag=""
+    if skip_app "$cmd"; then return; fi
     if ! want "$cmd"; then
         ok "$cmd"
         return
@@ -729,6 +993,11 @@ gh_tool() {
 # Global npm package (Linux: NodeSource's npm in /usr, needs sudo).
 npm_global() {
     local bin=$1 pkg=$2
+    if skip_app "${pkg##*/}"; then return 0; fi
+    if omitted node && ! cmd_exists npm; then
+        warn "$bin" "skipped — needs node, which is omitted"
+        return 0
+    fi
     if ! want "$bin"; then
         ok "$bin"
         return 0
@@ -750,7 +1019,9 @@ npm_global() {
 # -----------------------------------------------------------------------------
 install_fzf() {
     local flags=(--key-bindings --completion --no-update-rc --no-fish)
-    if [[ ! -d "$HOME/.fzf" ]]; then
+    if skip_app fzf; then
+        return
+    elif [[ ! -d "$HOME/.fzf" ]]; then
         if step fzf install "$HOME/.fzf/bin/fzf"; then
             git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
             "$HOME/.fzf/install" "${flags[@]}"
@@ -772,6 +1043,7 @@ install_fzf() {
 # -----------------------------------------------------------------------------
 install_go() {
     local go_bin="/usr/local/go/bin/go"
+    if skip_app go; then return; fi
     if [[ -x "$go_bin" ]] && ! $UPGRADE; then
         ok go
         return
@@ -806,6 +1078,27 @@ WEZTERM_REPO=https://github.com/jad617/wezterm
 WEZTERM_BRANCH=floating-splits
 WEZTERM_BINS=(wezterm wezterm-gui wezterm-mux-server)
 WEZTERM_STAMP="$HOME/.local/share/wezterm/fork-assets-rev"
+# Highest rust-version among the fork's locked dependencies (fixed 1.31.0).
+# Raise it when the fork's Cargo.lock moves to crates that need a newer rustc.
+WEZTERM_RUST_MIN=1.93
+
+# Version of rustup's stable toolchain, e.g. 1.93.0 (empty if not installed)
+rust_stable_ver() {
+    "$HOME/.cargo/bin/rustc" +stable --version 2>/dev/null | awk '{print $2}' || true
+}
+
+# version_ge A B: true when dotted version A >= B (missing parts count as 0)
+version_ge() {
+    local IFS=. i a b
+    # shellcheck disable=SC2206
+    a=($1) b=($2)
+    [[ -n "$1" ]] || return 1
+    for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
+        ((10#${a[i]:-0} > 10#${b[i]:-0})) && return 0
+        ((10#${a[i]:-0} < 10#${b[i]:-0})) && return 1
+    done
+    return 0
+}
 
 # Commit of the fork that cargo last built into ~/.local, from its install record
 wezterm_built_rev() {
@@ -816,6 +1109,7 @@ wezterm_built_rev() {
 
 install_wezterm_fork() {
     local gui="$HOME/.local/bin/wezterm-gui" built head
+    if skip_app wezterm; then return 0; fi
     built=$(wezterm_built_rev)
 
     if [[ -n "$built" && -x "$gui" ]] && ! $UPGRADE; then
@@ -831,6 +1125,19 @@ install_wezterm_fork() {
             curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs |
                 sh -s -- -y --no-modify-path --profile minimal
             done_step
+        # rustup never updates on its own: bring stable up to the fork's
+        # minimum Rust, and leave a newer toolchain alone.
+        elif [[ -x "$HOME/.cargo/bin/rustup" ]] && ! version_ge "$(rust_stable_ver)" "$WEZTERM_RUST_MIN"; then
+            LATEST_VER=">= $WEZTERM_RUST_MIN"
+            if step "rust stable" upgrade "$HOME/.cargo/bin/rustc"; then
+                "$HOME/.cargo/bin/rustup" update stable --no-self-update
+                done_step
+            fi
+        fi
+        if [[ -x "$HOME/.cargo/bin/rustup" ]] && ! $DRY_RUN &&
+            ! version_ge "$(rust_stable_ver)" "$WEZTERM_RUST_MIN"; then
+            warn "wezterm (floating panes)" "needs rustc >= $WEZTERM_RUST_MIN, stable is $(rust_stable_ver)"
+            return 0
         fi
 
         # Build dependencies, as listed by the fork's get-deps (macOS: the
@@ -845,9 +1152,15 @@ install_wezterm_fork() {
 
         LATEST_VER=${head:0:9}
         if step "wezterm (floating panes)" "$([[ -x "$gui" ]] && echo upgrade || echo install)" "$gui"; then
-            # --force: replaces binaries cargo didn't install (e.g. a manual build)
-            "$HOME/.cargo/bin/cargo" install --locked --force --root "$HOME/.local" \
+            # --force: replaces binaries cargo didn't install (e.g. a manual build).
+            # An explicit target dir: wezterm-gui's build.rs (macOS) copies
+            # Info.plist into $CARGO_TARGET_DIR, else into <checkout>/target/<profile>,
+            # which doesn't exist under `cargo install`.
+            local target
+            target=$(mktemp -d)
+            CARGO_TARGET_DIR=$target "$HOME/.cargo/bin/cargo" +stable install --locked --force --root "$HOME/.local" \
                 --git "$WEZTERM_REPO" --branch "$WEZTERM_BRANCH" "${WEZTERM_BINS[@]}"
+            rm -rf "$target"
             done_step
         fi
     fi
@@ -901,13 +1214,17 @@ wezterm_drop_package() {
 # ad-hoc signed. Built beside the old app and moved into place, so a running
 # WezTerm keeps its (now unlinked) files.
 wezterm_macos_app() {
-    local app=/Applications/WezTerm.app new=/Applications/.WezTerm.app.new bin stale=false res
-    for bin in "${WEZTERM_BINS[@]}"; do
-        cmp -s "$HOME/.local/bin/$bin" "$app/Contents/MacOS/$bin" || stale=true
-    done
-    [[ -d "$app/Contents/Resources/terminfo" ]] || stale=true
-    if ! $stale; then
+    local app=/Applications/WezTerm.app new=/Applications/.WezTerm.app.new bin res sums
+    # codesign rewrites the bundled binaries, so compare checksums of
+    # ~/.local/bin recorded at packaging time instead of the files themselves
+    sums=$(cd "$HOME/.local/bin" && shasum "${WEZTERM_BINS[@]}")
+    if [[ -d "$app/Contents/Resources/terminfo" &&
+        "$(cat "$app/Contents/Resources/fork-bins.sha" 2>/dev/null)" == "$sums" ]]; then
         ok "WezTerm.app"
+        return 0
+    fi
+    if [[ ! -w /Applications ]] && ! $DRY_RUN; then
+        warn "WezTerm.app" "/Applications isn't writable (needs admin rights) — rerun ./init.sh as an admin"
         return 0
     fi
     if step "WezTerm.app" "$([[ -d "$app" ]] && echo update || echo install)" "$app/Contents/MacOS/wezterm-gui"; then
@@ -924,6 +1241,7 @@ wezterm_macos_app() {
         for bin in "${WEZTERM_BINS[@]}"; do
             cp "$HOME/.local/bin/$bin" "$new/Contents/MacOS/$bin"
         done
+        printf '%s\n' "$sums" >"$res/fork-bins.sha"
         codesign --force --deep --sign - "$new"
         rm -rf "$app.old"
         if [[ -e "$app" ]]; then mv "$app" "$app.old"; fi
@@ -973,39 +1291,13 @@ install_macos() {
         interactive /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
 
-    brew_install \
-        zsh-syntax-highlighting \
-        htop \
-        wget \
-        luajit \
-        pwgen \
-        bat \
-        fd \
-        ripgrep \
-        tmux \
-        watch \
-        pyenv \
-        pyenv-virtualenv \
-        eza \
-        zoxide \
-        jandedobbeleer/oh-my-posh/oh-my-posh \
-        zellij \
-        node \
-        go \
-        uv \
-        tree-sitter-cli \
-        jq \
-        yq \
-        lazygit \
-        btop \
-        pipx \
-        p7zip \
-        nmap \
-        mtr \
-        ipcalc
+    brew_install "${BREW_BASE[@]}"
 
-    local casks=(font-meslo-lg-nerd-font maccy)
-    [[ -d "/Applications/Rectangle.app" ]] || casks+=(rectangle)
+    # Rectangle installed outside brew is left alone
+    local casks=() c
+    for c in "${BREW_CASKS[@]}"; do
+        [[ "$c" == rectangle && -d /Applications/Rectangle.app ]] || casks+=("$c")
+    done
     brew_install --cask "${casks[@]}"
 
     install_wezterm_fork
@@ -1028,32 +1320,8 @@ install_linux() {
     section "Base packages"
 
     apt_refresh
-    apt_install \
-        zsh \
-        zsh-syntax-highlighting \
-        htop \
-        wget \
-        bat \
-        fd-find \
-        ripgrep \
-        tmux \
-        procps \
-        wl-clipboard \
-        wofi \
-        wtype \
-        curl \
-        git \
-        unzip \
-        jq \
-        fontconfig \
-        btop \
-        pipx \
-        p7zip-full \
-        nmap \
-        mtr-tiny \
-        ipcalc \
-        ca-certificates \
-        gnupg
+    apt_install "${APT_CORE[@]}"
+    apt_install "${APT_BASE[@]}"
 
     if ! $DRY_RUN; then
         mkdir -p ~/bin ~/.local/bin
@@ -1066,7 +1334,9 @@ install_linux() {
     # CLI needs ≥ 22). Checks /usr/bin/node: other copies may shadow it on PATH.
     local node_major=0
     [[ -x /usr/bin/node ]] && node_major=$(/usr/bin/node -p 'process.versions.node.split(".")[0]')
-    if ((node_major < 22)); then
+    if skip_app node; then
+        :
+    elif ((node_major < 22)); then
         if step "node (NodeSource LTS)" "$( ((node_major)) && echo upgrade || echo install)" /usr/bin/node; then
             curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
             apt_get install nodejs
@@ -1084,7 +1354,9 @@ install_linux() {
     gh_tool zoxide ajeetdsouza/zoxide _zoxide
 
     # uv — Python package manager (macOS: brew); self-update is quick and idempotent
-    if ! cmd_exists uv; then
+    if skip_app uv; then
+        :
+    elif ! cmd_exists uv; then
         if step uv; then
             curl -LsSf https://astral.sh/uv/install.sh | sh
             done_step
@@ -1101,7 +1373,9 @@ install_linux() {
     gh_tool oh-my-posh JanDeDobbeleer/oh-my-posh _ohmyposh
 
     # pyenv (macOS: brew) — check directory, not command, since pyenv may not be in PATH yet
-    if [[ ! -d "$HOME/.pyenv" ]]; then
+    if skip_app pyenv; then
+        :
+    elif [[ ! -d "$HOME/.pyenv" ]]; then
         if step pyenv install; then
             curl https://pyenv.run | bash
             done_step
@@ -1126,10 +1400,16 @@ install_linux() {
     install_go
 
     # cliphist — needs Go (macOS: uses Maccy instead)
-    gh_tool cliphist sentriz/cliphist _cliphist
+    if omitted go && ! cmd_exists go && ! omitted cliphist; then
+        warn cliphist "skipped — needs go, which is omitted"
+    else
+        gh_tool cliphist sentriz/cliphist _cliphist
+    fi
 
     # Nerd Font — MesloLGS NF
-    if [[ ! -d "$HOME/.local/share/fonts/MesloLGS" ]]; then
+    if skip_app font-meslo-lg-nerd-font; then
+        :
+    elif [[ ! -d "$HOME/.local/share/fonts/MesloLGS" ]]; then
         if step "MesloLGS NF font" install; then
             local font_dir="$HOME/.local/share/fonts/MesloLGS"
             mkdir -p "$font_dir"
@@ -1152,7 +1432,9 @@ install_devops_macos() {
     section "DevOps tools"
 
     # Neovim nightly (brew HEAD build)
-    if ! brew list --formula neovim &>/dev/null; then
+    if skip_app neovim; then
+        :
+    elif ! brew list --formula neovim &>/dev/null; then
         if step "neovim nightly" install nvim; then
             brew install --HEAD neovim
             done_step
@@ -1167,7 +1449,9 @@ install_devops_macos() {
     fi
 
     # AWS CLI
-    if ! want aws; then
+    if skip_app aws; then
+        :
+    elif ! want aws; then
         ok aws
     elif is_latest aws "$(curl -fsSL https://raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)"; then
         ok aws
@@ -1180,26 +1464,7 @@ install_devops_macos() {
         done_step
     fi
 
-    brew_install \
-        hashicorp/tap/terraform \
-        hashicorp/tap/vault \
-        terraform-docs \
-        ansible \
-        kubernetes-cli \
-        derailed/k9s/k9s \
-        mysql-client@8.0 \
-        helm \
-        gh \
-        azure-cli \
-        eksctl \
-        argocd \
-        actionlint \
-        yamllint \
-        tfsec \
-        maven \
-        dotnet \
-        dotnet@8 \
-        deno
+    brew_install "${BREW_DEVOPS[@]}"
 
     install_claude
     npm_global copilot @github/copilot
@@ -1207,7 +1472,9 @@ install_devops_macos() {
 
 # Claude CLI — native installer (npm install is deprecated); self-updating
 install_claude() {
-    if ! cmd_exists claude; then
+    if skip_app claude; then
+        return
+    elif ! cmd_exists claude; then
         if step claude; then
             curl -fsSL https://claude.ai/install.sh | bash
             done_step
@@ -1244,7 +1511,9 @@ install_devops_linux() {
 
     # Neovim nightly (macOS: brew --HEAD neovim). The nightly release notes
     # start with its `nvim --version` line, so an unchanged build is skipped.
-    if ! want nvim; then
+    if skip_app neovim; then
+        :
+    elif ! want nvim; then
         ok neovim
     elif is_latest nvim "$(gh_api repos/neovim/neovim/releases/tags/nightly | jq -r .body | grep -m1 -oE 'NVIM v[^ ]+' | cut -c6- || true)"; then
         ok "neovim nightly"
@@ -1261,7 +1530,9 @@ install_devops_linux() {
     fi
 
     # AWS CLI — latest version is the top of its CHANGELOG
-    if ! want aws; then
+    if skip_app aws; then
+        :
+    elif ! want aws; then
         ok aws
     elif is_latest aws "$(curl -fsSL https://raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)"; then
         ok aws
@@ -1283,16 +1554,18 @@ install_devops_linux() {
         "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
 
     # Azure CLI — Microsoft's script adds their apt repo, then apt keeps it current
-    if ! cmd_exists az && step "azure-cli apt repo" install; then
+    if ! omitted azure-cli && ! cmd_exists az && step "azure-cli apt repo" install; then
         curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
         done_step
     fi
 
     # apt-managed: terraform, vault, gh, az, ansible, yamllint, maven, .NET 8 SDK
-    apt_install terraform vault gh azure-cli ansible yamllint maven dotnet-sdk-8.0
+    apt_install "${APT_DEVOPS[@]}"
 
     # kubectl — latest stable from dl.k8s.io
-    if ! want kubectl; then
+    if skip_app kubectl; then
+        :
+    elif ! want kubectl; then
         ok kubectl
     else
         local k8s_ver
@@ -1315,7 +1588,9 @@ install_devops_linux() {
     gh_tool terraform-docs terraform-docs/terraform-docs _terraform_docs
 
     # deno → ~/.local/bin (already on PATH via my_aliases.sh); upgrade checks itself
-    if ! cmd_exists deno; then
+    if skip_app deno; then
+        :
+    elif ! cmd_exists deno; then
         if step deno; then
             curl -fsSL https://deno.land/install.sh | DENO_INSTALL="$HOME/.local" sh -s -- -y --no-modify-path
             done_step
@@ -1338,27 +1613,31 @@ install_devops_linux() {
 
     # keyd — kernel-level key remapping (Wayland-compatible, macOS uses hidutil instead)
     # Not in apt; build from source
-    if cmd_exists keyd; then
-        ok keyd
-    elif step keyd install; then
-        apt_get install gcc make libevdev-dev libudev-dev
-        rm -rf /tmp/keyd
-        git clone https://github.com/rvaiya/keyd.git /tmp/keyd
-        make -C /tmp/keyd
-        sudo make -C /tmp/keyd install
-        rm -rf /tmp/keyd
-        done_step
-    fi
-    if [[ "$(readlink /etc/keyd/default.conf 2>/dev/null)" != "$DOTFILES/linux/keyd/default.conf" ]] &&
-        step "keyd config" install; then
-        sudo mkdir -p /etc/keyd
-        sudo ln -sf "$DOTFILES/linux/keyd/default.conf" /etc/keyd/default.conf
-        done_step
-    fi
-    if ! { systemctl is-enabled --quiet keyd 2>/dev/null && systemctl is-active --quiet keyd; } &&
-        step "keyd service" install; then
-        sudo systemctl enable --now keyd
-        done_step
+    if skip_app keyd; then
+        :
+    else
+        if cmd_exists keyd; then
+            ok keyd
+        elif step keyd install; then
+            apt_get install gcc make libevdev-dev libudev-dev
+            rm -rf /tmp/keyd
+            git clone https://github.com/rvaiya/keyd.git /tmp/keyd
+            make -C /tmp/keyd
+            sudo make -C /tmp/keyd install
+            rm -rf /tmp/keyd
+            done_step
+        fi
+        if [[ "$(readlink /etc/keyd/default.conf 2>/dev/null)" != "$DOTFILES/linux/keyd/default.conf" ]] &&
+            step "keyd config" install; then
+            sudo mkdir -p /etc/keyd
+            sudo ln -sf "$DOTFILES/linux/keyd/default.conf" /etc/keyd/default.conf
+            done_step
+        fi
+        if ! { systemctl is-enabled --quiet keyd 2>/dev/null && systemctl is-active --quiet keyd; } &&
+            step "keyd service" install; then
+            sudo systemctl enable --now keyd
+            done_step
+        fi
     fi
 }
 
@@ -1386,7 +1665,9 @@ install_shell() {
     fi
 
     # Tmux Plugin Manager
-    if [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
+    if skip_app tpm; then
+        :
+    elif [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
         if step tpm install; then
             git clone https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm"
             done_step
@@ -1401,7 +1682,9 @@ install_shell() {
     fi
 
     # Neovim Python support
-    if ! python3 -c "import pynvim" &>/dev/null; then
+    if skip_app pynvim; then
+        :
+    elif ! python3 -c "import pynvim" &>/dev/null; then
         if step pynvim install py:pynvim; then
             pip3 install -U pynvim --break-system-packages 2>/dev/null || pip3 install -U pynvim || true
             done_step
@@ -1493,6 +1776,24 @@ go node npm nvim aws terraform vault terraform-docs gh az ansible kubectl helm k
 argocd actionlint tfsec deno claude copilot tree-sitter wezterm"
 DOCTOR_TOOLS_LINUX="cliphist keyd"
 
+# A doctor tool belongs to an omitted app (command names differ from app names)
+doctor_omitted() {
+    local names=$1 a
+    case "$1" in
+    rg) names=ripgrep ;;
+    az) names=azure-cli ;;
+    nvim) names=neovim ;;
+    kubectl) names="kubectl kubernetes-cli" ;;
+    tree-sitter) names=tree-sitter-cli ;;
+    fd) names="fd fd-find" ;;
+    npm) names=node ;;
+    esac
+    for a in $names; do
+        if skip_app "$a"; then return 0; fi
+    done
+    return 1
+}
+
 real_path() { realpath "$1" 2>/dev/null || printf '%s' "$1"; }
 
 run_doctor() {
@@ -1505,6 +1806,7 @@ run_doctor() {
     local tools=$DOCTOR_TOOLS t dir f first seen copies
     [[ "$OS" == "macos" ]] || tools+=" $DOCTOR_TOOLS_LINUX"
     for t in $tools; do
+        if doctor_omitted "$t"; then continue; fi
         first="" seen="" copies=()
         local IFS=:
         for dir in $user_path; do
@@ -1668,7 +1970,8 @@ if $DRY_RUN; then
     if ((${#MAYBE_LIST[@]})); then
         panel_row "$G" "Check" "$(join ", " "${MAYBE_LIST[@]}") ${C_DIM}(self-updaters: newer version unknown until run)${C_RESET}"
     fi
-    panel_row "$G" "Apply" "${C_CYAN}./init.sh$($UPGRADE && echo " --upgrade")${C_RESET} ${C_DIM}(same options, without --dry-run)${C_RESET}"
+    omit_rows "$G"
+    panel_row "$G" "Apply" "${C_CYAN}./init.sh$($UPGRADE && echo " --upgrade")${OMIT_ADD:+ --omit-app ${OMIT_ADD#,}}${OMIT_DEL:+ --add-app ${OMIT_DEL#,}}${C_RESET} ${C_DIM}(same options, without --dry-run)${C_RESET}"
     panel_row "${C_YELLOW}╰─${C_RESET}" "Log" "${C_DIM}$(pretty_path "$LOG")${C_RESET}"
     out ""
     exit 0
@@ -1683,6 +1986,7 @@ if ((${#STEP_TIMES[@]})); then
     slowest=$(printf '%s\n' "${STEP_TIMES[@]}" | sort -rn | head -3 | awk '{s=$1; $1=""; printf "%s%s %ss", (NR>1?" · ":""), substr($0,2), s}')
     panel_row "$G" "Slowest" "${C_DIM}$slowest${C_RESET}"
 fi
+omit_rows "$G"
 if $SHELL_CHANGED; then
     panel_row "$G" "Shell" "${C_YELLOW}zsh is now your default — log out and back in${C_RESET}"
 fi
