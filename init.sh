@@ -797,13 +797,15 @@ install_go() {
 
 # -----------------------------------------------------------------------------
 # WezTerm with per-split floating panes — built from the jad617/wezterm fork
-# with cargo into ~/.local/bin. The packaged nightly (apt / brew cask) stays
-# installed for the app launcher, terminfo and icons, and is pointed at this
-# build. Skipped when cargo already built the branch's current commit.
+# with cargo into ~/.local/bin, then packaged the way upstream's ci/deploy.sh
+# does it (WezTerm.app on macOS, desktop entry + icon on Linux) from the
+# assets in cargo's checkout of the same commit. Replaces the brew cask / apt
+# package. Skipped when cargo already built the branch's current commit.
 # -----------------------------------------------------------------------------
 WEZTERM_REPO=https://github.com/jad617/wezterm
 WEZTERM_BRANCH=floating-splits
 WEZTERM_BINS=(wezterm wezterm-gui wezterm-mux-server)
+WEZTERM_STAMP="$HOME/.local/share/wezterm/fork-assets-rev"
 
 # Commit of the fork that cargo last built into ~/.local, from its install record
 wezterm_built_rev() {
@@ -850,46 +852,109 @@ install_wezterm_fork() {
         fi
     fi
 
-    wezterm_fork_launcher
+    [[ -x "$gui" ]] || return 0
+    wezterm_drop_package
+    if [[ "$OS" == "macos" ]]; then wezterm_macos_app; else wezterm_linux_assets; fi
 }
 
-# Point the packaged WezTerm launcher at the fork build
-wezterm_fork_launcher() {
-    [[ -x "$HOME/.local/bin/wezterm-gui" ]] || return 0
+# The fork's source tree for the built commit: cargo's git checkout, or a
+# shallow fetch of that commit when cargo has garbage-collected it. Sets
+# WEZTERM_SRC (and WEZTERM_SRC_TMP, for the caller to remove, on a fetch).
+wezterm_fork_src() {
+    local rev=$1 d
+    WEZTERM_SRC="" WEZTERM_SRC_TMP=""
+    for d in "$HOME"/.cargo/git/checkouts/wezterm-*/"${rev:0:7}"*; do
+        if [[ -f "$d/assets/wezterm.desktop" ]]; then
+            WEZTERM_SRC=$d
+            return 0
+        fi
+    done
+    WEZTERM_SRC_TMP=$(mktemp -d)
+    git -C "$WEZTERM_SRC_TMP" init -q &&
+        git -C "$WEZTERM_SRC_TMP" fetch -q --depth 1 "$WEZTERM_REPO" "$rev" &&
+        git -C "$WEZTERM_SRC_TMP" checkout -q FETCH_HEAD -- assets termwiz/data/wezterm.terminfo &&
+        WEZTERM_SRC=$WEZTERM_SRC_TMP
+}
+
+# Remove the packaged WezTerm (brew cask / apt nightly) once the fork build
+# exists, so a package upgrade can't swap the stock build back in
+wezterm_drop_package() {
     if [[ "$OS" == "macos" ]]; then
-        # The Dock/Spotlight app and brew's `wezterm` symlink both run the
-        # bundle's binaries, so swap them in (brew upgrades swap them back,
-        # and the next run redoes this)
-        local app=/Applications/WezTerm.app bin stale=false
-        [[ -d "$app" ]] || return 0
-        for bin in "${WEZTERM_BINS[@]}"; do
-            cmp -s "$HOME/.local/bin/$bin" "$app/Contents/MacOS/$bin" || stale=true
-        done
-        if $stale && step "WezTerm.app → floating panes build" update "$app/Contents/MacOS/wezterm-gui"; then
-            for bin in "${WEZTERM_BINS[@]}"; do
-                cp "$HOME/.local/bin/$bin" "$app/Contents/MacOS/$bin"
-            done
-            # Replacing binaries invalidates the bundle signature; re-sign ad hoc
-            codesign --force --deep --sign - "$app"
+        local casks
+        casks=$(brew list --cask -1 2>/dev/null | grep -xE 'wezterm(@nightly)?' | tr '\n' ' ' || true)
+        if [[ -n "$casks" ]] && step "brew: ${casks% }" remove /Applications/WezTerm.app/Contents/MacOS/wezterm-gui; then
+            # shellcheck disable=SC2086 # one word per cask
+            brew uninstall --cask $casks
             done_step
-        elif ! $stale; then
-            ok "WezTerm.app"
         fi
     else
-        # User-level copy of the packaged desktop entry, which takes precedence
-        # over it (same file name), running the build in ~/.local/bin
-        local src=/usr/share/applications/org.wezfurlong.wezterm.desktop
-        local dst="$HOME/.local/share/applications/org.wezfurlong.wezterm.desktop" want
-        [[ -f "$src" ]] || return 0
-        want=$(sed -e "s|^TryExec=wezterm\$|TryExec=$HOME/.local/bin/wezterm|" \
-            -e "s|^Exec=wezterm |Exec=$HOME/.local/bin/wezterm |" "$src")
-        if [[ "$(cat "$dst" 2>/dev/null)" == "$want" ]]; then
-            ok "wezterm launcher"
-        elif step "wezterm launcher" update "$dst"; then
-            mkdir -p "$(dirname "$dst")"
-            printf '%s\n' "$want" >"$dst"
+        if dpkg -s wezterm-nightly >/dev/null 2>&1 && step "apt: wezterm-nightly" remove /usr/bin/wezterm; then
+            sudo apt-get remove -y wezterm-nightly
+            sudo rm -f /etc/apt/sources.list.d/wezterm.list /usr/share/keyrings/wezterm-fury.gpg
             done_step
         fi
+    fi
+}
+
+# /Applications/WezTerm.app assembled like ci/deploy.sh: the bundle template,
+# shell integration and completions, compiled terminfo and the fork binaries,
+# ad-hoc signed. Built beside the old app and moved into place, so a running
+# WezTerm keeps its (now unlinked) files.
+wezterm_macos_app() {
+    local app=/Applications/WezTerm.app new=/Applications/.WezTerm.app.new bin stale=false res
+    for bin in "${WEZTERM_BINS[@]}"; do
+        cmp -s "$HOME/.local/bin/$bin" "$app/Contents/MacOS/$bin" || stale=true
+    done
+    [[ -d "$app/Contents/Resources/terminfo" ]] || stale=true
+    if ! $stale; then
+        ok "WezTerm.app"
+        return 0
+    fi
+    if step "WezTerm.app" "$([[ -d "$app" ]] && echo update || echo install)" "$app/Contents/MacOS/wezterm-gui"; then
+        wezterm_fork_src "$(wezterm_built_rev)"
+        rm -rf "$new"
+        cp -R "$WEZTERM_SRC/assets/macos/WezTerm.app" "$new"
+        # Upstream omits the bundled MetalANGLE libraries too
+        rm -f "$new"/*.dylib
+        res="$new/Contents/Resources"
+        mkdir -p "$new/Contents/MacOS" "$res"
+        cp -R "$WEZTERM_SRC"/assets/shell-integration/* "$res"
+        cp -R "$WEZTERM_SRC/assets/shell-completion" "$res"
+        tic -xe wezterm -o "$res/terminfo" "$WEZTERM_SRC/termwiz/data/wezterm.terminfo"
+        for bin in "${WEZTERM_BINS[@]}"; do
+            cp "$HOME/.local/bin/$bin" "$new/Contents/MacOS/$bin"
+        done
+        codesign --force --deep --sign - "$new"
+        rm -rf "$app.old"
+        if [[ -e "$app" ]]; then mv "$app" "$app.old"; fi
+        mv "$new" "$app"
+        rm -rf "$app.old"
+        [[ -z "$WEZTERM_SRC_TMP" ]] || rm -rf "$WEZTERM_SRC_TMP"
+        done_step
+    fi
+}
+
+# What the .deb ships, user-level: desktop entry (running ~/.local/bin), icon,
+# zsh completion and terminfo. Redone whenever the built commit changes.
+wezterm_linux_assets() {
+    local rev apps="$HOME/.local/share/applications" icons="$HOME/.local/share/icons/hicolor/128x128/apps"
+    rev=$(wezterm_built_rev)
+    if [[ -f "$WEZTERM_STAMP" && "$(cat "$WEZTERM_STAMP")" == "$rev" ]]; then
+        ok "wezterm launcher"
+        return 0
+    fi
+    if step "wezterm launcher" "$([[ -f "$WEZTERM_STAMP" ]] && echo update || echo install)" "$apps/org.wezfurlong.wezterm.desktop"; then
+        wezterm_fork_src "$rev"
+        mkdir -p "$apps" "$icons" "$HOME/.zfunc" "$(dirname "$WEZTERM_STAMP")"
+        sed -e "s|^TryExec=wezterm\$|TryExec=$HOME/.local/bin/wezterm|" \
+            -e "s|^Exec=wezterm |Exec=$HOME/.local/bin/wezterm |" \
+            "$WEZTERM_SRC/assets/wezterm.desktop" >"$apps/org.wezfurlong.wezterm.desktop"
+        cp "$WEZTERM_SRC/assets/icon/terminal.png" "$icons/org.wezfurlong.wezterm.png"
+        cp "$WEZTERM_SRC/assets/shell-completion/zsh" "$HOME/.zfunc/_wezterm"
+        tic -x -o "$HOME/.terminfo" "$WEZTERM_SRC/termwiz/data/wezterm.terminfo"
+        [[ -z "$WEZTERM_SRC_TMP" ]] || rm -rf "$WEZTERM_SRC_TMP"
+        printf '%s\n' "$rev" >"$WEZTERM_STAMP"
+        done_step
     fi
 }
 
@@ -939,7 +1004,7 @@ install_macos() {
         mtr \
         ipcalc
 
-    local casks=(wezterm@nightly font-meslo-lg-nerd-font maccy)
+    local casks=(font-meslo-lg-nerd-font maccy)
     [[ -d "/Applications/Rectangle.app" ]] || casks+=(rectangle)
     brew_install --cask "${casks[@]}"
 
@@ -1050,10 +1115,7 @@ install_linux() {
         ok pyenv
     fi
 
-    # wezterm (apt repo)
-    apt_repo wezterm https://apt.fury.io/wez/gpg.key \
-        'deb [signed-by=/usr/share/keyrings/wezterm-fury.gpg] https://apt.fury.io/wez/ * *'
-    apt_install wezterm-nightly
+    # wezterm — the fork, built from source
     install_wezterm_fork
 
     gh_tool zellij zellij-org/zellij _zellij
@@ -1428,8 +1490,8 @@ create_links() {
 # =============================================================================
 DOCTOR_TOOLS="zsh git tmux rg fd bat jq yq fzf eza zoxide uv oh-my-posh pyenv zellij lazygit
 go node npm nvim aws terraform vault terraform-docs gh az ansible kubectl helm k9s eksctl
-argocd actionlint tfsec deno claude copilot tree-sitter"
-DOCTOR_TOOLS_LINUX="cliphist keyd wezterm"
+argocd actionlint tfsec deno claude copilot tree-sitter wezterm"
+DOCTOR_TOOLS_LINUX="cliphist keyd"
 
 real_path() { realpath "$1" 2>/dev/null || printf '%s' "$1"; }
 
@@ -1493,7 +1555,6 @@ run_doctor() {
         done <<EOF
 hashicorp|https://apt.releases.hashicorp.com/gpg|/usr/share/keyrings/hashicorp-archive-keyring.gpg
 github-cli|https://cli.github.com/packages/githubcli-archive-keyring.gpg|/usr/share/keyrings/githubcli-archive-keyring.gpg
-wezterm|https://apt.fury.io/wez/gpg.key|/usr/share/keyrings/wezterm-fury.gpg
 EOF
     fi
 
