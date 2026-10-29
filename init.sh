@@ -26,13 +26,13 @@ Modes:
   --upgrade, -u       also upgrade everything it manages to the latest
   --dry-run, -n       show what install/upgrade would change; change nothing
   --doctor            check the setup: PATH shadowing, apt keys, links, shell
-  --select            pick the apps to install from a checklist (saved)
+  --select            only edit the app checklist (saved); install nothing
 
 Options:
   --only <list>       run only these sections (comma-separated)
   --skip <list>       skip these sections
                       sections: ${SECTIONS// /, }
-  --yes, -y           no checklist on the first run: install every app
+  --yes, -y           skip the app checklist and use the saved choices
                       (alias --non-interactive; automatic without a terminal)
   --omit-app <list>   stop installing / upgrading these apps (saved)
   --add-app <list>    manage these omitted apps again (saved)
@@ -45,8 +45,9 @@ Examples:
   ./init.sh --omit-app wezterm,dotnet
 
 Omitted apps are remembered in $(omit_file_pretty) and are never
-uninstalled, only no longer installed or upgraded. The first interactive
-run shows the --select checklist (skip it with --yes).
+uninstalled, only no longer installed or upgraded. Every interactive run
+starts with the app checklist, pre-set from the saved choices (skip it
+with --yes).
 EOF
 }
 
@@ -205,7 +206,7 @@ N_INSTALLED=0 N_UPGRADED=0 N_OK=0 N_MAYBE=0 N_WARN=0 N_ERR=0 LINKS_OK=0
 SECTION_OK=() SECTION_OMIT=() INSTALLED_LIST=() UPGRADED_LIST=() MAYBE_LIST=() STEP_TIMES=()
 STEP_LABEL="" STEP_VERB="" STEP_BIN="" STEP_SUM="" STEP_VER="" STEP_START=0
 LATEST_VER=""
-SPIN_PID="" SUDO_PID="" SHELL_CHANGED=false PICKER_ON=false
+SPIN_PID="" SUDO_PID="" SHELL_CHANGED=false PICKER_ON=false STTY_OLD=""
 
 out() { printf '%s\n' "$*" >&3; }
 pretty_path() { printf '%s' "${1/#"$HOME"/\~}"; }
@@ -488,7 +489,10 @@ on_error() {
 
 on_exit() {
     stop_spin
-    if $PICKER_ON; then printf '\e[?1049l' >&3; fi
+    if $PICKER_ON; then
+        [[ -z "$STTY_OLD" ]] || stty "$STTY_OLD" </dev/tty 2>/dev/null || true
+        printf '\e[?1049l' >&3
+    fi
     if [[ -n "$SUDO_PID" ]]; then kill "$SUDO_PID" 2>/dev/null || true; fi
     if $TTY; then printf '\e[?25h' >&3; fi
 }
@@ -503,7 +507,7 @@ want_section() {
 
 # -----------------------------------------------------------------------------
 # Apps — everything optional, grouped by where it comes from. Any app can be
-# omitted (--select checklist, --omit-app / --add-app); the choice is saved
+# omitted (checklist, --omit-app / --add-app); the choice is saved
 # and applies to install and upgrade runs. Omitted apps are never removed.
 # -----------------------------------------------------------------------------
 BREW_BASE=(zsh-syntax-highlighting htop wget luajit pwgen bat fd ripgrep tmux watch
@@ -524,28 +528,55 @@ app_ids() {
     for p; do printf '%s ' "${p##*/}"; done
 }
 
-# One line per source: "<source>|<app> <app> …" (picker order)
+# One line per source: "<source>|<app> <app> …" (checklist order)
 app_catalog() {
     if [[ "$OS" == "macos" ]]; then
-        echo "brew|$(app_ids "${BREW_BASE[@]}" "${BREW_DEVOPS[@]}")"
-        echo "brew cask|${BREW_CASKS[*]}"
-        echo "brew --HEAD|neovim"
-        echo "cargo · jad617 fork|wezterm"
-        echo "git clone|fzf tpm"
-        echo "official installer|aws claude"
-        echo "npm|copilot"
-        echo "pip|pynvim"
+        echo "Homebrew|$(app_sorted "${BREW_BASE[@]}" "${BREW_DEVOPS[@]}" "${BREW_CASKS[@]}" neovim)"
+        echo "Vendor installers|aws claude"
+        echo "Built from source|wezterm"
+        echo "Git clone|fzf tpm"
+        echo "npm (global)|copilot"
+        echo "pip (user)|pynvim"
     else
-        echo "apt|$(app_ids "${APT_BASE[@]}" "${APT_DEVOPS[@]}")"
-        echo "apt · NodeSource|node"
-        echo "GitHub release|eza zoxide oh-my-posh zellij lazygit yq cliphist helm k9s eksctl argocd actionlint tfsec terraform-docs"
-        echo "official tarball / installer|go neovim kubectl aws uv pyenv deno claude"
-        echo "cargo · jad617 fork|wezterm"
-        echo "git clone|fzf tpm"
-        echo "source build|keyd"
-        echo "npm|copilot tree-sitter-cli"
-        echo "pip|pynvim"
-        echo "font download|font-meslo-lg-nerd-font"
+        echo "apt|$(app_sorted "${APT_BASE[@]}" "${APT_DEVOPS[@]}" node)"
+        echo "GitHub releases|$(app_sorted eza zoxide oh-my-posh zellij lazygit yq cliphist helm k9s eksctl argocd actionlint tfsec terraform-docs)"
+        echo "Vendor installers|$(app_sorted go neovim kubectl aws uv pyenv deno claude font-meslo-lg-nerd-font)"
+        echo "Built from source|keyd wezterm"
+        echo "Git clone|fzf tpm"
+        echo "npm (global)|copilot tree-sitter-cli"
+        echo "pip (user)|pynvim"
+    fi
+}
+
+app_sorted() {
+    app_ids "$@" | tr ' ' '\n' | sed '/^$/d' | sort -f | tr '\n' ' '
+}
+
+# How an app is installed when its source alone doesn't say (checklist note)
+app_note() {
+    if [[ "$OS" == "macos" ]]; then
+        case "$1" in
+        neovim) echo "--HEAD" ;;
+        aws) echo "AWS .pkg" ;;
+        claude) echo "claude.ai script" ;;
+        wezterm) echo "cargo, jad617 fork" ;;
+        *) if [[ " ${BREW_CASKS[*]} " == *" $1 "* ]]; then echo cask; fi ;;
+        esac
+    else
+        case "$1" in
+        node) echo "NodeSource" ;;
+        go) echo "go.dev tarball" ;;
+        neovim) echo "nightly tarball" ;;
+        kubectl) echo "dl.k8s.io" ;;
+        aws) echo "AWS zip" ;;
+        uv) echo "astral.sh script" ;;
+        pyenv) echo "pyenv.run script" ;;
+        deno) echo "deno.land script" ;;
+        claude) echo "claude.ai script" ;;
+        font-meslo-lg-nerd-font) echo "p10k fonts" ;;
+        wezterm) echo "cargo, jad617 fork" ;;
+        keyd) echo "make" ;;
+        esac
     fi
 }
 
@@ -584,82 +615,488 @@ save_omit() {
     } >"$OMIT_FILE"
 }
 
-# Checklist of every app by source: unchecked = omitted. Returns 1 on quit.
+# Join "key|what it does" hints into HINTS, fitting $width - 4 columns: optional hints
+# (leading ~) go first, then any from the end. Uses pick_apps' width and colour variables.
+pick_hints() {
+    local hs=("$@") h len i
+    while :; do
+        len=0
+        for h in "${hs[@]}"; do len=$((len + ${#h} + 3)); done # "|" becomes " ", plus a 3-space gap
+        ((len - 3 <= width - 4 || ${#hs[@]} <= 1)) && break
+        for ((i = ${#hs[@]} - 1; i >= 0; i--)); do [[ "${hs[i]}" == "~"* ]] && break; done
+        ((i < 0)) && i=$((${#hs[@]} - 1))
+        hs=("${hs[@]:0:i}" "${hs[@]:i+1}")
+    done
+    HINTS=""
+    for h in "${hs[@]}"; do
+        h=${h#\~}
+        HINTS+="${HINTS:+   }${CY}${BD}${h%%|*}${R} ${DM}${h#*|}${R}"
+    done
+}
+
+# One-line description of an app for the checklist's detail line
+app_desc() {
+    case "$1" in
+    actionlint) echo "Lint GitHub Actions workflows" ;;
+    ansible) echo "Automation and configuration management" ;;
+    argocd) echo "Argo CD CLI" ;;
+    aws) echo "AWS CLI v2" ;;
+    azure-cli) echo "Azure CLI" ;;
+    bat) echo "cat with syntax highlighting" ;;
+    btop) echo "Resource monitor" ;;
+    claude) echo "Claude Code CLI" ;;
+    cliphist) echo "Wayland clipboard history" ;;
+    copilot) echo "GitHub Copilot CLI" ;;
+    deno) echo "JavaScript/TypeScript runtime" ;;
+    dotnet | dotnet-sdk-8.0) echo ".NET SDK" ;;
+    dotnet@8) echo ".NET 8 SDK" ;;
+    eksctl) echo "Amazon EKS CLI" ;;
+    eza) echo "Modern ls" ;;
+    fd | fd-find) echo "Fast find" ;;
+    font-meslo-lg-nerd-font) echo "MesloLG Nerd Font" ;;
+    fzf) echo "Fuzzy finder" ;;
+    gh) echo "GitHub CLI" ;;
+    go) echo "Go toolchain" ;;
+    helm) echo "Kubernetes package manager" ;;
+    htop) echo "Process viewer" ;;
+    ipcalc) echo "IP subnet calculator" ;;
+    jq) echo "JSON processor" ;;
+    k9s) echo "Kubernetes TUI" ;;
+    keyd) echo "Key remapping daemon" ;;
+    kubectl | kubernetes-cli) echo "Kubernetes CLI" ;;
+    lazygit) echo "Git TUI" ;;
+    luajit) echo "LuaJIT" ;;
+    maccy) echo "Clipboard manager" ;;
+    maven) echo "Java build tool" ;;
+    mtr | mtr-tiny) echo "traceroute + ping" ;;
+    mysql-client@8.0) echo "MySQL 8.0 client" ;;
+    neovim) echo "Neovim nightly" ;;
+    nmap) echo "Network scanner" ;;
+    node) echo "Node.js" ;;
+    oh-my-posh) echo "Prompt theme engine" ;;
+    p7zip | p7zip-full) echo "7-Zip" ;;
+    pipx) echo "Python app installer" ;;
+    pwgen) echo "Password generator" ;;
+    pyenv) echo "Python version manager" ;;
+    pyenv-virtualenv) echo "pyenv virtualenv plugin" ;;
+    pynvim) echo "Neovim Python client" ;;
+    rectangle) echo "Window snapping" ;;
+    ripgrep) echo "Fast grep" ;;
+    terraform) echo "Infrastructure as code" ;;
+    terraform-docs) echo "Terraform module docs" ;;
+    tfsec) echo "Terraform security scanner" ;;
+    tmux) echo "Terminal multiplexer" ;;
+    tpm) echo "tmux plugin manager" ;;
+    tree-sitter-cli) echo "Tree-sitter CLI" ;;
+    uv) echo "Python package manager" ;;
+    vault) echo "HashiCorp Vault CLI" ;;
+    watch) echo "Re-run a command periodically" ;;
+    wezterm) echo "Terminal emulator" ;;
+    wget) echo "File downloader" ;;
+    wl-clipboard) echo "Wayland clipboard tools" ;;
+    wofi) echo "Wayland launcher" ;;
+    wtype) echo "Wayland key typing" ;;
+    yamllint) echo "YAML linter" ;;
+    yq) echo "YAML processor" ;;
+    zellij) echo "Terminal workspace" ;;
+    zoxide) echo "Smarter cd" ;;
+    zsh-syntax-highlighting) echo "zsh syntax highlighting" ;;
+    esac
+}
+
+# Fills CL with line $2 of card $1 (title, app rows, bottom border).
+# Reads pick_apps' locals.
+pick_card_line() {
+    local g=$1 r=$2 w=${gw[$1]} col=${gcol[$1]} t s i c p v pad cell name
+    if ((r == 0)); then
+        s=0
+        for ((i = first[g]; i < first[g + 1]; i++)); do ((s += on[i])); done
+        t="${srcs[g]} $s/$((first[g + 1] - first[g]))"
+        printf -v pad '%*s' $((w - ${#t} - 5)) ''
+        CL="${col}╭─ $R$BD$t$R$col ${pad// /─}╮$R"
+        return 0
+    fi
+    if ((r == gh[g] - 1)); then
+        printf -v pad '%*s' $((w - 2)) ''
+        CL="${col}╰${pad// /─}╯$R"
+        return 0
+    fi
+    CL="${col}│$R"
+    # shellcheck disable=SC2206 # app ids: no spaces or globs
+    va=(${vis[g]})
+    for ((c = 0; c < gk[g]; c++)); do
+        p=$((c * grows[g] + r - 1))
+        if ((p >= ${#va[@]})); then
+            printf -v pad '%*s' "${gcw[g]}" ''
+            CL+=$pad
+            continue
+        fi
+        i=${va[p]}
+        name=${ids[i]}
+        if [[ -n "$filt" && "$name" == *"$filt"* ]]; then
+            name="${name%%"$filt"*}$YE$BD$filt$R${HL_ON}${name#*"$filt"}"
+        fi
+        if ((on[i])); then
+            cell="${GR}●$R${HL_ON} $name"
+        else
+            cell="${DM}○ $ST$name$R$DM${HL_ON}"
+        fi
+        [[ -z "${notes[i]}" ]] || cell+=" ${DM}[${notes[i]}]$R${HL_ON}"
+        printf -v pad '%*s' $((gcw[g] - 4 - len[i])) ''
+        if ((i == cur)); then
+            # Dark text on the light highlight: no colours, filter match underlined
+            name=${ids[i]}
+            if [[ -n "$filt" && "$name" == *"$filt"* ]]; then
+                name="${name%%"$filt"*}"$'\e[4m'"$filt"$'\e[24m'"${name#*"$filt"}"
+            fi
+            if ((on[i])); then cell="● $BD$name"$'\e[22m'; else cell="○ $ST$name"$'\e[29m'; fi
+            [[ -z "${notes[i]}" ]] || cell+=" [${notes[i]}]"
+            CL+="${SEL}❯ $cell$pad$R"
+        else
+            CL+="  ${cell//"$HL_ON"/}$pad"
+        fi
+    done
+    printf -v pad '%*s' $((w - 2 - gk[g] * gcw[g])) ''
+    CL+="$pad${col}│$R"
+    return 0
+}
+
+# Checklist of every app as one card per source, with a filter: unchecked =
+# omitted. Returns 1 when cancelled.
 pick_apps() {
-    local rows=() ids=() on=() src list id n=0 r
+    local srcs=() first=() ids=() notes=() on=() len=() src list id n=0 g
     while IFS='|' read -r src list; do
-        rows+=("h|$src")
+        srcs+=("$src")
+        first+=("$n")
         for id in $list; do
             ids+=("$id")
+            notes+=("$(app_note "$id")")
             if omitted "$id"; then on+=(0); else on+=(1); fi
-            rows+=("i|$n")
             n=$((n + 1))
         done
     done < <(app_catalog)
-    local total=${#rows[@]} cur=1 top=0 height key k2 buf mark sel i d
+    first+=("$n") # end of the last source
+    local R=$'\e[0m' BD=$'\e[1m' DM=$'\e[2m' ST=$'\e[9m' SEL=$'\e[48;5;108m\e[38;5;235m' HL_ON=$'\x01'
+    local GR=$'\e[32m' YE=$'\e[33m' CY=$'\e[36m' MG=$'\e[35m'
+    local palette=($'\e[36m' $'\e[35m' $'\e[31m' $'\e[34m' $'\e[32m' $'\e[33m' $'\e[96m')
+    local ng=${#srcs[@]} vis=() gk=() grows=() gcw=() gw=() gh=() gx=() gy=() gcol=() ix=() iy=() ib=() ir=()
+    local specs=() bands=0 BT=0 cur=0 top=0 size="" new_size layout="" width height hv key k2 buf
+    local scroll=0 filt="" typing=false nvis=0 sel i c r k w p va plain t pad x y b best bd d mw cnt
+    local cg=0 bx bw bh=0 bused bcols bandw tok CL cy cx rest
+    for ((i = 0; i < n; i++)); do
+        len[i]=${#ids[i]}
+        [[ -z "${notes[i]}" ]] || len[i]=$((len[i] + 3 + ${#notes[i]}))
+    done
+    for ((g = 0; g < ng; g++)); do gcol[g]=${palette[g % ${#palette[@]}]}; done
     exec 5</dev/tty
+    # Ctrl-O is the tty's "discard" key: turn that off so it reaches us
+    STTY_OLD=$(stty -g <&5 2>/dev/null || true)
+    # Non-canonical with a 0.1s read timeout, so a lone Esc is told apart from arrow keys quickly
+    stty discard undef -icanon -echo min 0 time 1 <&5 2>/dev/null || true
     PICKER_ON=true
     printf '\e[?1049h\e[?25l' >&3
     while :; do
-        height=$(($(tput lines 2>/dev/null || echo 24) - 7))
-        ((height < 5)) && height=5
-        ((cur < top)) && top=$cur
-        ((cur >= top + height)) && top=$((cur - height + 1))
-        # keep a source heading visible above its first app
-        if ((top > 0)) && [[ ${rows[top - 1]} == h\|* ]] && ((cur - top + 1 < height)); then top=$((top - 1)); fi
+        # Ask the terminal itself (stdout/stderr go to the log, so tput would
+        # fall back to 80x24); re-read per key to follow resizes, not mid-scroll
+        if ((scroll == 0)) || [[ -z "$size" ]]; then
+            new_size=$(stty size <&5 2>/dev/null || echo 24 80)
+        fi
+        if [[ "$new_size|$filt" != "$layout" ]]; then
+            layout="$new_size|$filt" size=$new_size
+            height=${size% *} width=${size#* }
+            hv=$((height - 9)) # header 2, ↓ line, filter 3, detail, footer 2
+            ((hv < 4)) && hv=4
+            # Cards: as few inner columns as fit the height, packed into
+            # columns left to right, then into bands below when out of width
+            specs=() BT=0 bands=0 bh=0 bx=2 bw=0 bused=0 bcols=0 bandw=$((width - 2)) nvis=0
+            local bcx=() bcw=() bcb=() cardbc=()
+            for ((g = 0; g < ng; g++)); do
+                vis[g]=""
+                cnt=0 mw=0
+                for ((i = first[g]; i < first[g + 1]; i++)); do
+                    if [[ -z "$filt" || "${ids[i]}" == *"$filt"* ]]; then
+                        vis[g]+="$i " cnt=$((cnt + 1))
+                        ((len[i] > mw)) && mw=${len[i]}
+                    fi
+                done
+                nvis=$((nvis + cnt))
+                gh[g]=0
+                ((cnt)) || continue
+                gcw[g]=$((mw + 6)) # "❯ ● " + name [note] + gap
+                for ((k = 1; ; k++)); do
+                    r=$(((cnt + k - 1) / k))
+                    if ((r + 2 <= hv || k >= cnt)); then break; fi
+                    if (((k + 1) * gcw[g] + 2 > bandw)); then break; fi
+                done
+                gk[g]=$k grows[g]=$r
+                t="${srcs[g]} $((first[g + 1] - first[g]))/$((first[g + 1] - first[g]))"
+                w=$((k * gcw[g] + 2))
+                ((w < ${#t} + 8)) && w=$((${#t} + 8))
+                gw[g]=$w gh[g]=$((r + 2))
+                # Same column, a new column, or a new band
+                if ((bcols > 0 && bused + gh[g] <= hv && bx + (w > bw ? w : bw) <= bandw)); then
+                    gx[g]=$bx gy[g]=$((BT + bused))
+                    bused=$((bused + gh[g]))
+                    ((w > bw)) && bw=$w
+                elif ((bcols == 0 || bx + bw + 1 + w <= bandw)); then
+                    ((bcols)) && bx=$((bx + bw + 1))
+                    bw=$w bused=${gh[g]} bcols=$((bcols + 1))
+                    gx[g]=$bx gy[g]=$BT
+                    bcx+=("$bx") bcb+=("$bands")
+                else
+                    # close the band: its height is its tallest column
+                    BT=$((BT + bh))
+                    bands=$((bands + 1)) bx=2 bw=$w bused=${gh[g]} bcols=1
+                    gx[g]=$bx gy[g]=$BT bh=0
+                    bcx+=("$bx") bcb+=("$bands")
+                fi
+                cardbc[g]=$((${#bcx[@]} - 1))
+                bcw[${#bcx[@]} - 1]=$bw
+                ((bused > ${bh:-0})) && bh=$bused
+            done
+            if ((nvis)); then BT=$((BT + bh)) bands=$((bands + 1)); fi
+            # Cards in a column share its width
+            for ((g = 0; g < ng; g++)); do
+                if ((gh[g])); then gw[g]=${bcw[cardbc[g]]}; fi
+            done
+            # Per board line: "card:line:pad" or "-:-:width" for each column
+            for ((y = 0; y < BT; y++)); do specs[y]=""; done
+            local bstart=() bend=()
+            for ((g = 0; g < ng; g++)); do
+                ((gh[g])) || continue
+                b=${bcb[cardbc[g]]}
+                if [[ -z "${bstart[b]:-}" ]] || ((gy[g] < bstart[b])); then bstart[b]=${gy[g]}; fi
+                if [[ -z "${bend[b]:-}" ]] || ((gy[g] + gh[g] > bend[b])); then bend[b]=$((gy[g] + gh[g])); fi
+            done
+            for ((c = 0; c < ${#bcx[@]}; c++)); do
+                b=${bcb[c]}
+                for ((y = bstart[b]; y < bend[b]; y++)); do
+                    tok="-:-:${bcw[c]}"
+                    for ((g = 0; g < ng; g++)); do
+                        if ((gh[g] && cardbc[g] == c && y >= gy[g] && y < gy[g] + gh[g])); then
+                            tok="$g:$((y - gy[g])):$((bcw[c] - gw[g]))"
+                            break
+                        fi
+                    done
+                    specs[y]+="$tok "
+                done
+            done
+            # Where each visible app sits, for moving the cursor
+            ix=() iy=() ib=() ir=()
+            for ((g = 0; g < ng; g++)); do
+                ((gh[g])) || continue
+                # shellcheck disable=SC2206 # app ids: no spaces or globs
+                va=(${vis[g]})
+                for ((p = 0; p < ${#va[@]}; p++)); do
+                    i=${va[p]}
+                    ix[i]=$((gx[g] + 1 + p / grows[g] * gcw[g]))
+                    iy[i]=$((gy[g] + 1 + p % grows[g]))
+                    ir[i]=$((p % grows[g]))
+                    ib[i]=${bcb[cardbc[g]]}
+                done
+            done
+            # Keep the cursor on a visible app
+            if ((nvis)) && [[ -z "${ix[cur]:-}" ]]; then
+                for ((g = 0; g < ng; g++)); do
+                    # shellcheck disable=SC2206 # app ids: no spaces or globs
+                    if ((gh[g])); then va=(${vis[g]}); cur=${va[0]}; break; fi
+                done
+            fi
+        fi
+
+        # Scroll so the cursor (and its card's title / bottom) is in view
+        if ((nvis)); then
+            cy=${iy[cur]}
+            for ((cg = 0; cg < ng; cg++)); do ((cur >= first[cg] && cur < first[cg + 1])) && break; done
+            y=$cy
+            ((ir[cur] == 0)) && y=${gy[cg]}
+            ((y < top)) && top=$y
+            y=$cy
+            ((ir[cur] == grows[cg] - 1)) && y=$((cy + 1))
+            ((y >= top + hv)) && top=$((y - hv + 1))
+        fi
+        ((top > BT - hv)) && top=$((BT - hv))
+        ((top < 0)) && top=0
+
         sel=0
         for i in "${on[@]}"; do ((sel += i)); done
-        buf="  ${C_BOLD}Choose the apps to install${C_RESET} ${C_DIM}· $sel/$n selected${C_RESET}"$'\e[K\n'
-        buf+="  ${C_DIM}Unchecked apps are skipped on install and upgrade — saved, never uninstalled${C_RESET}"$'\e[K\n\e[K\n'
-        for ((r = top; r < top + height && r < total; r++)); do
-            if [[ ${rows[r]} == h\|* ]]; then
-                buf+="  ${C_BOLD}${C_BLUE}${rows[r]#h|}${C_RESET}"$'\e[K\n'
-            else
-                i=${rows[r]#i|}
-                if ((on[i])); then mark="${C_GREEN}[x]${C_RESET}"; else mark="${C_DIM}[ ]${C_RESET}"; fi
-                if ((r == cur)); then
-                    buf+="  ${C_CYAN}›${C_RESET} $mark ${C_BOLD}${ids[i]}${C_RESET}"$'\e[K\n'
-                else
-                    buf+="    $mark ${ids[i]}"$'\e[K\n'
-                fi
+        buf="  $BD${CY}◆$R ${BD}Choose the apps to install$R  $DM$sel of $n selected"
+        ((width < 110)) || buf+=" · unchecked apps are skipped on install and upgrade"
+        buf+="$R"$'\e[K\n'
+        if ((top > 0)); then buf+="  ${DM}↑ more$R"; fi
+        buf+=$'\e[K\n'
+        for ((y = top; y < top + hv; y++)); do
+            if ((y < BT)); then
+                buf+="  "
+                for tok in ${specs[y]}; do
+                    g=${tok%%:*} t=${tok#*:} r=${t%%:*} w=${t#*:}
+                    if [[ "$g" == - ]]; then
+                        printf -v pad '%*s' "$((w + 1))" ''
+                        buf+=$pad
+                    else
+                        pick_card_line "$g" "$r"
+                        printf -v pad '%*s' "$((w + 1))" ''
+                        buf+="$CL$pad"
+                    fi
+                done
+            elif ((y == 0 && nvis == 0)); then
+                buf+="  ${DM}No app matches \"$filt\"$R"
             fi
+            buf+=$'\e[K\n'
         done
-        buf+=$'\e[K\n'"  ${C_DIM}↑↓/jk move · space toggle · a all · n none · enter save · q quit${C_RESET}"
+        if ((top + hv < BT)); then buf+="  ${DM}↓ more$R"; fi
+        buf+=$'\e[K\n'
+        # Filter box
+        w=$((width - 4))
+        printf -v pad '%*s' $((w - 11)) ''
+        buf+="  ${MG}╭─ $R${BD}Filter$R$MG ${pad// /─}╮$R"$'\e[K\n'
+        if $typing; then
+            t="$MG>$R $filt${BD}▏$R"
+            plain="$filt "
+        elif [[ -n "$filt" ]]; then
+            t="$MG>$R $filt  ${DM}esc clears$R"
+            plain="$filt  esc clears"
+        else
+            t="$MG>$R ${DM}/ to filter$R"
+            plain="/ to filter"
+        fi
+        k="$nvis / $n"
+        printf -v pad '%*s' $((w - 7 - ${#plain} - ${#k})) ''
+        buf+="  ${MG}│$R $t$pad$DM$k$R ${MG}│$R"$'\e[K\n'
+        printf -v pad '%*s' $((w - 2)) ''
+        buf+="  ${MG}╰${pad// /─}╯$R"$'\e[K\n'
+        # Current app
+        if ((nvis)); then
+            if ((on[cur])); then t="installed and upgraded"; else t="skipped: not installed or upgraded"; fi
+            k=$(app_desc "${ids[cur]}")
+            rest="${k:+· $k }· ${srcs[cg]}${notes[cur]:+ [${notes[cur]}]} · $t"
+            k=$((width - 4 - ${#ids[cur]}))
+            ((${#rest} > k)) && rest="${rest:0:k-1}…"
+            buf+="  $CY${ids[cur]}$R $DM$rest$R"
+        fi
+        # Key hints: "key|what it does"; a leading ~ marks hints dropped first when narrow
+        if $typing; then
+            pick_hints "a-z|filter by name" "⌫|delete" "⏎|done typing" "esc|clear filter"
+            buf+=$'\e[K\n'"  $HINTS"
+            pick_hints "↑↓←→|move" "space|select / skip" "^D|quit, don't save"
+        else
+            if [[ -n "$filt" ]]; then
+                pick_hints "space|select / skip" "~s|whole card" "~a n|all / none shown" "/|edit filter" "esc|clear filter"
+            else
+                pick_hints "space|select / skip" "~s|whole card" "~a n|all / none" "/|filter by name"
+            fi
+            buf+=$'\e[K\n'"  $HINTS"
+            pick_hints "hjkl ↑↓←→|move" "~tab|next card" "~^P ^O|scroll" "⏎|save & continue" "q|quit, don't save"
+        fi
+        buf+=$'\e[K\n'"  $HINTS"$'\e[K'
         printf '\e[H%s\e[J' "$buf" >&3
-        IFS= read -rsn1 key <&5 || key=q
+
+        # Ctrl-P / Ctrl-O scroll like the Neovim config: 10 rows, one per 16ms
+        if ((scroll > 0)); then
+            sleep 0.016
+            key=j scroll=$((scroll - 1))
+        elif ((scroll < 0)); then
+            sleep 0.016
+            key=k scroll=$((scroll + 1))
+        else
+            IFS= read -rsn1 key <&5 || key=$'\x04'
+        fi
         if [[ "$key" == $'\e' ]]; then
-            read -rsn2 k2 <&5 || true
+            k2=$(dd bs=8 count=1 <&5 2>/dev/null) || k2=""
             key+=$k2
         fi
-        d=0
+        # While typing a filter, letters go to the filter
+        if $typing; then
+            case "$key" in
+            [A-Za-z0-9@._-])
+                case "$key" in [A-Z]) key=$(printf '%s' "$key" | tr 'A-Z' 'a-z') ;; esac
+                filt+=$key
+                continue
+                ;;
+            $'\x7f' | $'\b')
+                filt=${filt%?}
+                continue
+                ;;
+            '')
+                typing=false
+                continue
+                ;;
+            $'\e')
+                filt="" typing=false
+                continue
+                ;;
+            esac
+        fi
+        cx=${ix[cur]:-0} cy=${iy[cur]:-0}
         case "$key" in
-        $'\e[A' | k) d=-1 ;;
-        $'\e[B' | j) d=1 ;;
-        ' ')
-            i=${rows[cur]#i|}
-            on[i]=$((1 - on[i]))
+        $'\e[A' | k | $'\e[B' | j | $'\e[C' | l | $'\e[D' | h)
+            ((nvis)) || continue
+            best=-1 bd=999999
+            for ((i = 0; i < n; i++)); do
+                [[ -n "${ix[i]:-}" ]] || continue
+                x=${ix[i]} y=${iy[i]} d=-1
+                case "$key" in
+                $'\e[B' | j)
+                    if ((x == cx && y > cy)); then d=$((y - cy)); elif ((ib[i] == ib[cur] + 1)); then
+                        d=$(((x > cx ? x - cx : cx - x) * 1000 + y + 100000))
+                    fi
+                    ;;
+                $'\e[A' | k)
+                    if ((x == cx && y < cy)); then d=$((cy - y)); elif ((ib[i] == ib[cur] - 1)); then
+                        d=$(((x > cx ? x - cx : cx - x) * 1000 + (BT - y) + 100000))
+                    fi
+                    ;;
+                $'\e[C' | l)
+                    if ((ib[i] == ib[cur] && x > cx)); then d=$(((x - cx) * 1000 + (y > cy ? y - cy : cy - y))); elif ((ib[i] == ib[cur] + 1)); then
+                        d=$((x * 1000 + y + 500000))
+                    fi
+                    ;;
+                *)
+                    if ((ib[i] == ib[cur] && x < cx)); then d=$(((cx - x) * 1000 + (y > cy ? y - cy : cy - y))); elif ((ib[i] == ib[cur] - 1)); then
+                        d=$(((width - x) * 1000 + (BT - y) + 500000))
+                    fi
+                    ;;
+                esac
+                if ((d >= 0 && d < bd)); then bd=$d best=$i; fi
+            done
+            if ((best >= 0)); then cur=$best; else scroll=0; fi # stop at the edges
             ;;
-        a) for ((i = 0; i < n; i++)); do on[i]=1; done ;;
-        n) for ((i = 0; i < n; i++)); do on[i]=0; done ;;
+        $'\x10') scroll=10 ;;  # Ctrl-P
+        $'\x0f') scroll=-10 ;; # Ctrl-O
+        $'\t' | $'\e[Z')
+            ((nvis)) || continue
+            for ((g = 0; g < ng; g++)); do ((cur >= first[g] && cur < first[g + 1])) && break; done
+            for ((k = 1; k <= ng; k++)); do
+                if [[ "$key" == $'\t' ]]; then b=$(((g + k) % ng)); else b=$(((g + ng - k) % ng)); fi
+                # shellcheck disable=SC2206 # app ids: no spaces or globs
+                if ((gh[b])); then va=(${vis[b]}); cur=${va[0]}; break; fi
+            done
+            ;;
+        s)
+            ((nvis)) || continue
+            for ((g = 0; g < ng; g++)); do ((cur >= first[g] && cur < first[g + 1])) && break; done
+            k=1
+            for i in ${vis[g]}; do ((on[i])) || k=0; done
+            for i in ${vis[g]}; do on[i]=$((1 - k)); done
+            ;;
+        ' ') if ((nvis)); then on[cur]=$((1 - on[cur])); fi ;;
+        a | n)
+            [[ "$key" == a ]] && k=1 || k=0
+            for ((g = 0; g < ng; g++)); do for i in ${vis[g]}; do on[i]=$k; done; done
+            ;;
+        /) typing=true ;;
         '') break ;;
-        q | Q | $'\e') d=q ;;
+        $'\e') filt="" ;;
         esac
-        if [[ "$d" == q ]]; then
+        if [[ "$key" == q || "$key" == Q || "$key" == $'\x04' ]]; then # Ctrl-D cancels too
+            [[ -z "$STTY_OLD" ]] || stty "$STTY_OLD" <&5 2>/dev/null || true
             printf '\e[?1049l' >&3
             PICKER_ON=false
             exec 5<&-
             return 1
         fi
-        r=$cur
-        while ((d)); do
-            r=$((r + d))
-            ((r < 0 || r >= total)) && break
-            if [[ ${rows[r]} == i\|* ]]; then
-                cur=$r
-                break
-            fi
-        done
     done
+    [[ -z "$STTY_OLD" ]] || stty "$STTY_OLD" <&5 2>/dev/null || true
     printf '\e[?1049l' >&3
     PICKER_ON=false
     exec 5<&-
@@ -690,12 +1127,17 @@ if ! $DOCTOR; then
         OMIT=$(echo $new)
         save_omit
     fi
-    # First interactive run (nothing saved yet), or --select: show the checklist
-    if $SELECT || { [[ ! -f "$OMIT_FILE" && -z "$OMIT_ADD$OMIT_DEL" && -z "${CI:-}" ]] && ! $DRY_RUN && ! $ASSUME_YES; }; then
+    # Every interactive run starts with the checklist (pre-set from the saved
+    # choices); --yes, CI, --dry-run and --omit-app/--add-app skip it
+    if $SELECT || { [[ -z "$OMIT_ADD$OMIT_DEL" && -z "${CI:-}" ]] && ! $DRY_RUN && ! $ASSUME_YES; }; then
         if $TTY && [[ -t 0 ]]; then
             if pick_apps; then
                 save_omit
-            elif $SELECT; then
+                if $SELECT; then
+                    out "  Saved — omitting: ${OMIT:-nothing}"
+                    exit 0
+                fi
+            else
                 out "  Cancelled — nothing changed"
                 exit 0
             fi
@@ -711,10 +1153,14 @@ fi
 omit_rows() {
     local G=$1 items=() a
     if [[ -z "$OMIT" ]]; then
-        panel_row "$G" "Apps" "${C_CYAN}./init.sh --select${C_RESET} ${C_DIM}to opt out of apps you don't want${C_RESET}"
+        panel_row "$G" "Apps" "${C_CYAN}./init.sh --select${C_RESET} ${C_DIM}to opt out of apps without running the install${C_RESET}"
         return
     fi
-    for a in $OMIT; do items+=("$a ${C_DIM}($(app_source "$a"))${C_RESET}"); done
+    local note
+    for a in $OMIT; do
+        note=$(app_note "$a")
+        items+=("$a ${C_DIM}($(app_source "$a")${note:+ [$note]})${C_RESET}")
+    done
     panel_row "$G" "Omitted" "$(join ", " "${items[@]}")"
     panel_row "$G" "Add back" "${C_CYAN}./init.sh --add-app $(join , $OMIT)${C_RESET} ${C_DIM}or pick again:${C_RESET} ${C_CYAN}./init.sh --select${C_RESET}"
 }
@@ -1219,7 +1665,7 @@ wezterm_macos_app() {
     # ~/.local/bin recorded at packaging time instead of the files themselves
     sums=$(cd "$HOME/.local/bin" && shasum "${WEZTERM_BINS[@]}")
     if [[ -d "$app/Contents/Resources/terminfo" &&
-        "$(cat "$app/Contents/Resources/fork-bins.sha" 2>/dev/null)" == "$sums" ]]; then
+        "$(cat "$app/Contents/Resources/fork-bins.sha" 2>/dev/null || true)" == "$sums" ]]; then
         ok "WezTerm.app"
         return 0
     fi
