@@ -18,12 +18,14 @@ Supports macOS and Ubuntu (incl. Pop!_OS), on x86_64 and arm64.
 | `./init.sh --dry-run` | show what would change, change nothing (combine with `--upgrade`) |
 | `./init.sh --doctor` | read-only check: PATH shadowing, stale apt keys, broken links, default shell, dirty repo |
 | `--only base,devops` / `--skip links` | limit to sections: `base`, `devops`, `shell`, `links` |
-| `./init.sh --select` | checklist of every app, grouped by source (brew, apt, cargo, …); unchecked apps are omitted |
+| `./init.sh --select` | only edit the app checklist and save it; installs nothing |
 | `--omit-app wezterm,dotnet` / `--add-app wezterm` | omit apps / manage them again without the checklist |
-| `--yes` | skip the first-run checklist and install every app (automatic without a terminal) |
+| `--yes` | skip the checklist and use the saved choices (automatic without a terminal) |
 | `--verbose` | stream command output instead of logging it |
 
-The first interactive run shows the `--select` checklist. Omitted apps are saved in
+Every interactive run starts with a checklist of every app, one card per source (brew, apt,
+cargo, …), pre-set from the saved choices; unchecked apps are omitted. Press `/` to filter by name,
+`space` to toggle, `s` for a whole card, `⏎` to continue, `q` to cancel. Omitted apps are saved in
 `~/.config/dotfiles/omitted-apps` and skipped on every install and upgrade (never uninstalled);
 the summary lists them with the command to add them back.
 
