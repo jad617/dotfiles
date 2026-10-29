@@ -391,7 +391,7 @@ config.keys = {
 	{ key = "m", mods = "SUPER", action = action.DisableDefaultAssignment },
 
 	-- Reload config
-	{ key = "0", mods = "LEADER", action = action.ReloadConfiguration },
+	{ key = "r", mods = "LEADER", action = action.ReloadConfiguration },
 
 	-- Save layout (LEADER+S)
 	{
@@ -535,6 +535,11 @@ config.keys = {
 		}),
 	},
 }
+
+-- Jump to a tab by the number shown in the tab bar (0-based): LEADER+0..9
+for i = 0, 9 do
+	table.insert(config.keys, { key = tostring(i), mods = "LEADER", action = action.ActivateTab(i) })
+end
 
 --------------------------------------------------------------------------------
 -- Copy mode (vim-like scroll + search)
