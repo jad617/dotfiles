@@ -2,7 +2,10 @@ return {
   {
     "mrjones2014/smart-splits.nvim",
     enabled = true,
-    version = "*",
+    -- v3 moved WezTerm support into a separate, still unstable backend
+    -- plugin that also takes over WezTerm's navigation keybindings; v2
+    -- has it built in
+    tag = "v2.1.1-final",
     keys = {
       {
         "<S-Left>",
