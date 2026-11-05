@@ -659,7 +659,8 @@ end
 --------------------------------------------------------------------------------
 -- Floating pane (jad617/wezterm floating-pane build only)
 -- Alt+i toggles a float over the current split, spawned in its cwd. Each
--- split has its own float, which follows it when zoomed (Ctrl+a z).
+-- split has its own float, which follows it when zoomed (Ctrl+a z); in
+-- Neovim each window has its own, in that window's cwd.
 -- Replaces the Snacks terminal float in Neovim. Guarded so stock WezTerm
 -- builds, which don't know the action, still load this config.
 --------------------------------------------------------------------------------
@@ -682,6 +683,35 @@ if wezterm.has_action("ToggleFloatingPane") then
 		bottom_color = "#ff5f1f",
 	}
 	table.insert(config.keys, { key = "i", mods = "ALT", action = action.ToggleFloatingPane })
+	if wezterm.has_action("ToggleFloatingPaneKeyed") then
+		-- Neovim gets Alt+i, so each of its windows gets its own float in that
+		-- window's cwd: it answers with the wezterm_float user var below.
+		-- Inside a focused float Alt+i still hides it, even with Neovim there.
+		config.keys[#config.keys] = {
+			key = "i",
+			mods = "ALT",
+			action = wezterm.action_callback(function(window, pane)
+				if is_vim(pane) then
+					window:perform_action(action.SendKey({ key = "i", mods = "ALT" }), pane)
+				else
+					window:perform_action(action.ToggleFloatingPane, pane)
+				end
+			end),
+		}
+		-- Value: "<key>\t<cwd>\t<nonce>", the nonce so repeats count as changes
+		wezterm.on("user-var-changed", function(window, pane, name, value)
+			if name ~= "wezterm_float" then
+				return
+			end
+			local key, cwd = value:match("^([^\t]*)\t([^\t]*)")
+			if key then
+				window:perform_action(
+					action.ToggleFloatingPaneKeyed({ key = key, cwd = cwd ~= "" and cwd or nil }),
+					pane
+				)
+			end
+		end)
+	end
 	-- Leader commands act on the split behind the float; Ctrl+a a <key>
 	-- runs the same command inside the float (split, zoom, close, ...)
 	if wezterm.has_action("FloatingPaneLeader") then
