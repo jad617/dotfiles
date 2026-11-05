@@ -31,6 +31,21 @@ local options = { noremap = true, silent = true }
 -- end, { silent = true, desc = "Zellij float here (75%)" })
 
 ------------------------------------------------------------
+-- [[ WezTerm floating pane ]]
+------------------------------------------------------------
+-- Alt+i: WezTerm passes it here while Neovim is in front, so each Neovim
+-- window gets its own float, started in that window's cwd (:lcd included).
+-- A user var asks WezTerm to toggle it (see the wezterm.lua user-var handler).
+if vim.env.WEZTERM_PANE then
+  vim.keymap.set({ "n", "i", "v", "t" }, "<M-i>", function()
+    local key = string.format("nvim:%d:%d", vim.fn.getpid(), vim.api.nvim_get_current_win())
+    -- The nonce makes every press a change, which is all WezTerm reacts to
+    local value = table.concat({ key, vim.fn.getcwd(0), string.format("%.0f", vim.uv.hrtime()) }, "\t")
+    vim.fn.chansend(vim.v.stderr, string.format("\27]1337;SetUserVar=wezterm_float=%s\7", vim.base64.encode(value)))
+  end, { silent = true, desc = "WezTerm float for this window" })
+end
+
+------------------------------------------------------------
 -- [[ Select current word without jumping to next ]]
 ------------------------------------------------------------
 -- Define a Lua function to search for the next occurrence of the word under the cursor
