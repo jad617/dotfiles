@@ -30,6 +30,11 @@ cargo, …), pre-set from the saved choices; unchecked apps are omitted. Press `
 the summary lists them with the command to add them back.
 
 Output is a compact checklist; full command output goes to `~/.local/state/dotfiles/init-*.log`.
+A failed brew install / upgrade is reported as a warning and the run carries on.
+
+On a Mac without admin rights (`/Applications` not writable), brew casks and WezTerm.app go to
+`~/Applications`. Casks already in `/Applications` are upgraded in place when the terminal has the
+App Management permission (System Settings → Privacy & Security); otherwise they're skipped with a warning.
 CI (`.github/workflows/init.yml`) runs shellcheck and a fresh install + idempotency check on Ubuntu and macOS.
 
 ## Structure
