@@ -183,6 +183,7 @@ export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.fzf/bin:$PATH"
 COLS=$(tput cols 2>/dev/null || echo 80)
 ((COLS > 100)) && COLS=100
 LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
+BUILD_TMP="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles-build"
 LOG="$LOG_DIR/init-$(date +%Y%m%d-%H%M%S).log"
 exec 3>&1 4>&2
 if ! $VERBOSE; then
@@ -211,6 +212,9 @@ SPIN_PID="" SUDO_PID="" SHELL_CHANGED=false PICKER_ON=false STTY_OLD=""
 out() { printf '%s\n' "$*" >&3; }
 pretty_path() { printf '%s' "${1/#"$HOME"/\~}"; }
 cmd_exists() { command -v "$1" &>/dev/null; }
+
+# Can use sudo: root, or in the admin / sudo / wheel group
+is_admin() { [[ $EUID -eq 0 ]] || id -Gn | tr ' ' '\n' | grep -qxE 'admin|sudo|wheel'; }
 
 fmt_time() {
     local s=$1
@@ -450,6 +454,12 @@ done_step() {
     LATEST_VER="" STEP_LABEL=""
 }
 
+# End a step whose work failed without stopping the run; the caller warns.
+abort_step() {
+    stop_spin
+    LATEST_VER="" STEP_LABEL=""
+}
+
 # Run with the real terminal attached, for prompts the user has to answer.
 interactive() {
     stop_spin
@@ -469,7 +479,8 @@ notify() {
 on_error() {
     local rc=$? line=$1
     # Inside a subshell / command substitution: let the main shell report.
-    [[ "${BASHPID:-$$}" == "$$" ]] || exit "$rc"
+    # (bash 3.2 has no BASHPID, but counts command substitutions in BASH_SUBSHELL)
+    [[ "${BASHPID:-$$}" == "$$" ]] && ((BASH_SUBSHELL == 0)) || exit "$rc"
     trap - ERR
     stop_spin
     out ""
@@ -1382,19 +1393,120 @@ brew_install() {
             [[ -n "$p" ]] && outdated+=("$p")
         done < <(brew outdated "$kind" ${greedy[@]+"${greedy[@]}"} --quiet "${present[@]}" 2>/dev/null || true)
     fi
+    local current=$((${#present[@]} - ${#outdated[@]})) appdir=() inplace=() rest=()
+    # Without admin rights Homebrew can't add or remove apps in /Applications
+    if [[ "$kind" == --cask && "$OS" == macos && ! -w /Applications ]]; then
+        appdir=(--appdir="$HOME/Applications")
+        for p in ${outdated[@]+"${outdated[@]}"}; do
+            if [[ "$(cask_appdir "${p##*/}")" == /Applications && -n "$(cask_apps "${p##*/}")" ]]; then
+                inplace+=("$p")
+            else
+                rest+=("$p")
+            fi
+        done
+        outdated=(${rest[@]+"${rest[@]}"})
+    fi
     if ((${#missing[@]})) && step "brew: ${missing[*]##*/}" install; then
-        brew install "$kind" "${missing[@]}"
-        done_step
+        if brew install "$kind" ${appdir[@]+"${appdir[@]}"} "${missing[@]}"; then
+            done_step
+        else
+            abort_step
+            warn "brew: ${missing[*]##*/}" "install failed — see the log"
+        fi
     fi
     if ((${#outdated[@]})); then
         LATEST_VER=" " # outdated per brew
         if step "brew: ${outdated[*]##*/}" upgrade; then
-            brew upgrade "$kind" ${greedy[@]+"${greedy[@]}"} "${outdated[@]}"
-            done_step
+            if brew upgrade "$kind" ${greedy[@]+"${greedy[@]}"} "${outdated[@]}"; then
+                done_step
+            else
+                abort_step
+                warn "brew: ${outdated[*]##*/}" "upgrade failed — see the log"
+            fi
         fi
     fi
-    local current=$((${#present[@]} - ${#outdated[@]}))
+    for p in ${inplace[@]+"${inplace[@]}"}; do
+        LATEST_VER=" "
+        if step "brew: ${p##*/}" upgrade; then
+            if cask_upgrade_in_place "${p##*/}"; then
+                done_step
+            else
+                abort_step
+                warn "brew: ${p##*/}" "in /Applications: needs admin rights, or App Management for this terminal (Privacy & Security)"
+            fi
+        fi
+    done
     if ((current)); then ok "$current brew ${kind#--}s"; fi
+}
+
+# Where brew installed a cask's apps (recorded at install time)
+cask_appdir() {
+    jq -r '.explicit.appdir // .default.appdir // empty' \
+        "$(brew --caskroom)/$1/.metadata/config.json" 2>/dev/null || true
+}
+
+# A cask's app bundles; "-" for renamed ones ({target: …}), which aren't handled
+cask_apps() {
+    brew info --cask --json=v2 "$1" 2>/dev/null |
+        jq -r '.casks[0].artifacts[] | .app? // empty | .[] | if type == "string" then . else "-" end' || true
+}
+
+# Homebrew can't upgrade a cask in a read-only /Applications: removing the old
+# app needs sudo. When the bundles are writable (owned by the user, and the
+# terminal has the App Management permission), install the new version into
+# a scratch appdir and swap each bundle's Contents in place (keeps the path,
+# Dock / login items and permissions), then point brew's record back at
+# /Applications. A bundle emptied by an earlier failed upgrade is reinstalled
+# into ~/Applications instead. Restores brew's record on failure.
+cask_upgrade_in_place() {
+    local c=$1 room tmp a app id dest=/Applications bundles=() running=()
+    room="$(brew --caskroom)/$c"
+    while IFS= read -r a; do bundles+=("$a"); done < <(cask_apps "$c")
+    ((${#bundles[@]})) || return 1
+    for a in "${bundles[@]}"; do
+        app=/Applications/$a
+        [[ "$a" == *.app ]] || return 1
+        if [[ ! -f "$app/Contents/Info.plist" ]]; then
+            dest=$HOME/Applications
+        elif [[ ! -w "$app" || ! -w "$app/Contents" ]]; then
+            return 1
+        fi
+    done
+    mkdir -p "$BUILD_TMP"
+    tmp=$(mktemp -d "$BUILD_TMP/cask.XXXXXX") || return 1
+    # Called from an `if`, so set -e is off here: check each move
+    mv "$room" "$tmp/caskroom" || return 1 # brew forgets the old version
+    if ! brew install --cask --appdir="$([[ "$dest" == /Applications ]] && echo "$tmp/apps" || echo "$dest")" "$c"; then
+        rm -rf "$room"
+        mv "$tmp/caskroom" "$room"
+        rm -rf "$tmp"
+        return 1
+    fi
+    if [[ "$dest" != /Applications ]]; then
+        rm -rf "$tmp"
+        return 0
+    fi
+    for a in "${bundles[@]}"; do
+        app=/Applications/$a
+        if pgrep -f "^$app/Contents/MacOS/" >/dev/null; then
+            running+=("$app")
+            id=$(defaults read "$app/Contents/Info" CFBundleIdentifier 2>/dev/null || true)
+            [[ -z "$id" ]] || osascript -e "tell application id \"$id\" to quit" >/dev/null 2>&1 || true
+            sleep 1
+        fi
+        rm -rf "$app/Contents.old"
+        if [[ -e "$app/Contents" ]]; then mv "$app/Contents" "$app/Contents.old" || return 1; fi
+        if ! mv "$tmp/apps/$a/Contents" "$app/Contents"; then
+            if [[ -e "$app/Contents.old" ]]; then mv "$app/Contents.old" "$app/Contents"; fi
+            return 1
+        fi
+        rm -rf "$app/Contents.old"
+        touch "$app"
+    done
+    jq '.default.appdir = "/Applications" | del(.explicit.appdir)' "$room/.metadata/config.json" >"$tmp/config.json" &&
+        mv "$tmp/config.json" "$room/.metadata/config.json"
+    rm -rf "$tmp"
+    for app in ${running[@]+"${running[@]}"}; do open "$app" || true; done
 }
 
 # Install / upgrade a single binary from a URL into /usr/local/bin.
@@ -1602,8 +1714,11 @@ install_wezterm_fork() {
             # An explicit target dir: wezterm-gui's build.rs (macOS) copies
             # Info.plist into $CARGO_TARGET_DIR, else into <checkout>/target/<profile>,
             # which doesn't exist under `cargo install`.
+            # Not under $TMPDIR: something there (security software / temp
+            # cleaners) has failed long builds with "Operation not permitted".
             local target
-            target=$(mktemp -d)
+            mkdir -p "$BUILD_TMP"
+            target=$(mktemp -d "$BUILD_TMP/wezterm.XXXXXX")
             CARGO_TARGET_DIR=$target "$HOME/.cargo/bin/cargo" +stable install --locked --force --root "$HOME/.local" \
                 --git "$WEZTERM_REPO" --branch "$WEZTERM_BRANCH" "${WEZTERM_BINS[@]}"
             rm -rf "$target"
@@ -1910,19 +2025,46 @@ install_devops_macos() {
         ok neovim
     fi
 
-    # AWS CLI
+    # AWS CLI: system-wide .pkg with sudo; without admin rights, the
+    # per-user install (AWS docs: "for the current user") in ~/.local/aws-cli,
+    # which then stays per-user (it comes first in PATH) even with admin rights
+    local aws_bin=aws aws_user=false
+    if ! is_admin || [[ -x "$HOME/.local/aws-cli/aws" ]]; then
+        aws_bin=$HOME/.local/aws-cli/aws aws_user=true
+    fi
     if skip_app aws; then
         :
     elif ! want aws; then
         ok aws
-    elif is_latest aws "$(curl -fsSL https://raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)"; then
+    elif is_latest "$aws_bin" "$(curl -fsSL https://raw.githubusercontent.com/aws/aws-cli/v2/CHANGELOG.rst | grep -m1 -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)"; then
         ok aws
         LATEST_VER=""
-    elif step aws; then
-        interactive sudo -v
-        curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "/tmp/AWSCLIV2.pkg"
-        sudo installer -pkg /tmp/AWSCLIV2.pkg -target /
-        rm -f /tmp/AWSCLIV2.pkg
+    elif step aws "" "$aws_bin"; then
+        mkdir -p "$BUILD_TMP"
+        curl -fsSL "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "$BUILD_TMP/AWSCLIV2.pkg"
+        if ! $aws_user; then
+            interactive sudo -v
+            sudo installer -pkg "$BUILD_TMP/AWSCLIV2.pkg" -target /
+        else
+            cat >"$BUILD_TMP/aws-choices.xml" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array><dict>
+  <key>choiceAttribute</key><string>customLocation</string>
+  <key>attributeSetting</key><string>$HOME/.local</string>
+  <key>choiceIdentifier</key><string>default</string>
+</dict></array>
+</plist>
+EOF
+            installer -pkg "$BUILD_TMP/AWSCLIV2.pkg" -target CurrentUserHomeDirectory \
+                -applyChoiceChangesXML "$BUILD_TMP/aws-choices.xml"
+            mkdir -p "$HOME/.local/bin"
+            ln -sf "$HOME/.local/aws-cli/aws" "$HOME/.local/bin/aws"
+            ln -sf "$HOME/.local/aws-cli/aws_completer" "$HOME/.local/bin/aws_completer"
+            rm -f "$BUILD_TMP/aws-choices.xml"
+        fi
+        rm -f "$BUILD_TMP/AWSCLIV2.pkg"
         done_step
     fi
 
