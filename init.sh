@@ -1714,13 +1714,22 @@ install_wezterm_fork() {
             # An explicit target dir: wezterm-gui's build.rs (macOS) copies
             # Info.plist into $CARGO_TARGET_DIR, else into <checkout>/target/<profile>,
             # which doesn't exist under `cargo install`.
-            # Not under $TMPDIR: something there (security software / temp
-            # cleaners) has failed long builds with "Operation not permitted".
-            local target
+            # Long builds here sometimes fail midway with "Operation not
+            # permitted" on files in the build dir (security software, it
+            # seems; it's writable again right after): retry, reusing what's built.
+            local target try
             mkdir -p "$BUILD_TMP"
             target=$(mktemp -d "$BUILD_TMP/wezterm.XXXXXX")
-            CARGO_TARGET_DIR=$target "$HOME/.cargo/bin/cargo" +stable install --locked --force --root "$HOME/.local" \
-                --git "$WEZTERM_REPO" --branch "$WEZTERM_BRANCH" "${WEZTERM_BINS[@]}"
+            for try in 1 2 3; do
+                if CARGO_TARGET_DIR=$target "$HOME/.cargo/bin/cargo" +stable install --locked --force --root "$HOME/.local" \
+                    --git "$WEZTERM_REPO" --branch "$WEZTERM_BRANCH" "${WEZTERM_BINS[@]}"; then
+                    break
+                elif ((try == 3)); then
+                    rm -rf "$target"
+                    false
+                fi
+                echo "build failed, retrying ($try)"
+            done
             rm -rf "$target"
             done_step
         fi
