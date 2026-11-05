@@ -201,7 +201,8 @@ wezterm.on("update-right-status", function(window, _)
 		SOLID_LEFT_ARROW = utf8.char(0xe0b2)
 	end
 
-	if window:active_tab():tab_index() ~= 0 then
+	local first_tab = window:mux_window():tabs_with_info()[1]
+	if first_tab and not first_tab.is_active then
 		ARROW_FOREGROUND = { Foreground = { Color = "#1e2030" } } -- mantle
 	end
 
@@ -711,6 +712,19 @@ if wezterm.has_action("ToggleFloatingPane") then
 				)
 			end
 		end)
+		-- Neovim closes a window's float with the window, and all of its
+		-- floats when it exits. Value: "key|prefix\t<key>\t<nonce>"
+		if wezterm.has_action("CloseFloatingPanesKeyed") then
+			wezterm.on("user-var-changed", function(window, pane, name, value)
+				if name ~= "wezterm_float_close" then
+					return
+				end
+				local kind, key = value:match("^(%a+)\t([^\t]+)")
+				if kind == "key" or kind == "prefix" then
+					window:perform_action(action.CloseFloatingPanesKeyed({ [kind] = key }), pane)
+				end
+			end)
+		end
 	end
 	-- Leader commands act on the split behind the float; Ctrl+a a <key>
 	-- runs the same command inside the float (split, zoom, close, ...)

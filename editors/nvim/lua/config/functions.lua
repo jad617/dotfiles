@@ -37,12 +37,42 @@ local options = { noremap = true, silent = true }
 -- window gets its own float, started in that window's cwd (:lcd included).
 -- A user var asks WezTerm to toggle it (see the wezterm.lua user-var handler).
 if vim.env.WEZTERM_PANE then
+  -- The nonce makes every message a change, which is all WezTerm reacts to
+  local function set_user_var(name, ...)
+    local parts = { ... }
+    parts[#parts + 1] = string.format("%.0f", vim.uv.hrtime())
+    local value = table.concat(parts, "\t")
+    vim.fn.chansend(vim.v.stderr, string.format("\27]1337;SetUserVar=%s=%s\7", name, vim.base64.encode(value)))
+  end
+  local prefix = string.format("nvim:%d:", vim.fn.getpid())
+  local has_float = {} -- winid -> true once it opened a float
+
   vim.keymap.set({ "n", "i", "v", "t" }, "<M-i>", function()
-    local key = string.format("nvim:%d:%d", vim.fn.getpid(), vim.api.nvim_get_current_win())
-    -- The nonce makes every press a change, which is all WezTerm reacts to
-    local value = table.concat({ key, vim.fn.getcwd(0), string.format("%.0f", vim.uv.hrtime()) }, "\t")
-    vim.fn.chansend(vim.v.stderr, string.format("\27]1337;SetUserVar=wezterm_float=%s\7", vim.base64.encode(value)))
+    local win = vim.api.nvim_get_current_win()
+    has_float[win] = true
+    set_user_var("wezterm_float", prefix .. win, vim.fn.getcwd(0))
   end, { silent = true, desc = "WezTerm float for this window" })
+
+  -- A float goes with its window, and all of them when Neovim exits
+  local group = vim.api.nvim_create_augroup("wezterm_float", { clear = true })
+  vim.api.nvim_create_autocmd("WinClosed", {
+    group = group,
+    callback = function(ev)
+      local win = tonumber(ev.match)
+      if win and has_float[win] then
+        has_float[win] = nil
+        set_user_var("wezterm_float_close", "key", prefix .. win)
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = group,
+    callback = function()
+      if next(has_float) then
+        set_user_var("wezterm_float_close", "prefix", prefix)
+      end
+    end,
+  })
 end
 
 ------------------------------------------------------------
