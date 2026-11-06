@@ -2409,6 +2409,17 @@ doctor_omitted() {
 
 real_path() { realpath "$1" 2>/dev/null || printf '%s' "$1"; }
 
+# Shadowed copies not worth a warning: the OS's own (/usr/bin, /bin),
+# version-manager shims, copies bundled inside apps (e.g. Docker's kubectl)
+# or another tool's private dir, and copies of the same version.
+doctor_harmless() {
+    local copy=$1 real=$2 v1=$3 v2=$4
+    case "$copy $real" in
+    /usr/bin/* | /bin/* | /usr/sbin/* | /sbin/* | */shims/* | *.app/Contents/* | "$HOME"/.copilot/* | /var/run/com.apple.*) return 0 ;;
+    esac
+    [[ -n "$v1" && "$v1" == "$v2" ]]
+}
+
 run_doctor() {
     # The PATH an interactive zsh really gets (zshrc adds dirs this script doesn't know).
     local user_path
@@ -2441,10 +2452,14 @@ run_doctor() {
         elif ((${#copies[@]})); then
             local v1 v2 c
             v1=$(ver_of "$first")
+            local shown=false
             for c in "${copies[@]}"; do
                 v2=$(ver_of "$c")
+                doctor_harmless "$c" "$(real_path "$c")" "$v1" "$v2" && continue
                 warn "$t" "$(pretty_path "$first")${v1:+ ($v1)} shadows $(pretty_path "$c")${v2:+ ($v2)}"
+                shown=true
             done
+            $shown || ok "$t"
         else
             ok "$t"
         fi
