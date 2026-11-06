@@ -12,8 +12,10 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     [ -d /opt/homebrew/opt/mysql-client@8.0/bin ] && export PATH="/opt/homebrew/opt/mysql-client@8.0/bin:$PATH"
 fi
 
-# Go
-[ -d /usr/local/go ] && export PATH="/usr/local/go/bin:$PATH"
+# Go: Homebrew's on macOS, the go.dev tarball in /usr/local/go on Linux
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    [ -d /usr/local/go ] && export PATH="/usr/local/go/bin:$PATH"
+fi
 [ -d "$HOME/go" ] && export PATH="$HOME/go/bin:$PATH"
 
 # Rust/Cargo

@@ -1,0 +1,66 @@
+name: configs
+
+on:
+  push:
+    branches: [main]
+    paths: ['**/*.lua', editors/nvim/**, terminal/wezterm/**, .github/workflows/configs.yml]
+  pull_request:
+    paths: ['**/*.lua', editors/nvim/**, terminal/wezterm/**, .github/workflows/configs.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: configs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lua-syntax:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LuaJIT
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq luajit
+      - name: Parse every Lua file (Neovim and WezTerm)
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            luajit -b "$f" /dev/null || fail=1
+          done < <(git ls-files '*.lua')
+          exit "$fail"
+
+  neovim-startup:
+    needs: lua-syntax
+    runs-on: ubuntu-24.04
+    env:
+      XDG_CONFIG_HOME: /tmp/nvim-ci/config
+      XDG_DATA_HOME: /tmp/nvim-ci/data
+      XDG_STATE_HOME: /tmp/nvim-ci/state
+      XDG_CACHE_HOME: /tmp/nvim-ci/cache
+      NVIM_NO_AUTO_INSTALL: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Neovim nightly
+        run: |
+          curl -fsSL https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+      - name: Link the config into a fresh profile
+        run: |
+          mkdir -p "$XDG_CONFIG_HOME"
+          ln -s "$GITHUB_WORKSPACE/editors/nvim" "$XDG_CONFIG_HOME/nvim"
+          nvim --version | head -1
+      - name: Install plugins at the versions in lazy-lock.json
+        run: nvim --headless '+Lazy! restore' +qa
+      - name: Start Neovim and fail on any error
+        run: |
+          rc=0
+          nvim --headless -c 'lua vim.defer_fn(function() vim.cmd("qa!") end, 3000)' > out.log 2>&1 || rc=$?
+          tr '\r' '\n' < out.log > startup.log
+          if [ "$rc" -ne 0 ] || grep -nE 'Error|E[0-9]{3,4}:|stack traceback' startup.log; then
+            echo "::error::Neovim exited with $rc or reported errors at startup"
+            cat startup.log
+            exit 1
+          fi
+          echo "Neovim config loaded without errors"

@@ -57,7 +57,7 @@ return {
       end
     end
 
-    if #missing > 0 then
+    if #missing > 0 and vim.env.NVIM_NO_AUTO_INSTALL == nil then
       vim.schedule(function()
         require("nvim-treesitter").install(missing)
       end)
