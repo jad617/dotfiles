@@ -12,6 +12,13 @@ ZFUNC_DIR="$HOME/.zfunc"
 TF_COMP_DIR="$HOME/.config/zsh-completion/terraform"
 mkdir -p "$ZFUNC_DIR" "$TF_COMP_DIR"
 fpath=("$TF_COMP_DIR" "$ZFUNC_DIR" $fpath)
+# Completions shipped by Homebrew formulae (gh, helm, eksctl, argocd, vault, az...).
+# /bin/zsh on macOS doesn't look there by itself.
+for _brew_comp in /opt/homebrew /usr/local /home/linuxbrew/.linuxbrew; do
+  _brew_comp="$_brew_comp/share/zsh/site-functions"
+  [[ -d $_brew_comp && ${fpath[(Ie)$_brew_comp]} -eq 0 ]] && fpath+=("$_brew_comp")
+done
+unset _brew_comp
 
 ##################################
 # 1) Core Settings & History
@@ -54,8 +61,10 @@ zstyle ':completion:*:cd:*' ignore-parents parent pwd
 zstyle ':completion:*' squeeze-slashes true
 [[ -n $LS_COLORS ]] && zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
 
-if [[ ! -s "$ZDOT/.zcompdump" || "$ZDOT/.zcompdump"(Nm-1) ]]; then
+# Full check (picks up new completion files) at most once a day; fast cached load otherwise
+if [[ ! -s "$ZDOT/.zcompdump" || -n "$ZDOT/.zcompdump"(#qN.mh+24) ]]; then
   compinit -i
+  touch "$ZDOT/.zcompdump"
 else
   compinit -i -C
 fi
@@ -171,20 +180,32 @@ elif command -v fzf >/dev/null 2>&1; then
 fi
 
 ##################################
-# 7) Lazy kubectl completion
+# 7) Lazy generated completions (kubectl, k9s, docker)
 ##################################
-if command -v kubectl >/dev/null 2>&1; then
-  _kubectl_lazy() {
-    unset -f _kubectl_lazy
-    local comp="$HOME/.config/zsh-completion/kubectl.zsh"
-    if [[ ! -f $comp ]]; then
-      mkdir -p "$HOME/.config/zsh-completion"
-      kubectl completion zsh >| "$comp" 2>/dev/null
-    fi
-    source "$comp"
-    _kubectl "$@"
-  }
-  compdef _kubectl_lazy kubectl k
+# On first <Tab>, generate "<tool> completion zsh" into a cache, regenerating
+# it when the tool is upgraded, then hand over to the real _<tool> function.
+_lazy_generated_comp() {
+  local tool=$1 comp="$HOME/.config/zsh-completion/$1.zsh"
+  if [[ ! -s $comp || $comp -ot ${commands[$tool]:A} ]]; then
+    mkdir -p "${comp:h}"
+    command "$tool" completion zsh >| "$comp" 2>/dev/null
+  fi
+  source "$comp"
+  local c
+  for c in ${(k)_comps[(R)_${tool}_lazy]}; do compdef "_$tool" "$c"; done
+}
+for _tool in kubectl k9s docker; do
+  (( $+commands[$_tool] )) || continue
+  eval "_${_tool}_lazy() { _lazy_generated_comp $_tool; _${_tool} \"\$@\"; }"
+  compdef "_${_tool}_lazy" "$_tool"
+done
+unset _tool
+(( $+commands[kubectl] )) && compdef _kubectl_lazy k
+
+# aws uses its own completer program (bash-style)
+if (( $+commands[aws] )) && [[ -x ${commands[aws]:h}/aws_completer ]]; then
+  autoload -Uz bashcompinit && bashcompinit
+  complete -C "${commands[aws]:h}/aws_completer" aws
 fi
 
 ##################################
