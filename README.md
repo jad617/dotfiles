@@ -68,7 +68,6 @@ dotfiles/
 │   └── zsh/               zshrc, my_aliases.sh
 └── terminal/
     ├── ghostty/           Ghostty config
-    ├── iterm2/            iTerm2 profiles + color schemes
     ├── kitty/             Kitty config (cross-platform font split)
     ├── tmux/              Tmux configs (Linux / macOS)
     ├── wezterm/           WezTerm config
