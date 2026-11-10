@@ -521,13 +521,16 @@ want_section() {
 # omitted (checklist, --omit-app / --add-app); the choice is saved
 # and applies to install and upgrade runs. Omitted apps are never removed.
 # -----------------------------------------------------------------------------
-BREW_BASE=(zsh-syntax-highlighting htop wget luajit pwgen bat fd ripgrep tmux watch
+BREW_BASE=(bash zsh-syntax-highlighting htop wget luajit pwgen bat fd ripgrep tmux watch
     pyenv pyenv-virtualenv eza zoxide jandedobbeleer/oh-my-posh/oh-my-posh zellij node go uv
     tree-sitter-cli jq yq lazygit btop pipx p7zip nmap mtr ipcalc)
 BREW_CASKS=(font-meslo-lg-nerd-font maccy rectangle)
 BREW_DEVOPS=(hashicorp/tap/terraform hashicorp/tap/vault terraform-docs ansible kubernetes-cli
-    derailed/k9s/k9s mysql-client@8.0 helm gh azure-cli eksctl argocd actionlint yamllint tfsec
+    derailed/k9s/k9s mysql-client@8.4 helm gh eksctl argocd actionlint yamllint trivy
     maven dotnet dotnet@8 deno)
+BREW_DEVOPS_CASKS=(azure-cli)
+# Replaced apps: "old new"; the old one is uninstalled and an omitted old one stays omitted
+APP_RENAMES=("tfsec trivy" "mysql-client@8.0 mysql-client@8.4")
 # The script itself needs these, so they can't be omitted
 APT_CORE=(zsh curl git unzip jq fontconfig ca-certificates gnupg procps)
 APT_BASE=(zsh-syntax-highlighting htop wget bat fd-find ripgrep tmux wl-clipboard wofi wtype
@@ -542,7 +545,7 @@ app_ids() {
 # One line per source: "<source>|<app> <app> …" (checklist order)
 app_catalog() {
     if [[ "$OS" == "macos" ]]; then
-        echo "Homebrew|$(app_sorted "${BREW_BASE[@]}" "${BREW_DEVOPS[@]}" "${BREW_CASKS[@]}" neovim)"
+        echo "Homebrew|$(app_sorted "${BREW_BASE[@]}" "${BREW_DEVOPS[@]}" "${BREW_CASKS[@]}" "${BREW_DEVOPS_CASKS[@]}" neovim)"
         echo "Vendor installers|aws claude"
         echo "Built from source|wezterm"
         echo "Git clone|fzf tpm"
@@ -550,7 +553,7 @@ app_catalog() {
         echo "pip (user)|pynvim"
     else
         echo "apt|$(app_sorted "${APT_BASE[@]}" "${APT_DEVOPS[@]}" node)"
-        echo "GitHub releases|$(app_sorted eza zoxide oh-my-posh zellij lazygit yq cliphist helm k9s eksctl argocd actionlint tfsec terraform-docs)"
+        echo "GitHub releases|$(app_sorted eza zoxide oh-my-posh zellij lazygit yq cliphist helm k9s eksctl argocd actionlint trivy terraform-docs)"
         echo "Vendor installers|$(app_sorted go neovim kubectl aws uv pyenv deno claude font-meslo-lg-nerd-font)"
         echo "Built from source|keyd wezterm"
         echo "Git clone|fzf tpm"
@@ -571,7 +574,7 @@ app_note() {
         aws) echo "AWS .pkg" ;;
         claude) echo "claude.ai script" ;;
         wezterm) echo "cargo, jad617 fork" ;;
-        *) if [[ " ${BREW_CASKS[*]} " == *" $1 "* ]]; then echo cask; fi ;;
+        *) if [[ " ${BREW_CASKS[*]} ${BREW_DEVOPS_CASKS[*]} " == *" $1 "* ]]; then echo cask; fi ;;
         esac
     else
         case "$1" in
@@ -607,6 +610,9 @@ if [[ -f "$OMIT_FILE" ]]; then
     OMIT=$(grep -v '^[[:space:]]*\(#\|$\)' "$OMIT_FILE" | tr '\n' ' ' || true)
     OMIT=$(echo $OMIT) # trim
 fi
+for _r in "${APP_RENAMES[@]}"; do
+    if [[ " $OMIT " == *" ${_r% *} "* && " $OMIT " != *" ${_r#* } "* ]]; then OMIT="$OMIT ${_r#* }"; fi
+done
 
 omitted() { [[ " $OMIT " == *" $1 "* ]]; }
 
@@ -653,6 +659,7 @@ app_desc() {
     argocd) echo "Argo CD CLI" ;;
     aws) echo "AWS CLI v2" ;;
     azure-cli) echo "Azure CLI" ;;
+    bash) echo "Bash 5 (macOS ships 3.2)" ;;
     bat) echo "cat with syntax highlighting" ;;
     btop) echo "Resource monitor" ;;
     claude) echo "Claude Code CLI" ;;
@@ -680,7 +687,7 @@ app_desc() {
     maccy) echo "Clipboard manager" ;;
     maven) echo "Java build tool" ;;
     mtr | mtr-tiny) echo "traceroute + ping" ;;
-    mysql-client@8.0) echo "MySQL 8.0 client" ;;
+    mysql-client@8.4) echo "MySQL 8.4 LTS client" ;;
     neovim) echo "Neovim nightly" ;;
     nmap) echo "Network scanner" ;;
     node) echo "Node.js" ;;
@@ -695,10 +702,10 @@ app_desc() {
     ripgrep) echo "Fast grep" ;;
     terraform) echo "Infrastructure as code" ;;
     terraform-docs) echo "Terraform module docs" ;;
-    tfsec) echo "Terraform security scanner" ;;
     tmux) echo "Terminal multiplexer" ;;
     tpm) echo "tmux plugin manager" ;;
     tree-sitter-cli) echo "Tree-sitter CLI" ;;
+    trivy) echo "Security scanner (IaC, images, deps)" ;;
     uv) echo "Python package manager" ;;
     vault) echo "HashiCorp Vault CLI" ;;
     watch) echo "Re-run a command periodically" ;;
@@ -1375,7 +1382,7 @@ apt_repo() {
 # Names must be canonical (no aliases), e.g. kubernetes-cli not kubectl.
 brew_install() {
     local kind=--formula greedy=()
-    if [[ "$1" == --cask ]]; then
+    if [[ "${1:-}" == --cask ]]; then
         kind=--cask greedy=(--greedy)
         shift
     fi
@@ -1425,19 +1432,40 @@ brew_install() {
             fi
         fi
     fi
-    for p in ${inplace[@]+"${inplace[@]}"}; do
-        LATEST_VER=" "
-        if step "brew: ${p##*/}" upgrade; then
-            if cask_upgrade_in_place "${p##*/}"; then
-                done_step
-            else
-                abort_step
-                warn "brew: ${p##*/}" "in /Applications: needs admin rights, or App Management for this terminal (Privacy & Security)"
-            fi
-        fi
-    done
+    for p in ${inplace[@]+"${inplace[@]}"}; do cask_upgrade_step "${p##*/}"; done
     if ((current)); then ok "$current brew ${kind#--}s"; fi
 }
+
+cask_upgrade_step() {
+    local c=$1
+    if cask_blocked "$c"; then
+        BLOCKED_CASKS+=("$c")
+        return 0
+    fi
+    LATEST_VER=" "
+    step "brew: $c" upgrade || return 0
+    if cask_upgrade_in_place "$c"; then
+        done_step
+        return 0
+    fi
+    abort_step
+    warn "brew: $c" "in /Applications: needs admin rights — see the log"
+}
+
+# A cask's app in /Applications is the user's, but macOS blocks changing it:
+# the terminal lacks the App Management permission
+cask_blocked() {
+    local a
+    while IFS= read -r a; do
+        a=/Applications/$a
+        if [[ -f "$a/Contents/Info.plist" && -O "$a" && ! -w "$a/Contents" ]]; then return 0; fi
+    done < <(cask_apps "$1")
+    return 1
+}
+
+# Casks left as they are: macOS App Management blocks changing their apps
+# (a managed Mac can't grant it); listed once in the summary
+BLOCKED_CASKS=()
 
 # Where brew installed a cask's apps (recorded at install time)
 cask_appdir() {
@@ -1507,6 +1535,47 @@ cask_upgrade_in_place() {
         mv "$tmp/config.json" "$room/.metadata/config.json"
     rm -rf "$tmp"
     for app in ${running[@]+"${running[@]}"}; do open "$app" || true; done
+}
+
+# Uninstall brew formulae replaced by another app (APP_RENAMES), unless the
+# replacement is omitted. brew_retire <old> <brew list kind>
+brew_retire() {
+    local old=$1 kind=${2:---formula} new=${3:-} r
+    for r in "${APP_RENAMES[@]}"; do [[ "${r% *}" == "$old" ]] && new=${r#* }; done
+    if [[ -n "$new" ]] && omitted "$new"; then return 0; fi
+    brew list "$kind" "$old" &>/dev/null || return 0
+    if step "brew: $old${new:+ (replaced by $new)}" remove; then
+        if brew uninstall "$kind" "$old"; then
+            done_step
+        else
+            abort_step
+            warn "brew: $old" "uninstall failed — see the log"
+        fi
+    fi
+}
+
+# --upgrade: everything else brew has installed (formulae and casks not in
+# the lists above, omitted apps excepted), then `brew cleanup`
+upgrade_other_brew() {
+    section "Other Homebrew packages"
+    local managed f formulas=() casks=() pinned
+    managed=" $(app_ids "${BREW_BASE[@]}" "${BREW_DEVOPS[@]}" "${BREW_CASKS[@]}" "${BREW_DEVOPS_CASKS[@]}")neovim "
+    pinned=" $(brew list --pinned 2>/dev/null | tr '\n' ' ') "
+    while IFS= read -r f; do
+        [[ -n "$f" && "$managed" != *" ${f##*/} "* && "$pinned" != *" ${f##*/} "* ]] && formulas+=("$f")
+    done < <(brew outdated --formula --quiet 2>/dev/null || true)
+    while IFS= read -r f; do
+        [[ -n "$f" && "$managed" != *" ${f##*/} "* ]] && casks+=("$f")
+    done < <(brew outdated --cask --greedy --quiet 2>/dev/null || true)
+    if ((${#formulas[@]} + ${#casks[@]} == 0)); then ok "other brew packages"; fi
+    brew_install ${formulas[@]+"${formulas[@]}"}
+    brew_install --cask ${casks[@]+"${casks[@]}"}
+    if step "old brew versions and caches" remove; then
+        if brew cleanup; then done_step; else
+            abort_step
+            warn "brew cleanup" "failed — see the log"
+        fi
+    fi
 }
 
 # Install / upgrade a single binary from a URL into /usr/local/bin.
@@ -1882,7 +1951,10 @@ install_macos() {
     # Rectangle installed outside brew is left alone
     local casks=() c
     for c in "${BREW_CASKS[@]}"; do
-        [[ "$c" == rectangle && -d /Applications/Rectangle.app ]] || casks+=("$c")
+        if [[ "$c" == rectangle && -d /Applications/Rectangle.app ]] && ! brew list --cask rectangle &>/dev/null; then
+            continue
+        fi
+        casks+=("$c")
     done
     brew_install --cask "${casks[@]}"
 
@@ -2077,7 +2149,12 @@ EOF
         done_step
     fi
 
+    # azure-cli moved from a formula to a cask (both provide bin/az)
+    omitted azure-cli || brew_retire azure-cli --formula "the azure-cli cask"
     brew_install "${BREW_DEVOPS[@]}"
+    brew_install --cask "${BREW_DEVOPS_CASKS[@]}"
+    brew_retire tfsec
+    brew_retire mysql-client@8.0
 
     install_claude
     npm_global copilot @github/copilot
@@ -2108,7 +2185,7 @@ install_claude() {
 _k9s() { install_tar_bin k9s "https://github.com/derailed/k9s/releases/download/$1/k9s_Linux_${ARCH}.tar.gz"; }
 _eksctl() { install_tar_bin eksctl "https://github.com/eksctl-io/eksctl/releases/download/$1/eksctl_Linux_${ARCH}.tar.gz"; }
 _argocd() { install_bin argocd "https://github.com/argoproj/argo-cd/releases/download/$1/argocd-linux-${ARCH}"; }
-_tfsec() { install_bin tfsec "https://github.com/aquasecurity/tfsec/releases/download/$1/tfsec-linux-${ARCH}"; }
+_trivy() { install_tar_bin trivy "https://github.com/aquasecurity/trivy/releases/download/$1/trivy_${1#v}_Linux-$([[ $ARCH == amd64 ]] && echo 64bit || echo ARM64).tar.gz"; }
 _terraform_docs() { install_tar_bin terraform-docs "https://github.com/terraform-docs/terraform-docs/releases/download/$1/terraform-docs-$1-linux-${ARCH}.tar.gz"; }
 _helm() { curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash; }
 _actionlint() {
@@ -2197,7 +2274,11 @@ install_devops_linux() {
     gh_tool eksctl eksctl-io/eksctl _eksctl
     gh_tool argocd argoproj/argo-cd _argocd
     gh_tool actionlint rhysd/actionlint _actionlint
-    gh_tool tfsec aquasecurity/tfsec _tfsec
+    gh_tool trivy aquasecurity/trivy _trivy
+    if [[ -x /usr/local/bin/tfsec ]] && ! omitted trivy && step "tfsec (replaced by trivy)" remove; then
+        sudo rm -f /usr/local/bin/tfsec
+        done_step
+    fi
     gh_tool terraform-docs terraform-docs/terraform-docs _terraform_docs
 
     # deno → ~/.local/bin (already on PATH via my_aliases.sh); upgrade checks itself
@@ -2330,6 +2411,78 @@ install_shell() {
 # =============================================================================
 # Symlinks + per-OS desktop config
 # =============================================================================
+# macOS settings: domain|key|type|value (pinned Dock apps are left alone)
+MACOS_DEFAULTS=(
+    "com.apple.dock|autohide|bool|true"
+    "com.apple.dock|tilesize|int|60"
+    "com.apple.dock|mineffect|string|genie"
+    "com.apple.dock|minimize-to-application|bool|false"
+    "com.apple.dock|wvous-br-corner|int|14"
+    "com.apple.dock|wvous-br-modifier|int|0"
+    "NSGlobalDomain|AppleInterfaceStyle|string|Dark"
+    "NSGlobalDomain|AppleShowAllExtensions|bool|true"
+    "NSGlobalDomain|com.apple.swipescrolldirection|bool|false"
+    "NSGlobalDomain|AppleMiniaturizeOnDoubleClick|bool|false"
+    "NSGlobalDomain|AppleSpacesSwitchOnActivate|bool|true"
+    "com.apple.WindowManager|GloballyEnabled|bool|false"
+    "com.apple.WindowManager|EnableTilingByEdgeDrag|bool|false"
+    "com.apple.WindowManager|EnableTopTilingByEdgeDrag|bool|false"
+    "com.apple.WindowManager|EnableTilingOptionAccelerator|bool|false"
+    "com.apple.WindowManager|AppWindowGroupingBehavior|int|1"
+    "com.apple.WindowManager|HideDesktop|bool|true"
+    "com.apple.WindowManager|AutoHide|bool|false"
+    "com.apple.finder|FXPreferredViewStyle|string|Nlsv"
+    "com.apple.menuextra.clock|ShowAMPM|bool|true"
+    "com.apple.menuextra.clock|ShowDate|int|0"
+    "com.apple.menuextra.clock|ShowDayOfWeek|bool|true"
+    "com.apple.AppleMultitouchTrackpad|Clicking|bool|false"
+    "com.apple.AppleMultitouchTrackpad|TrackpadThreeFingerDrag|bool|false"
+    "com.apple.AppleMultitouchTrackpad|TrackpadRightClick|bool|true"
+    "com.apple.driver.AppleBluetoothMultitouch.trackpad|Clicking|bool|false"
+    "com.apple.driver.AppleBluetoothMultitouch.trackpad|TrackpadThreeFingerDrag|bool|false"
+    "com.apple.driver.AppleBluetoothMultitouch.trackpad|TrackpadRightClick|bool|true"
+)
+# Whole values kept as plists in mac/: domain|key|file
+MACOS_DEFAULTS_PLISTS=(
+    "com.apple.symbolichotkeys|AppleSymbolicHotKeys|mac/symbolichotkeys.plist"
+    "com.apple.HIToolbox|AppleEnabledInputSources|mac/input-sources.plist"
+)
+
+# Apply MACOS_DEFAULTS, writing only what differs; restarts the affected apps
+apply_macos_defaults() {
+    local entry domain key type value want have changed=() logout=false
+    for entry in "${MACOS_DEFAULTS[@]}"; do
+        IFS='|' read -r domain key type value <<<"$entry"
+        want=$value
+        if [[ "$type" == bool ]]; then
+            if [[ "$value" == true ]]; then want=1; else want=0; fi
+        fi
+        have=$(defaults read "$domain" "$key" 2>/dev/null) || have=""
+        [[ "$have" == "$want" ]] && continue
+        defaults write "$domain" "$key" "-$type" "$value" && changed+=("$domain")
+    done
+    local file
+    for entry in "${MACOS_DEFAULTS_PLISTS[@]}"; do
+        IFS='|' read -r domain key file <<<"$entry"
+        want=$(plutil -extract "$key" xml1 -o - "$DOTFILES/$file") || continue
+        have=$(defaults export "$domain" - 2>/dev/null | plutil -extract "$key" xml1 -o - - 2>/dev/null) || have=""
+        [[ "$have" == "$want" ]] && continue
+        defaults write "$domain" "$key" "$want" && changed+=("$domain")
+    done
+    if ((${#changed[@]} == 0)); then
+        ok "macOS settings"
+        return
+    fi
+    local list=" ${changed[*]} "
+    [[ "$list" == *" com.apple.dock "* || "$list" == *" com.apple.WindowManager "* ]] && { killall Dock 2>/dev/null || true; }
+    [[ "$list" == *" com.apple.finder "* ]] && { killall Finder 2>/dev/null || true; }
+    [[ "$list" == *" com.apple.menuextra.clock "* ]] && { killall ControlCenter 2>/dev/null || true; }
+    [[ "$list" == *" com.apple.symbolichotkeys "* ]] &&
+        /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u 2>/dev/null
+    [[ "$list" == *"Trackpad"* || "$list" == *"trackpad"* || "$list" == *" com.apple.HIToolbox "* || "$list" == *" NSGlobalDomain "* ]] && logout=true
+    out "  ${C_GREEN}✓${C_RESET} macOS settings ${C_DIM}${#changed[@]} updated$($logout && echo ', some apply after logging out')${C_RESET}"
+}
+
 create_links() {
     section "Symlinks"
     local src dst
@@ -2349,6 +2502,21 @@ create_links() {
                 warn "capslock remap" "launchctl bootstrap failed (no GUI session?)"
             fi
         fi
+        # Rectangle shortcuts from the repo, only while Rectangle has no settings
+        # yet (never overwrites changes; save them with `rectangle-save`)
+        local rect_app
+        for rect_app in /Applications/Rectangle.app "$HOME/Applications/Rectangle.app"; do
+            [[ -d "$rect_app" ]] || continue
+            if defaults read com.knollsoft.Rectangle &>/dev/null; then
+                ok "Rectangle settings"
+            elif defaults import com.knollsoft.Rectangle "$DOTFILES/mac/rectangle.plist"; then
+                out "  ${C_GREEN}✓${C_RESET} Rectangle settings ${C_DIM}imported from mac/rectangle.plist${C_RESET}"
+            else
+                warn "Rectangle settings" "import failed"
+            fi
+            break
+        done
+        apply_macos_defaults
         return
     fi
 
@@ -2384,9 +2552,9 @@ create_links() {
 # =============================================================================
 # Doctor — read-only health check
 # =============================================================================
-DOCTOR_TOOLS="zsh git tmux rg fd bat jq yq fzf eza zoxide uv oh-my-posh pyenv zellij lazygit
+DOCTOR_TOOLS="bash zsh git tmux rg fd bat jq yq fzf eza zoxide uv oh-my-posh pyenv zellij lazygit
 go node npm nvim aws terraform vault terraform-docs gh az ansible kubectl helm k9s eksctl
-argocd actionlint tfsec deno claude copilot tree-sitter wezterm"
+argocd actionlint trivy deno claude copilot tree-sitter wezterm"
 DOCTOR_TOOLS_LINUX="cliphist keyd"
 
 # A doctor tool belongs to an omitted app (command names differ from app names)
@@ -2579,6 +2747,9 @@ fi
 if want_section devops; then
     if [[ "$OS" == "macos" ]]; then install_devops_macos; else install_devops_linux; fi
 fi
+if $UPGRADE && [[ "$OS" == macos ]] && cmd_exists brew && { want_section base || want_section devops; }; then
+    upgrade_other_brew
+fi
 if want_section shell; then install_shell; fi
 if want_section links; then create_links; fi
 flush_ok
@@ -2598,6 +2769,9 @@ if $DRY_RUN; then
     if ((${#MAYBE_LIST[@]})); then
         panel_row "$G" "Check" "$(join ", " "${MAYBE_LIST[@]}") ${C_DIM}(self-updaters: newer version unknown until run)${C_RESET}"
     fi
+    if ((${#BLOCKED_CASKS[@]})); then
+        panel_row "$G" "Kept" "$(join ", " "${BLOCKED_CASKS[@]}") ${C_DIM}(not upgraded: macOS App Management blocks /Applications)${C_RESET}"
+    fi
     omit_rows "$G"
     panel_row "$G" "Apply" "${C_CYAN}./init.sh$($UPGRADE && echo " --upgrade")${OMIT_ADD:+ --omit-app ${OMIT_ADD#,}}${OMIT_DEL:+ --add-app ${OMIT_DEL#,}}${C_RESET} ${C_DIM}(same options, without --dry-run)${C_RESET}"
     panel_row "${C_YELLOW}╰─${C_RESET}" "Log" "${C_DIM}$(pretty_path "$LOG")${C_RESET}"
@@ -2613,6 +2787,9 @@ if ((${#UPGRADED_LIST[@]})); then panel_row "$G" "Upgraded" "$(join ", " "${UPGR
 if ((${#STEP_TIMES[@]})); then
     slowest=$(printf '%s\n' "${STEP_TIMES[@]}" | sort -rn | head -3 | awk '{s=$1; $1=""; printf "%s%s %ss", (NR>1?" · ":""), substr($0,2), s}')
     panel_row "$G" "Slowest" "${C_DIM}$slowest${C_RESET}"
+fi
+if ((${#BLOCKED_CASKS[@]})); then
+    panel_row "$G" "Kept" "$(join ", " "${BLOCKED_CASKS[@]}") ${C_DIM}(not upgraded: macOS App Management blocks /Applications)${C_RESET}"
 fi
 omit_rows "$G"
 if $SHELL_CHANGED; then

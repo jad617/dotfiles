@@ -19,7 +19,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck --severity=warning init.sh
 
@@ -35,7 +35,7 @@ jobs:
       # Release lookups use it instead of the 60/hour anonymous API limit
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Dry run (fresh machine)
         run: ./init.sh --dry-run
@@ -58,7 +58,7 @@ jobs:
 
       - name: Upload logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: init-logs-${{ matrix.os }}
           path: ~/.local/state/dotfiles/

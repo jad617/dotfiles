@@ -19,7 +19,7 @@ jobs:
   lua-syntax:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install LuaJIT
         run: sudo apt-get update -qq && sudo apt-get install -y -qq luajit
       - name: Parse every Lua file (Neovim and WezTerm)
@@ -40,7 +40,7 @@ jobs:
       XDG_CACHE_HOME: /tmp/nvim-ci/cache
       NVIM_NO_AUTO_INSTALL: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Neovim nightly
         run: |
           curl -fsSL https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz \

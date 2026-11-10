@@ -200,7 +200,6 @@ for _tool in kubectl k9s docker; do
   compdef "_${_tool}_lazy" "$_tool"
 done
 unset _tool
-(( $+commands[kubectl] )) && compdef _kubectl_lazy k
 
 # aws uses its own completer program (bash-style)
 if (( $+commands[aws] )) && [[ -x ${commands[aws]:h}/aws_completer ]]; then

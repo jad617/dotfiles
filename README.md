@@ -34,7 +34,16 @@ A failed brew install / upgrade is reported as a warning and the run carries on.
 
 On a Mac without admin rights (`/Applications` not writable), brew casks and WezTerm.app go to
 `~/Applications`. Casks already in `/Applications` are upgraded in place when the terminal has the
-App Management permission (System Settings → Privacy & Security); otherwise they're skipped with a warning.
+App Management permission (System Settings → Privacy & Security); otherwise (e.g. on a
+managed Mac) they're left as they are and listed under "Kept" in the summary.
+
+`--upgrade` on macOS also upgrades every other Homebrew formula and cask you installed yourself
+(omitted apps and pinned formulae excepted), then runs `brew cleanup`. Replaced apps are
+uninstalled for you (tfsec → trivy, mysql-client@8.0 → @8.4, the azure-cli formula → its cask).
+
+On macOS the links step also applies system settings: the `MACOS_DEFAULTS` table in `init.sh`
+(Dock, dark mode, Finder, clock, trackpad, window tiling off) plus the keyboard shortcuts and layouts
+in `mac/`. Only values that differ are written; pinned Dock apps are left alone.
 CI (`.github/workflows/init.yml`) runs shellcheck and a fresh install + idempotency check on Ubuntu and macOS.
 
 ## Structure
@@ -49,7 +58,10 @@ dotfiles/
 │   ├── keyd/              Kernel-level key remapping (capslock → a)
 │   └── wofi/              Wofi launcher config + style
 ├── mac/
-│   └── capslock.plist     hidutil launchd plist (capslock → a)
+│   ├── capslock.plist     hidutil launchd plist (capslock → a)
+│   ├── input-sources.plist     Keyboard layouts (Canadian, Canadian French PC)
+│   ├── symbolichotkeys.plist   System keyboard shortcuts (which ones are disabled)
+│   └── rectangle.plist    Rectangle shortcuts; imported when Rectangle has none, update with `rectangle-save`
 ├── notes/                 Reference snippets (AWS, Terraform, etc.)
 ├── shell/
 │   ├── prompt/ohmyposh/   Oh-My-Posh theme (zsh.toml)
