@@ -62,6 +62,12 @@ dotfiles/
 │   ├── input-sources.plist     Keyboard layouts (Canadian, Canadian French PC)
 │   ├── symbolichotkeys.plist   System keyboard shortcuts (which ones are disabled)
 │   └── rectangle.plist    Rectangle shortcuts; imported when Rectangle has none, update with `rectangle-save`
+├── nixos/                 NixOS + Hyprland + Caelestia (see nixos/README.md)
+│   ├── hosts/             Per-host config (vm, utm = arm64 VM on a Mac, hashirama)
+│   ├── gpu.nix            NVIDIA / AMD drivers from the GPU detect-gpu.sh finds
+│   ├── install-from-linux.sh   Dual boot: install NixOS on a second disk from Pop!_OS
+│   ├── vm.sh              macOS: create a UTM VM and install the config into it
+│   └── vm-install.sh      Runs inside the installer ISO (started by vm.sh)
 ├── notes/                 Reference snippets (AWS, Terraform, etc.)
 ├── shell/
 │   ├── prompt/ohmyposh/   Oh-My-Posh theme (zsh.toml)
@@ -78,6 +84,7 @@ dotfiles/
 
 - **Clipboard**: cliphist + wofi (Linux) / Maccy (macOS), floating over tiling
 - **Capslock → `a`**: keyd on Linux, hidutil launchd on macOS
+- **Gaming (Pop!_OS, NixOS)**: Steam, plus the NVIDIA driver picked from the detected card (580 for GTX 9xx / 10xx, current for newer); AMD uses Mesa
 - **Prompt**: Oh-My-Posh with session-scoped Azure segment
 - **Shell**: unified zshrc + aliases for both platforms, lazy-loaded kubectl/pyenv/zoxide
 - **Copy/paste**: Alt+C / Alt+V mapped to Ctrl+C / Ctrl+V via COSMIC shortcuts + wtype

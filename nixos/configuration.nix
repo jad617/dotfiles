@@ -10,6 +10,9 @@
 { config, pkgs, lib, ... }:
 
 let
+  # Steam and Google Chrome only exist for x86_64 (the arm64 VM gets Chromium)
+  isX86 = pkgs.stdenv.hostPlatform.isx86_64;
+
   # ── Auto-detect boot mode ──────────────────────────────────────────────────
   isEfi = builtins.pathExists "/sys/firmware/efi";
 
@@ -21,13 +24,15 @@ let
     in if candidates != [] then builtins.head candidates else "nodev";
 
 in {
-  imports = [ ./hardware-configuration.nix ];
+  imports = [ ./hardware-configuration.nix ./gpu.nix ];   # gpu.nix: NVIDIA / AMD from detect-gpu.sh
 
   # ---------------------------------------------------------------------------
   # Boot
   # ---------------------------------------------------------------------------
   # Auto-detected: systemd-boot on UEFI, GRUB on BIOS/MBR
   boot.loader.systemd-boot.enable      = isEfi;
+  boot.loader.systemd-boot.configurationLimit = 3;   # boot menu: last 3 generations
+  boot.loader.grub.configurationLimit         = 3;
   boot.loader.efi.canTouchEfiVariables = isEfi;
   boot.loader.grub.enable              = !isEfi;
   boot.loader.grub.device              = grubDisk;
@@ -102,9 +107,8 @@ in {
   services.pipewire = {
     enable            = true;
     alsa.enable       = true;
-    alsa.support32Bit = true;
+    alsa.support32Bit = isX86;
     pulse.enable      = true;
-    jack.enable       = true;
   };
 
   # ---------------------------------------------------------------------------
@@ -145,7 +149,7 @@ in {
   # ---------------------------------------------------------------------------
   # User
   # ---------------------------------------------------------------------------
-  users.users.YOUR_USERNAME = {
+  users.users."YOUR_USERNAME" = {   # quoted: usernames may contain dots
     isNormalUser = true;
     description  = "YOUR_USERNAME";
     extraGroups  = [ "networkmanager" "wheel" "audio" "video" "input" "gamemode" ];
@@ -161,7 +165,7 @@ in {
   # Steam
   # ---------------------------------------------------------------------------
   programs.steam = {
-    enable                       = true;
+    enable                       = isX86;
     remotePlay.openFirewall      = true;
     dedicatedServer.openFirewall = false;
   };
@@ -172,11 +176,19 @@ in {
   # ---------------------------------------------------------------------------
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
   nix.settings.auto-optimise-store   = true;
+  # Prebuilt packages from nix-community, e.g. neovim-nightly (else built from source)
+  nix.settings.extra-substituters       = [ "https://nix-community.cachix.org" ];
+  nix.settings.extra-trusted-public-keys = [
+    "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+  ];
+  # Keep the last 3 system generations (rebuilds), whatever their age: drop the
+  # older ones, then collect what nothing references any more
   nix.gc = {
     automatic = true;
     dates     = "weekly";
-    options   = "--delete-older-than 7d";  # keep last 7 days of generations
   };
+  systemd.services.nix-gc.preStart =
+    "${config.nix.package}/bin/nix-env --profile /nix/var/nix/profiles/system --delete-generations +3";
 
   # ---------------------------------------------------------------------------
   # Shell
@@ -190,20 +202,17 @@ in {
 
   environment.systemPackages = with pkgs; [
     # ── Hyprland ecosystem ────────────────────────────────────────────────────
-    hyprpaper
-    swaylock
-    hypridle
+    caelestia-shell      # Caelestia: bar, launcher, notifications, lock, wallpaper, idle
+    caelestia-cli        # `caelestia` command (shell, wallpaper, clipboard, ...)
+    hyprmod              # Hyprland settings GUI (saves to config/hypr/hyprland-gui.lua)
+    fuzzel               # picker used by `caelestia clipboard` / `caelestia emoji`
     hyprcursor
     hyprutils
-    hyprpanel            # bar + notifications + power menu (replaces waybar/mako/wlogout)
-    cava                 # audio visualizer for hyprpanel cava widget
-    wofi
     wl-clipboard
     cliphist
     wlsunset             # blue light filter / night mode
     kanshi               # auto display profiles on monitor connect/disconnect
     nwg-displays         # GUI to generate kanshi profiles visually
-    swww                 # wallpaper daemon (VM-friendly, dynamic monitor support)
     blueman
     pavucontrol
     polkit_gnome
@@ -230,10 +239,21 @@ in {
     git
     pwgen
     watch
+    # same tools init.sh installs on Pop!_OS / macOS
+    tmux
+    zellij
+    lazygit
+    yq-go                # mikefarah's yq (the one brew installs)
+    wtype                # type text on Wayland
+    pipx
+    p7zip
+    nmap
+    mtr
+    ipcalc
+    gnupg
 
     # ── Dev ───────────────────────────────────────────────────────────────────
     neovim               # nightly via neovim-nightly-overlay
-    vimPlugins.nvim-treesitter.withAllGrammars  # treesitter parsers via nixpkgs (avoids TSUpdate issues)
 
     # ── LSP servers (replaces Mason on NixOS) ─────────────────────────────────
     ansible-language-server
@@ -260,11 +280,12 @@ in {
     hadolint             # Dockerfile linter
     proselint            # prose linter
     nodejs
-    nodePackages.npm
     (python3.withPackages (ps: with ps; [ pip pynvim pygobject3 ]))
     go                   # latest stable Go from nixpkgs-unstable
     rustup
     uv                   # fast Python package manager
+    deno
+    tree-sitter          # CLI, used by nvim-treesitter to compile parsers
 
     # ── DevOps (mirrors other workstations) ───────────────────────────────────
     awscli2
@@ -275,12 +296,20 @@ in {
     kubernetes-helm
     k9s
     ansible
-    mysql80              # MySQL client (mysql, mysqldump, etc.)
+    mysql84              # MySQL client (mysql, mysqldump, etc.; 8.0 was removed at EOL)
     gh                   # GitHub CLI  — run: gh extension install github/gh-copilot
     claude-code          # Claude Code CLI
+    github-copilot-cli   # Copilot CLI (`copilot`, npm @github/copilot elsewhere)
+    azure-cli
+    eksctl
+    argocd
+    actionlint
+    trivy
+    maven
+    dotnet-sdk_10        # .NET 10 LTS (8 reached end of support 2026-11-10)
 
     # ── GUI apps ──────────────────────────────────────────────────────────────
-    google-chrome
+    (if isX86 then google-chrome else chromium)
     nautilus             # file manager
     gnome-calendar       # calendar (launch from wofi or click clock)
     (catppuccin-gtk.override { accents = [ "mauve" ]; variant = "macchiato"; })
@@ -329,6 +358,10 @@ in {
       noto-fonts
       noto-fonts-color-emoji
       font-awesome
+      # Caelestia shell
+      material-symbols
+      rubik
+      nerd-fonts.caskaydia-cove
     ];
     fontconfig.defaultFonts = {
       monospace = [ "MesloLGS NF" ];
@@ -359,7 +392,7 @@ in {
     # Defaults
     EDITOR   = "nvim";
     TERMINAL = "wezterm";
-    BROWSER  = "google-chrome-stable";
+    BROWSER  = if isX86 then "google-chrome-stable" else "chromium";
 
     # Force dark GTK theme for GTK3 apps
     GTK_THEME = "Catppuccin-Macchiato-Standard-Mauve-Dark";
@@ -375,6 +408,8 @@ in {
   services.gvfs.enable         = true;    # auto-mount
   services.tumbler.enable      = true;    # thumbnails
   services.openssh.enable      = true;
+  services.upower.enable       = true;    # battery / power info for Caelestia
+  services.power-profiles-daemon.enable = true;  # Caelestia power profile toggle
 
   # ---------------------------------------------------------------------------
   system.stateVersion = "24.11";

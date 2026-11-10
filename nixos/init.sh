@@ -68,7 +68,9 @@ HOSTNAME="$(hostname)"
 
 # Cache timezone so re-runs don't prompt again
 TZ_CACHE="$DOTFILES/.nixos_timezone"
-if [[ -f "$TZ_CACHE" ]]; then
+if [[ -n "${NIXOS_TIMEZONE:-}" ]]; then
+    TIMEZONE="$NIXOS_TIMEZONE"
+elif [[ -f "$TZ_CACHE" ]]; then
     TIMEZONE="$(cat "$TZ_CACHE")"
     echo "  Timezone : $TIMEZONE (cached — delete .nixos_timezone to change)"
 else
@@ -80,6 +82,19 @@ fi
 echo "  Username : $USERNAME"
 echo "  Hostname : $HOSTNAME"
 echo "  Timezone : $TIMEZONE"
+
+# Flake host: NIXOS_HOST, else the one named like this machine, else the VM
+# config for this CPU (nixos = x86_64, nixos-arm = aarch64)
+if [[ -n "${NIXOS_HOST:-}" ]]; then
+    FLAKE_HOST="$NIXOS_HOST"
+elif [[ -f "$NIXOS_DIR/hosts/$HOSTNAME.nix" ]]; then
+    FLAKE_HOST="$HOSTNAME"
+elif [[ "$(uname -m)" == aarch64 ]]; then
+    FLAKE_HOST="nixos-arm"
+else
+    FLAKE_HOST="nixos"
+fi
+echo "  Host     : $FLAKE_HOST"
 
 # ---------------------------------------------------------------------------
 # Flakes are enabled via configuration.nix (nix.settings.experimental-features)
@@ -98,13 +113,20 @@ if [[ ! -f /etc/nixos/hardware-configuration.nix ]]; then
     exit 1
 fi
 
-echo "  Copying flake.nix"
+echo "  Copying flake.nix + hosts/"
 sudo cp "$NIXOS_DIR/flake.nix" /etc/nixos/flake.nix
+sudo rm -rf /etc/nixos/hosts
+sudo cp -r "$NIXOS_DIR/hosts" /etc/nixos/hosts
+sudo cp "$NIXOS_DIR/gpu.nix" /etc/nixos/gpu.nix
+# GPU drivers: gpu.nix reads the detected cards from gpu.json
+bash "$NIXOS_DIR/detect-gpu.sh" | sudo tee /etc/nixos/gpu.json >/dev/null
+echo "  GPU      : $(cat /etc/nixos/gpu.json)"
+[[ -f "$NIXOS_DIR/flake.lock" ]] && sudo cp "$NIXOS_DIR/flake.lock" /etc/nixos/flake.lock
 
 echo "  Copying configuration.nix (substituting placeholders)"
 sudo cp "$NIXOS_DIR/configuration.nix" /etc/nixos/configuration.nix
 
-sudo sed -i "s/YOUR_USERNAME/$USERNAME/g" /etc/nixos/configuration.nix
+sudo sed -i "s/YOUR_USERNAME/$USERNAME/g" /etc/nixos/configuration.nix /etc/nixos/hosts/*.nix
 sudo sed -i "s/YOUR_HOSTNAME/$HOSTNAME/g" /etc/nixos/configuration.nix
 sudo sed -i "s|YOUR_TIMEZONE|$TIMEZONE|g"  /etc/nixos/configuration.nix
 
@@ -115,11 +137,17 @@ ls /etc/nixos/
 # nixos-rebuild switch
 # ---------------------------------------------------------------------------
 header "Running nixos-rebuild switch (this will take a while on first run)"
-sudo nixos-rebuild switch --impure --flake /etc/nixos#nixos 2>&1 | tee /tmp/nixos-rebuild.log || {
+# Lock first: adds inputs missing from flake.lock (never updates existing
+# ones). A lock written mid-rebuild breaks the flake's hash
+sudo nix --extra-experimental-features "nix-command flakes" flake lock /etc/nixos
+sudo nixos-rebuild switch --impure --flake "/etc/nixos#$FLAKE_HOST" 2>&1 | tee /tmp/nixos-rebuild.log || {
     echo
     echo "ERROR: nixos-rebuild failed. Check /tmp/nixos-rebuild.log"
     exit 1
 }
+
+# Keep the last 3 system generations; the weekly nix-gc frees their space
+sudo nix-env --profile /nix/var/nix/profiles/system --delete-generations +3 >/dev/null
 
 # ---------------------------------------------------------------------------
 # Dotfiles symlinks
@@ -139,19 +167,22 @@ symlink "$DOTFILES/editors/nvim"             "$HOME/.config/nvim"
 # Terminal
 symlink "$DOTFILES/terminal/wezterm/wezterm.lua" "$HOME/.wezterm.lua"
 symlink "$DOTFILES/terminal/kitty"           "$HOME/.config/kitty"
+symlink "$DOTFILES/terminal/zellij"          "$HOME/.config/zellij"
+symlink "$DOTFILES/terminal/tmux/tmux.conf"  "$HOME/.tmux.conf"
 
 # Hyprland ecosystem
 symlink "$NIXOS_DIR/config/hypr"             "$HOME/.config/hypr"
-symlink "$NIXOS_DIR/config/swaylock"         "$HOME/.config/swaylock"
 
 # Display profiles
 symlink "$NIXOS_DIR/config/kanshi"           "$HOME/.config/kanshi"
 
-# HyprPanel (bar + notifications + power menu)
-symlink "$NIXOS_DIR/config/hyprpanel"        "$HOME/.config/hyprpanel"
-
-# Wofi launcher
-symlink "$NIXOS_DIR/config/wofi"             "$HOME/.config/wofi"
+# Caelestia shell defaults (opaque panels). Copied, not linked: Caelestia
+# rewrites this file when settings change in its UI, so only seed it once
+if [[ ! -e "$HOME/.config/caelestia/shell.json" ]]; then
+    mkdir -p "$HOME/.config/caelestia"
+    cp "$NIXOS_DIR/config/caelestia/shell.json" "$HOME/.config/caelestia/shell.json"
+    echo "  created: $HOME/.config/caelestia/shell.json"
+fi
 
 # GTK theme + icons
 symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
@@ -220,6 +251,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# tmux plugin manager + Terraform zsh completion (same as init.sh elsewhere)
+# ---------------------------------------------------------------------------
+header "tmux plugins and zsh completions"
+if [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
+    git clone -q https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm" &&
+        echo "  tpm installed (press prefix + I in tmux to install plugins)"
+else
+    echo "  tpm already installed"
+fi
+TF_COMP="$HOME/.config/zsh-completion/terraform/_terraform"
+if [[ ! -s "$TF_COMP" ]]; then
+    mkdir -p "$(dirname "$TF_COMP")"
+    curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/plugins/terraform/_terraform -o "$TF_COMP" &&
+        echo "  terraform completion installed"
+else
+    echo "  terraform completion already installed"
+fi
+
+# ---------------------------------------------------------------------------
 # Cliphist daemon (start for current session if not running)
 # ---------------------------------------------------------------------------
 header "Clipboard history daemon"
@@ -240,7 +290,7 @@ echo "│                                                         │"
 echo "│  Next steps:                                            │"
 echo "│  1. Launch Hyprland:                                    │"
 echo "│       Hyprland                                          │"
-echo "│     (or reboot to use the greetd login screen)          │"
+echo "│     (or reboot to use the Ly login screen)              │"
 echo "│                                                         │"
 echo "│  2. Inside Hyprland, open Neovim and run :Lazy sync     │"
 echo "│                                                         │"

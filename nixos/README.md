@@ -1,7 +1,7 @@
 # NixOS Hyprland Workstation
 
 Hyprland desktop on NixOS with Catppuccin Macchiato theme.
-GTX 1070 · Waybar · Wofi · Mako · Hyprlock · WezTerm · Neovim
+NVIDIA / AMD auto-detected · [Caelestia shell](https://github.com/caelestia-dots/shell) · WezTerm · Neovim
 
 ---
 
@@ -45,19 +45,52 @@ First run asks for your timezone once — every run after that is automatic.
 
 ### 3. Set a wallpaper
 
-Wallpapers are at `~/Pictures/Wallpapers/`. Edit `~/.config/hypr/hyprpaper.conf` to activate one:
-
-```ini
-wallpaper = ,~/Pictures/Wallpapers/quasar.webp        # default
-# wallpaper = ,~/Pictures/Wallpapers/kurzgesagt.webp
-# wallpaper = ,~/Pictures/Wallpapers/kurzgesagt-galaxies.webp
-```
-
-Switch wallpaper at runtime (no restart needed):
+Wallpapers are at `~/Pictures/Wallpapers/` (default: `quasar.webp`). Caelestia
+remembers the last one you picked. Pick one from the launcher (`SUPER + D`, then type
+`>wallpaper`) or from a shell:
 
 ```bash
-hyprctl hyprpaper wallpaper ",~/Pictures/Wallpapers/kurzgesagt.webp"
+caelestia wallpaper -f ~/Pictures/Wallpapers/kurzgesagt.webp
 ```
+
+### Dual boot from Pop!_OS, on a second disk (no live USB)
+
+`nixos/install-from-linux.sh` installs NixOS onto an empty second disk from the running
+Pop!_OS (or any Linux), for a host already in `flake.nix` such as `hashirama`. Pop!_OS and its
+disk are not modified; Nix is installed if missing (`/nix` and the `nix-daemon` service).
+
+```bash
+lsblk -o NAME,SIZE,MODEL,MOUNTPOINTS                 # find the empty disk
+nixos/install-from-linux.sh --host hashirama /dev/nvme1n1
+```
+
+It refuses any disk with something mounted on it (Pop!_OS's partitions, LUKS / LVM volumes,
+swap) and asks you to type the disk name before erasing it. It creates a 1 GiB EFI partition and
+the NixOS one, installs with the pinned `flake.lock`, sets your password and copies this checkout
+to `~/nodestack/dotfiles`. Then reboot, choose **Linux Boot Manager** on that disk in the firmware
+boot menu (F8 / F11 / F12), log in and run `bash ~/nodestack/dotfiles/nixos/init.sh`. Set the
+default OS in the firmware settings.
+
+### Test in a VM on macOS (`nixos/vm.sh`)
+
+On an Apple Silicon Mac, `nixos/vm.sh` creates an aarch64 NixOS VM in
+[UTM](https://mac.getutm.app) and installs the `nixos-arm` host from your checkout,
+uncommitted changes included. It needs no admin rights: UTM goes into `~/Applications`
+and `qemu` comes from Homebrew.
+
+```bash
+nixos/vm.sh install     # download the ISO, create ~/VMs/nixos-dotfiles.utm, install (unattended)
+nixos/vm.sh rebuild     # copy this checkout into the VM and run nixos/init.sh
+nixos/vm.sh ssh         # SSH in (localhost:2222, your ~/.ssh key)
+nixos/vm.sh console     # serial console (localhost:4555)
+nixos/vm.sh start | stop | status | destroy
+```
+
+Log in at the Ly screen in the UTM window as `jelasmar`. The first install asks for the
+password (or generates one) and keeps it in your macOS login Keychain, never in the repo:
+`security find-generic-password -s nixos-vm -w` shows it. `VM_USER`, `VM_PASSWORD`,
+`VM_CPUS`, `VM_MEMORY_MB` and `VM_DISK_GB` override the defaults.
+If `utmctl` is not allowed to control UTM, the script asks you to press ▶ in UTM.
 
 ---
 
@@ -68,15 +101,18 @@ hyprctl hyprpaper wallpaper ",~/Pictures/Wallpapers/kurzgesagt.webp"
 | Key | Action |
 |-----|--------|
 | `SUPER + Enter` | Open terminal (WezTerm) |
-| `SUPER + D` | App launcher (Wofi) |
+| `SUPER + D` | App launcher (Caelestia) |
+| `SUPER + N` | Sidebar: notifications and quick settings (Caelestia) |
+| `CTRL + ALT + Delete` | Session menu: lock, log out, reboot, shut down (Caelestia) |
+| `SUPER + L` | Lock screen (Caelestia) |
+| `CTRL + ALT + H` | Clipboard history (`caelestia clipboard`) |
+| `CTRL + SUPER + SHIFT + R` | Restart the Caelestia shell |
 | `SUPER + E` | File manager (Nautilus) |
-| `SUPER + B` | Browser (Firefox) |
+| `SUPER + B` | Browser (Chrome; Chromium on arm64) |
 | `SUPER + Q` | Close window |
-| `SUPER + L` | Lock screen |
 | `SUPER + F` | Fullscreen |
 | `SUPER + V` | Toggle floating |
 | `SUPER + S` | Toggle scratchpad |
-| `SUPER + C` | Clipboard history |
 | `SUPER + 1-0` | Switch workspace |
 | `SUPER + SHIFT + 1-0` | Move window to workspace |
 | `SUPER + Arrows / H J K` | Focus window |
@@ -86,7 +122,7 @@ hyprctl hyprpaper wallpaper ",~/Pictures/Wallpapers/kurzgesagt.webp"
 | `SUPER + right-click drag` | Resize floating window |
 | `Print` | Screenshot selection → clipboard |
 | `SHIFT + Print` | Screenshot monitor → clipboard |
-| `SUPER + SHIFT + S` | Screenshot selection → clipboard |
+| `SUPER + SHIFT + S` | Move window to scratchpad |
 | `SUPER + Print` | Screenshot monitor → file |
 
 ---
@@ -103,6 +139,14 @@ sudo nixos-rebuild switch --upgrade
 
 ```bash
 git pull && bash nixos/init.sh
+```
+
+### Update the WezTerm fork
+
+WezTerm is built from the `floating-splits` branch of `jad617/wezterm`, pinned in `flake.lock`:
+
+```bash
+sudo nix flake update wezterm-src --flake /etc/nixos && sudo nixos-rebuild switch --impure --flake /etc/nixos#$(hostname)
 ```
 
 ### Preview changes before applying
@@ -140,17 +184,13 @@ All config files are symlinked from this repo — edit here, not in `~/.config`.
 
 | Component | Config file |
 |-----------|-------------|
-| Hyprland  | `nixos/config/hypr/hyprland.conf` |
-| Waybar    | `nixos/config/waybar/config.jsonc` + `style.css` |
-| Hyprlock  | `nixos/config/hypr/hyprlock.conf` |
-| Hypridle  | `nixos/config/hypr/hypridle.conf` |
-| Hyprpaper | `nixos/config/hypr/hyprpaper.conf` |
-| Mako      | `nixos/config/mako/config` |
-| Wofi      | `nixos/config/wofi/config` + `style.css` |
+| Hyprland  | `nixos/config/hypr/hyprland.lua` (Lua: Hyprland 0.57+ no longer reads `hyprland.conf`) |
+| Caelestia | `~/.config/caelestia/shell.json` (bar, launcher, lock, idle). Seeded once from `nixos/config/caelestia/shell.json` (opaque panels), then owned by Caelestia's settings UI |
+| HyprMod   | `nixos/config/hypr/hyprland-gui.lua` (settings saved from the HyprMod app, loaded last by `hyprland.lua`) |
 | Neovim    | `editors/nvim/` |
-| WezTerm   | `terminal/wezterm/wezterm.lua` |
+| WezTerm   | `terminal/wezterm/wezterm.lua` (the `jad617/wezterm` fork, `floating-splits` branch, built by Nix) |
 | Zsh       | `shell/zsh/zshrc` + `my_aliases.sh` |
-| NixOS     | `nixos/configuration.nix` (copied to `/etc/nixos/`) |
+| NixOS     | `nixos/configuration.nix` + `nixos/hosts/*.nix` (copied to `/etc/nixos/`) |
 
 After editing `configuration.nix`, apply with:
 
@@ -236,12 +276,29 @@ cat /tmp/nixos-rebuild.log
 ### Hyprland won't start
 
 ```bash
+# Check the config (Hyprland 0.57+ only reads hyprland.lua)
+Hyprland --verify-config -c ~/.config/hypr/hyprland.lua
+
 # Check logs
-cat /tmp/hyprland-$(id -u).log
+cat $XDG_RUNTIME_DIR/hypr/*/hyprland.log
 
 # Try launching manually from TTY
 Hyprland
 ```
+
+### GPU drivers
+
+`init.sh` detects the GPU (`nixos/detect-gpu.sh` → `/etc/nixos/gpu.json`) and `nixos/gpu.nix`
+configures it. Steam is installed on every x86_64 host.
+
+| GPU | Driver |
+|-----|--------|
+| NVIDIA GTX 16xx / RTX 20xx and newer | current driver, open kernel module |
+| NVIDIA GTX 9xx / 10xx (e.g. GTX 1070) | 580 series, proprietary (the last one that supports them) |
+| AMD | Mesa (RADV, radeonsi), `amdgpu` in the initrd |
+
+On NVIDIA, the session also gets Hyprland's two required variables, `LIBVA_DRIVER_NAME=nvidia` and
+`__GLX_VENDOR_LIBRARY_NAME=nvidia`, plus `NVD_BACKEND=direct` for hardware video decoding.
 
 ### NVIDIA issues
 
@@ -249,18 +306,19 @@ Hyprland
 # Confirm driver is loaded
 nvidia-smi
 
-# Check Wayland env vars are set
-env | grep -E 'GBM|LIBVA|__GLX|WLR'
+# What init.sh detected, and the session variables
+cat /etc/nixos/gpu.json
+env | grep -E 'LIBVA|__GLX|NVD'
 ```
 
-### Waybar not showing
+### Caelestia bar not showing
 
 ```bash
-# Kill and restart
-killall waybar; waybar &
+# Restart the shell (or CTRL + SUPER + SHIFT + R)
+caelestia shell -k; caelestia shell -d
 
-# Check for config errors
-waybar --log-level debug
+# Run it in the foreground to see errors
+caelestia shell
 ```
 
 ### Audio not working
