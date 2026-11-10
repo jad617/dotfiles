@@ -8,8 +8,9 @@
 
 # macOS Homebrew
 if [[ "$(uname -s)" == "Darwin" ]]; then
+    [ -d /opt/homebrew/sbin ] && export PATH="/opt/homebrew/sbin:$PATH"
     [ -d /opt/homebrew/bin ] && export PATH="/opt/homebrew/bin:$PATH"
-    [ -d /opt/homebrew/opt/mysql-client@8.0/bin ] && export PATH="/opt/homebrew/opt/mysql-client@8.0/bin:$PATH"
+    [ -d /opt/homebrew/opt/mysql-client@8.4/bin ] && export PATH="/opt/homebrew/opt/mysql-client@8.4/bin:$PATH"
 fi
 
 # Go: Homebrew's on macOS, the go.dev tarball in /usr/local/go on Linux
@@ -91,13 +92,14 @@ dev_UP() {
     [ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
 }
 
-# Update zsh completions from upstream sources
-update-completions() {
-    local tf_comp="$HOME/.config/zsh-completion/terraform/_terraform"
-    mkdir -p "$(dirname "$tf_comp")"
-    echo "Updating terraform completion..."
-    curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/plugins/terraform/_terraform -o "$tf_comp"
-    echo "Done. Restart your shell or run: exec zsh"
+# Save Rectangle's current shortcuts into the dotfiles (init.sh imports them on a new Mac)
+rectangle-save() {
+    local f="$HOME/nodestack/dotfiles/mac/rectangle.plist" k
+    defaults export com.knollsoft.Rectangle - | plutil -convert xml1 -o "$f" - || return
+    for k in "NSStatusItem Preferred Position Item-0" SUHasLaunchedBefore lastVersion; do
+        plutil -remove "$k" "$f" 2>/dev/null
+    done
+    git -C "${f%/mac/*}" --no-pager diff --stat -- mac/rectangle.plist
 }
 
 # Azure — track login state via env var so oh-my-posh segment is session-scoped
