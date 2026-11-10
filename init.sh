@@ -172,6 +172,24 @@ arm64 | aarch64) ARCH=arm64 UARCH=aarch64 ;;
     ;;
 esac
 
+# Pop!_OS gaming setup: Steam plus the GPU driver. NVIDIA from Turing (PCI device
+# 0x1e00, GTX 16xx / RTX 20xx) on uses System76's current driver; older cards
+# (GTX 9xx / 10xx) were dropped after the 580 series, so they stay on it.
+# AMD needs nothing extra: Mesa ships with Pop!_OS and steam pulls in 32-bit Mesa.
+# Same rules as nixos/gpu.nix.
+POPOS_NVIDIA_PKG="" APT_POPOS=()
+if [[ "$OS" == popos ]]; then
+    for _dev in /sys/bus/pci/devices/*; do
+        [[ -r $_dev/class && $(<"$_dev/class") == 0x03* && $(<"$_dev/vendor") == 0x10de ]] || continue
+        if (($(<"$_dev/device") >= 0x1e00)); then
+            : "${POPOS_NVIDIA_PKG:=system76-driver-nvidia}"
+        else
+            POPOS_NVIDIA_PKG=nvidia-driver-580
+        fi
+    done
+    APT_POPOS=(steam ${POPOS_NVIDIA_PKG:+"$POPOS_NVIDIA_PKG"})
+fi
+
 # Where this script installs things — on PATH for the run, so re-runs see them.
 export PATH="$HOME/.local/bin:$HOME/bin:$HOME/.fzf/bin:$PATH"
 [[ "$OS" != "macos" ]] && export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
@@ -527,15 +545,16 @@ BREW_BASE=(bash zsh-syntax-highlighting htop wget luajit pwgen bat fd ripgrep tm
 BREW_CASKS=(font-meslo-lg-nerd-font maccy rectangle)
 BREW_DEVOPS=(hashicorp/tap/terraform hashicorp/tap/vault terraform-docs ansible kubernetes-cli
     derailed/k9s/k9s mysql-client@8.4 helm gh eksctl argocd actionlint yamllint trivy
-    maven dotnet dotnet@8 deno)
+    maven dotnet deno)
 BREW_DEVOPS_CASKS=(azure-cli)
 # Replaced apps: "old new"; the old one is uninstalled and an omitted old one stays omitted
-APP_RENAMES=("tfsec trivy" "mysql-client@8.0 mysql-client@8.4")
+# (.NET 8 support ended 2026-11-10; .NET 10 is the LTS, brew's dotnet formula is 10)
+APP_RENAMES=("tfsec trivy" "mysql-client@8.0 mysql-client@8.4" "dotnet@8 dotnet" "dotnet-sdk-8.0 dotnet-sdk-10.0")
 # The script itself needs these, so they can't be omitted
 APT_CORE=(zsh curl git unzip jq fontconfig ca-certificates gnupg procps)
 APT_BASE=(zsh-syntax-highlighting htop wget bat fd-find ripgrep tmux wl-clipboard wofi wtype
     btop pipx p7zip-full nmap mtr-tiny ipcalc)
-APT_DEVOPS=(terraform vault gh azure-cli ansible yamllint maven dotnet-sdk-8.0)
+APT_DEVOPS=(terraform vault gh azure-cli ansible yamllint maven dotnet-sdk-10.0)
 
 app_ids() {
     local p
@@ -552,7 +571,7 @@ app_catalog() {
         echo "npm (global)|copilot"
         echo "pip (user)|pynvim"
     else
-        echo "apt|$(app_sorted "${APT_BASE[@]}" "${APT_DEVOPS[@]}" node)"
+        echo "apt|$(app_sorted "${APT_BASE[@]}" "${APT_DEVOPS[@]}" node ${APT_POPOS[@]+"${APT_POPOS[@]}"})"
         echo "GitHub releases|$(app_sorted eza zoxide oh-my-posh zellij lazygit yq cliphist helm k9s eksctl argocd actionlint trivy terraform-docs)"
         echo "Vendor installers|$(app_sorted go neovim kubectl aws uv pyenv deno claude font-meslo-lg-nerd-font)"
         echo "Built from source|keyd wezterm"
@@ -655,6 +674,9 @@ pick_hints() {
 app_desc() {
     case "$1" in
     actionlint) echo "Lint GitHub Actions workflows" ;;
+    steam) echo "Steam (Pop!_OS only)" ;;
+    system76-driver-nvidia) echo "NVIDIA driver (System76, current)" ;;
+    nvidia-driver-580) echo "NVIDIA 580 driver (last for GTX 9xx / 10xx)" ;;
     ansible) echo "Automation and configuration management" ;;
     argocd) echo "Argo CD CLI" ;;
     aws) echo "AWS CLI v2" ;;
@@ -666,8 +688,7 @@ app_desc() {
     cliphist) echo "Wayland clipboard history" ;;
     copilot) echo "GitHub Copilot CLI" ;;
     deno) echo "JavaScript/TypeScript runtime" ;;
-    dotnet | dotnet-sdk-8.0) echo ".NET SDK" ;;
-    dotnet@8) echo ".NET 8 SDK" ;;
+    dotnet | dotnet-sdk-10.0) echo ".NET SDK (10 LTS)" ;;
     eksctl) echo "Amazon EKS CLI" ;;
     eza) echo "Modern ls" ;;
     fd | fd-find) echo "Fast find" ;;
@@ -2081,6 +2102,11 @@ install_linux() {
     else
         ok "MesloLGS NF font"
     fi
+
+    # Steam + NVIDIA driver (see APT_POPOS); empty on other distros
+    if ((${#APT_POPOS[@]})); then
+        apt_install "${APT_POPOS[@]}"
+    fi
 }
 
 # =============================================================================
@@ -2155,6 +2181,7 @@ EOF
     brew_install --cask "${BREW_DEVOPS_CASKS[@]}"
     brew_retire tfsec
     brew_retire mysql-client@8.0
+    brew_retire dotnet@8
 
     install_claude
     npm_global copilot @github/copilot
@@ -2280,6 +2307,11 @@ install_devops_linux() {
         done_step
     fi
     gh_tool terraform-docs terraform-docs/terraform-docs _terraform_docs
+    if ! omitted dotnet-sdk-10.0 && dpkg-query -W -f='${Status}' dotnet-sdk-8.0 2>/dev/null | grep -q "install ok installed" &&
+        step "apt: dotnet-sdk-8.0 (replaced by dotnet-sdk-10.0)" remove; then
+        apt_get remove dotnet-sdk-8.0
+        done_step
+    fi
 
     # deno → ~/.local/bin (already on PATH via my_aliases.sh); upgrade checks itself
     if skip_app deno; then

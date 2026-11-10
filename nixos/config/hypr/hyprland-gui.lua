@@ -1,0 +1,1 @@
+-- HyprMod managed settings: written by the HyprMod app, loaded last by hyprland.lua
