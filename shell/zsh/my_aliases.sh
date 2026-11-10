@@ -48,7 +48,6 @@ export EDITOR=nvim
 export GO_ENV=local
 export AWS_REGION=ca-central-1
 export AWS_PAGER=""
-export SHELLCHECK_OPTS="-e SC2086"
 export PYENV_ROOT="$HOME/.pyenv"
 
 # macOS Ansible fork-safety fix
