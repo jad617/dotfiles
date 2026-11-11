@@ -28,6 +28,7 @@ nixos/install-from-linux.sh
 | Size | the NixOS partition size, or how much the shrunk partition keeps |
 | User, timezone, password | user and timezone only on a live CD (otherwise: you, this system's timezone) |
 | Wi-Fi | the Wi-Fi networks saved on this system (Pop, or the live session), all ticked: `Space` ticks, `a` all / none. Copied with their passwords so NixOS is online at its first boot |
+| SSH keys | optional: the key pairs, `config` and `known_hosts` from your `~/.ssh` (fingerprint and comment shown, passphrase-protected keys marked), all ticked; untick what NixOS should not have |
 | Summary | everything that will be formatted, shrunk, kept, unmounted, left untouched. **Cancel** is pre-selected |
 | Confirm | type the disk or partition name (`erase <disk>` for a disk with data) |
 
@@ -71,6 +72,14 @@ lists the programs with `fuser` and stops, before anything was changed:
 sudo fuser -vm /backup        # should list only "kernel mount"
 ```
 
+### SSH keys
+
+`copy-ssh.sh` copies the items you tick from `~/.ssh` into the new home, with the permissions `ssh`
+requires (folder `700`, private keys and `known_hosts` `600`, `.pub` `644`), owned by your NixOS
+user. Each key pair is one item (the private key and its `.pub`). Private keys are copied as they
+are: a passphrase stays. Not copied: `*.old` backups, sockets, folders. Without the menus nothing is
+copied unless you pass `--ssh`. On a live CD this is the live session's `~/.ssh` (usually empty).
+
 ### Wi-Fi
 
 Each network is rebuilt from its essentials (name, SSID, security, password) by `export-wifi.sh`,
@@ -102,6 +111,7 @@ nixos/install-from-linux.sh --host hashirama --boot-part /dev/sda2 --root-part /
 | `--keep N` | GiB the shrunk partition keeps (at least its data + 10 % + 1 GiB) |
 | `--host`, `--user`, `--timezone` | as in the menus (`--host` and `--user` are required on a live CD) |
 | `--wifi W` | Wi-Fi networks to copy: `active` (default: the one connected now), `all`, `none`, or names separated by commas |
+| `--ssh S` | SSH items from `~/.ssh` to copy: `none` (default), `all`, or names separated by commas, e.g. `id_rsa,known_hosts` |
 | `NIXOS_PASSWORD=...` | password for the NixOS user, instead of the prompt |
 | `NIXOS_INSTALL_YES=1` | skip the typed confirmation |
 | `NIXOS_INSTALL_ALLOW_OS_DISK=/dev/X` | let the erase mode wipe X although it holds another OS |
@@ -154,9 +164,9 @@ What changes on a live system (detected from `/etc/os-release` or a RAM root fil
 6. **nixos-install**: systemd-boot on the new EFI partition. **The first build is long**: some
    packages (Terraform, Vault, Steam, Chrome, Rust crates) are built from source.
 7. **User**: password; this checkout copied to `~/nodestack/dotfiles` on NixOS and its configs linked
-   (`link-dotfiles.sh`: zsh, Neovim, WezTerm, tmux, Hyprland, kanshi, GTK, wallpapers, Caelestia's
-   `shell.json`); the chosen Wi-Fi networks copied (`export-wifi.sh`); stale firmware entries of an
-   erased OS removed.
+   (`link-dotfiles.sh`: zsh, Neovim, WezTerm, tmux, Hyprland, GTK, wallpapers, Caelestia's
+   `shell.json`); the chosen Wi-Fi networks copied (`export-wifi.sh`) and the chosen SSH keys
+   (`copy-ssh.sh`); stale firmware entries of an erased OS removed.
 
 So the first login already has your Hyprland config, which starts Caelestia, and is online, before
 `init.sh` ever runs.
@@ -197,6 +207,18 @@ grows the filesystem back to fill it and checks it again.
    keeps going if the rebuild fails (e.g. offline): the failure is reported at the end, with its log
    in `~/.cache/nixos-rebuild.log`. Run it again once online.
 3. Change a temporary password: `passwd`.
+
+---
+
+## Shared folders (hashirama)
+
+`~/Pictures`, `~/Downloads`, `~/Documents` and `~/Desktop` are links to `/backup/shared/<name>` on
+both systems, so there is one copy, seen from Pop!_OS and NixOS. On NixOS the links come from
+`hosts/hashirama.nix` (`system.activationScripts.sharedFolders`), recreated at every boot and rebuild,
+so a reinstall gets them back. A real folder in the way is renamed `<name>.local-<date>`, never
+deleted (one with no files at all, as a fresh install leaves it, is just cleared). Steam games can
+share a library folder there too (`/backup/shared/SteamLibrary`); Chrome profiles cannot (their
+passwords are encrypted per system): use Chrome sync.
 
 ---
 

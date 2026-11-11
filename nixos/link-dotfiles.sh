@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Links this checkout's configs into a NixOS user's home (zsh, nvim, wezterm,
-# tmux, Hyprland, kanshi, GTK, wallpapers) and seeds Caelestia's shell.json.
+# tmux, Hyprland, GTK, wallpapers) and seeds Caelestia's shell.json.
 # Shared by init.sh (on NixOS, as you) and install-from-linux.sh (at install
 # time, as root, into the new system), so the first login already has the
 # Hyprland config that starts Caelestia, with or without network.
@@ -40,7 +40,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 own() { [[ -z $OWNER ]] || chown -h "$OWNER" "$@"; }
 mkdirs() { # DIR (as seen on NixOS): create it and the missing parents under the home, owned by the user
     local d=$1 todo=()
-    while [[ $d == "$HOME_DIR"/* && ! -d $ROOT$d ]]; do todo=("$d" ${todo[@]+"${todo[@]}"}) && d=$(dirname "$d"); done
+    while [[ $d == "$HOME_DIR"/* && ! -d $ROOT$d && ! -L $ROOT$d ]]; do todo=("$d" ${todo[@]+"${todo[@]}"}) && d=$(dirname "$d"); done
     for d in ${todo[@]+"${todo[@]}"}; do mkdir "$ROOT$d" && own "$ROOT$d"; done
     return 0
 }
@@ -48,6 +48,8 @@ link() { # SRC DST, both as seen on NixOS
     local src=$1 dst=$2
     [[ -e $ROOT$src ]] || { echo "  skipped (missing in the checkout): $src" && return 0; }
     mkdirs "$(dirname "$dst")"
+    # e.g. ~/Pictures linked to /backup/shared/Pictures while /backup is not mounted
+    [[ -d $ROOT$(dirname "$dst") ]] || { echo "  skipped (not available now): $(dirname "$dst")" && return 0; }
     if [[ -L $ROOT$dst ]]; then
         rm "$ROOT$dst"
     elif [[ -e $ROOT$dst ]]; then
@@ -70,16 +72,15 @@ link "$DOTFILES/terminal/wezterm/wezterm.lua" "$HOME_DIR/.wezterm.lua"
 link "$DOTFILES/terminal/kitty" "$HOME_DIR/.config/kitty"
 link "$DOTFILES/terminal/zellij" "$HOME_DIR/.config/zellij"
 link "$DOTFILES/terminal/tmux/tmux.conf" "$HOME_DIR/.tmux.conf"
-# Hyprland (its hyprland.lua starts Caelestia) and display profiles
+# Hyprland (its hyprland.lua starts Caelestia)
 link "$NIXOS_DIR/config/hypr" "$HOME_DIR/.config/hypr"
-link "$NIXOS_DIR/config/kanshi" "$HOME_DIR/.config/kanshi"
 # GTK theme + icons
 link "$NIXOS_DIR/config/gtk/settings.ini" "$HOME_DIR/.config/gtk-3.0/settings.ini"
 link "$NIXOS_DIR/config/gtk/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
 link "$NIXOS_DIR/config/gtk/gtk-4.0.css" "$HOME_DIR/.config/gtk-4.0/gtk.css"
 # Wallpapers, screenshots
 link "$DOTFILES/wallpapers" "$HOME_DIR/Pictures/Wallpapers"
-mkdirs "$HOME_DIR/Pictures/Screenshots"
+[[ -L $ROOT$HOME_DIR/Pictures && ! -d $ROOT$HOME_DIR/Pictures ]] || mkdirs "$HOME_DIR/Pictures/Screenshots"
 
 # Caelestia shell defaults (opaque panels). Copied, not linked: Caelestia
 # rewrites this file when settings change in its UI, so only seed it once
