@@ -21,8 +21,7 @@ hl.env("XCURSOR_THEME", "Adwaita")
 
 -- ---------------------------------------------------------------------------
 -- Monitors: fallback for any monitor, then the lines nwg-displays writes to
--- monitors.conf ("monitor=NAME,MODE,POSITION,SCALE"). kanshi also manages
--- layouts when monitors are plugged in.
+-- monitors.conf ("monitor=NAME,MODE,POSITION,SCALE"), then the pinned desk layout.
 -- ---------------------------------------------------------------------------
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
@@ -49,7 +48,6 @@ end
 hl.on("hyprland.start", function()
     -- Caelestia shell: bar, launcher, notifications, lock screen, idle, wallpaper
     hl.exec_cmd("caelestia shell -d")
-    hl.exec_cmd("kanshi")
     -- First login only: default wallpaper and the light theme generated from it
     -- (Caelestia keeps whatever is picked later: launcher >wallpaper, >scheme)
     hl.exec_cmd("[ -f ~/.local/state/caelestia/wallpaper/path.txt ] || { caelestia wallpaper -f ~/Pictures/Wallpapers/quasar.webp; caelestia scheme set -n dynamic -m light; }")
@@ -206,7 +204,7 @@ end
 -- ── Workspaces ──────────────────────────────────────────────────────────────
 -- Each screen has its own slots 1–10. Screens are numbered left to right, so
 -- slot N is workspace N on the 1st screen, 10+N on the 2nd, 20+N on the 3rd…
--- (names don't matter, so this survives kanshi layouts).
+-- (port names don't matter, so this survives screens being re-plugged).
 --
 -- SUPER + W cycles how the slot keys behave:
 --   paired      – all screens switch together (left N, right 10+N)

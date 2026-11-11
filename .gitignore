@@ -16,3 +16,6 @@ editors/github-copilot/
 
 # NixOS bootstrap cache
 .nixos_timezone
+
+# Written by Caelestia on every colour-scheme change
+nixos/config/hypr/scheme/

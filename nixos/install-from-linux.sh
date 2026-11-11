@@ -15,6 +15,8 @@
 #     --size N     NixOS partition size in GiB (--free-space / --shrink; default: all the space)
 #     --wifi W     Wi-Fi networks saved here to copy to NixOS: active (default), all, none,
 #                  or names separated by commas (the guided mode asks)
+#     --ssh S      SSH keys / files from ~/.ssh to copy to NixOS: none (default), all, or
+#                  names separated by commas, e.g. id_rsa,known_hosts (the guided mode asks)
 #     --host       flake host (default: this machine's hostname if hosts/<it>.nix exists;
 #                  required on a live CD)
 #     --user       NixOS user (default: you; required on a live CD)
@@ -226,7 +228,7 @@ ui_checklist() {
 
 # --- arguments ----------------------------------------------------------------------
 HOST="" USERNAME="" TIMEZONE="" DISK="" BOOT_PART="" ROOT_PART=""
-FREE_DISK="" SHRINK_PART="" SHRINK_GIB="" NIXOS_GIB="" WIFI_ARG=""
+FREE_DISK="" SHRINK_PART="" SHRINK_GIB="" NIXOS_GIB="" WIFI_ARG="" SSH_ARG=""
 while (($#)); do
     case $1 in
     --host) HOST=$2 && shift 2 ;;
@@ -239,6 +241,7 @@ while (($#)); do
     --keep) SHRINK_GIB=$2 && shift 2 ;;
     --size) NIXOS_GIB=$2 && shift 2 ;;
     --wifi) WIFI_ARG=$2 && shift 2 ;;
+    --ssh) SSH_ARG=$2 && shift 2 ;;
     -h | --help) sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
     -*) die "unknown option: $1" ;;
     *) DISK=$1 && shift ;;
@@ -664,6 +667,36 @@ Each is copied without its access-point lock, so a router that steers the card t
     ((${#WIFI_UUIDS[@]})) || WIFI_NOTE="none: connect on NixOS with nmtui"
 fi
 
+# --- SSH keys to copy (optional): git push / ssh work on NixOS without new keys -------------------
+SSH_SRC=$HOME/.ssh SSH_ITEMS=() SSH_NOTE=""
+ssh_saved=$(bash "$NIXOS_DIR/copy-ssh.sh" --list "$SSH_SRC" 2>/dev/null || true)
+if [[ -z $ssh_saved ]]; then
+    SSH_NOTE="none (nothing in $SSH_SRC)"
+else
+    picked=" "
+    if [[ -n $GUIDED && -z $SSH_ARG ]]; then
+        items=()
+        while IFS=$'\t' read -r n d; do items+=("$n" "$(printf '%-18s %s' "$n" "$d")" on); done <<<"$ssh_saved"
+        ui_checklist "SSH keys" "Copy these from $SSH_SRC to your NixOS home? (optional; untick all with a)
+Private keys are copied as they are, with their passphrase if they have one, readable by you only." "${items[@]}"
+        picked=" $REPLY "
+    else
+        case ${SSH_ARG:-none} in
+        none) ;;
+        all) picked=" $(cut -f1 <<<"$ssh_saved" | paste -sd' ' -) " ;;
+        *)
+            IFS=, read -ra want <<<"$SSH_ARG"
+            for w in "${want[@]}"; do
+                grep -qxF "$w" < <(cut -f1 <<<"$ssh_saved") || die "--ssh: no key or ssh file named \"$w\" in $SSH_SRC (there: $(cut -f1 <<<"$ssh_saved" | paste -sd, -))"
+                picked+="$w "
+            done
+            ;;
+        esac
+    fi
+    while IFS=$'\t' read -r n _; do [[ $picked == *" $n "* ]] && SSH_ITEMS+=("$n"); done <<<"$ssh_saved"
+    ((${#SSH_ITEMS[@]})) || SSH_NOTE="none"
+fi
+
 # --- summary, warnings, confirmation --------------------------------------------------------------
 model=$(lsblk -dno MODEL "$DISK" 2>/dev/null | sed 's/ *$//' || true)
 disk_line="$DISK${model:+  $model}  $(lsblk -dno SIZE "$DISK" | tr -d ' ')"
@@ -697,6 +730,7 @@ if [[ $MODE != erase ]]; then
 fi
 [[ -n $NEED_GPT ]] && lines+=("Converted $DISK MBR -> GPT in place (partitions kept)")
 lines+=("" "Wi-Fi     ${WIFI_NOTE:-$(IFS=,; echo "${WIFI_NAMES[*]}" | sed 's/,/, /g')}"
+    "SSH       ${SSH_NOTE:-$(IFS=,; echo "${SSH_ITEMS[*]}" | sed 's/,/, /g') -> ~/.ssh}"
     "Dotfiles  this checkout -> ~/nodestack/dotfiles, configs linked (Hyprland + Caelestia ready)" "")
 for p in ${RELEASE[@]+"${RELEASE[@]}"}; do lines+=("Unmounted $(basename "$p") from $(mounted_in "$p")${MODE:+$([[ $MODE == shrink ]] && echo ', remounted after')}"); done
 while read -r d; do
@@ -947,7 +981,7 @@ as_root env ${tmp_env[@]+"${tmp_env[@]}"} nixos-install --root "$MNT" --flake "$
 [[ -z $LIVE ]] || { sudo rm -rf "$MNT/tmp" && sudo mkdir -m 1777 "$MNT/tmp"; }
 
 # --- 7. user, dotfiles, boot entries ----------------------------------------------------------------
-step "User $USERNAME, dotfiles, Wi-Fi, boot entries"
+step "User $USERNAME, dotfiles, Wi-Fi, SSH keys, boot entries"
 # Inside the chroot, this system's PATH (/usr/bin, the tools' store paths) does not exist
 in_nixos() { as_root nixos-enter --root "$MNT" -c "PATH=/nix/var/nix/profiles/system/sw/bin; $1" 2> >(grep -v '^setting up /etc' >&2); }
 echo "$USERNAME:$PASSWORD" | in_nixos chpasswd
@@ -961,6 +995,10 @@ sudo chown -R "$uid_gid" "$MNT/home/$USERNAME"
 # even if init.sh can't run yet, e.g. without network
 info "Linking the dotfiles into /home/$USERNAME"
 sudo bash "$NIXOS_DIR/link-dotfiles.sh" --root "$MNT" --user "$USERNAME" --owner "$uid_gid"
+if ((${#SSH_ITEMS[@]})); then
+    info "Copying SSH keys"
+    sudo bash "$NIXOS_DIR/copy-ssh.sh" "$SSH_SRC" "$MNT/home/$USERNAME/.ssh" "$uid_gid" "${SSH_ITEMS[@]}"
+fi
 if ((${#WIFI_UUIDS[@]})); then
     info "Copying Wi-Fi networks"
     sudo bash "$EXPORT_WIFI" "$MNT/etc/NetworkManager/system-connections" "${WIFI_UUIDS[@]}"

@@ -214,8 +214,7 @@ in {
     wl-clipboard
     cliphist
     wlsunset             # blue light filter / night mode
-    kanshi               # auto display profiles on monitor connect/disconnect
-    nwg-displays         # GUI to generate kanshi profiles visually
+    nwg-displays         # GUI to arrange monitors (writes config/hypr/monitors.conf)
     blueman
     pavucontrol
     polkit_gnome
