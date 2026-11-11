@@ -194,6 +194,9 @@ in {
   # Shell
   # ---------------------------------------------------------------------------
   programs.zsh.enable = true;
+  # ~/.zshrc runs compinit with a daily cache; the global one in /etc/zshrc
+  # would rebuild the completion dump on every new shell (~0.2 s)
+  programs.zsh.enableGlobalCompInit = false;
 
   # ---------------------------------------------------------------------------
   # Packages
