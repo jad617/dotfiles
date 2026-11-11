@@ -55,21 +55,15 @@ caelestia wallpaper -f ~/Pictures/Wallpapers/kurzgesagt.webp
 
 ### Dual boot from Pop!_OS, on a second disk (no live USB)
 
-`nixos/install-from-linux.sh` installs NixOS onto an empty second disk from the running
-Pop!_OS (or any Linux), for a host already in `flake.nix` such as `hashirama`. Pop!_OS and its
-disk are not modified; Nix is installed if missing (`/nix` and the `nix-daemon` service).
+`nixos/install-from-linux.sh` installs NixOS from the running Pop!_OS or from a live CD, with
+arrow-key menus to pick the disk and the layout: erase it, use its free space, shrink an ext4
+partition, or two existing partitions. Pop!_OS's disk is never offered.
 
 ```bash
-lsblk -o NAME,SIZE,MODEL,MOUNTPOINTS                 # find the empty disk
-nixos/install-from-linux.sh --host hashirama /dev/nvme1n1
+nixos/install-from-linux.sh
 ```
 
-It refuses any disk with something mounted on it (Pop!_OS's partitions, LUKS / LVM volumes,
-swap) and asks you to type the disk name before erasing it. It creates a 1 GiB EFI partition and
-the NixOS one, installs with the pinned `flake.lock`, sets your password and copies this checkout
-to `~/nodestack/dotfiles`. Then reboot, choose **Linux Boot Manager** on that disk in the firmware
-boot menu (F8 / F11 / F12), log in and run `bash ~/nodestack/dotfiles/nixos/init.sh`. Set the
-default OS in the firmware settings.
+Full guide, options and safety checks: **[INSTALL.md](INSTALL.md)**.
 
 ### Test in a VM on macOS (`nixos/vm.sh`)
 
@@ -161,7 +155,7 @@ sudo nixos-rebuild dry-activate --upgrade
 sudo nixos-rebuild switch --rollback
 ```
 
-Or reboot and select the previous generation from the GRUB menu.
+Or reboot and select the previous generation from the boot menu (systemd-boot on UEFI, GRUB otherwise).
 
 ### Clean up old generations (free disk space)
 
@@ -270,7 +264,7 @@ Search for package names at [search.nixos.org](https://search.nixos.org/packages
 ### Rebuild failed
 
 ```bash
-cat /tmp/nixos-rebuild.log
+cat ~/.cache/nixos-rebuild.log    # written by init.sh
 ```
 
 ### Hyprland won't start

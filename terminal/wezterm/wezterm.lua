@@ -542,6 +542,13 @@ for i = 0, 9 do
 	table.insert(config.keys, { key = tostring(i), mods = "LEADER", action = action.ActivateTab(i) })
 end
 
+-- Linux: ALT (the ⌘ position) copies and pastes, like Cmd on macOS.
+-- Hyprland passes ALT + C / V through to WezTerm for this.
+if wezterm.target_triple:find("linux") then
+	table.insert(config.keys, { key = "c", mods = "ALT", action = action.CopyTo("Clipboard") })
+	table.insert(config.keys, { key = "v", mods = "ALT", action = action.PasteFrom("Clipboard") })
+end
+
 --------------------------------------------------------------------------------
 -- Copy mode (vim-like scroll + search)
 --------------------------------------------------------------------------------

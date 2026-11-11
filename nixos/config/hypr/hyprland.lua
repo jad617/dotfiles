@@ -26,6 +26,11 @@ hl.env("XCURSOR_THEME", "Adwaita")
 -- ---------------------------------------------------------------------------
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
+-- Desk layout, pinned by model so the order survives KVM switches (with
+-- "auto", whichever screen reconnects first ends up on the left)
+hl.monitor({ output = "desc:LG Electronics LG HDR WFHD 0x0005B707", mode = "preferred", position = "0x0", scale = 1 })
+hl.monitor({ output = "desc:ViewSonic Corporation VA2246 SERIES TSP154382384", mode = "preferred", position = "2560x0", scale = 1 })
+
 local monitors = io.open(os.getenv("HOME") .. "/.config/hypr/monitors.conf", "r")
 if monitors then
     for line in monitors:lines() do
@@ -51,6 +56,14 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("wl-paste --watch cliphist store")
     hl.exec_cmd("blueman-applet")
     hl.exec_cmd("/run/current-system/sw/bin/wezterm")
+end)
+
+-- KVM switching unplugs every screen at once; Wayland clients lose their
+-- outputs and Caelestia (and the GTK portal / polkit agent) exit. When a
+-- screen comes back, restart whatever died.
+hl.on("monitor.added", function()
+    hl.exec_cmd("pgrep -u \"$USER\" -f 'share/caelestia-shell' >/dev/null || caelestia shell -d")
+    hl.exec_cmd("systemctl --user restart --no-block xdg-desktop-portal-gtk.service polkit-agent.service")
 end)
 
 -- ---------------------------------------------------------------------------
@@ -144,8 +157,23 @@ hl.bind("SUPER + E", exec("nautilus"))
 hl.bind("SUPER + B", exec('sh -c \'exec "$BROWSER"\''))
 hl.bind("CTRL + ALT + H", exec("pkill fuzzel || caelestia clipboard"))
 
+-- ── Copy / paste on ALT (the ⌘ position), like macOS and the Pop!_OS keyd setup
+-- Other apps get CTRL + C / V. WezTerm gets ALT + C / V passed through, since
+-- CTRL + C there would interrupt the running command (wezterm.lua copies/pastes).
+local function clipboard_key(key)
+    return function()
+        local w = hl.get_active_window()
+        local mods = (w and w.class == "org.wezfurlong.wezterm") and "ALT" or "CTRL"
+        hl.dispatch(hl.dsp.send_shortcut({ mods = mods, key = key }))
+    end
+end
+hl.bind("ALT + C", clipboard_key("c"))
+hl.bind("ALT + V", clipboard_key("v"))
+
 -- ── Caelestia ───────────────────────────────────────────────────────────────
 hl.bind("SUPER + N", hl.dsp.global("caelestia:sidebar"))
+-- Hover-to-open is off (config/caelestia/shell.json), so the dashboard is on a key
+hl.bind("SUPER + A", hl.dsp.global("caelestia:dashboard"))
 hl.bind("CTRL + ALT + Delete", hl.dsp.global("caelestia:session"))
 hl.bind("SUPER + L", hl.dsp.global("caelestia:lock"))
 hl.bind("CTRL + SUPER + SHIFT + R", exec("caelestia shell -k; caelestia shell -d"))
@@ -176,18 +204,100 @@ for key, dir in pairs(dirs) do
 end
 
 -- ── Workspaces ──────────────────────────────────────────────────────────────
-for i = 1, 10 do
-    local key = i % 10 -- 10 maps to key 0
-    hl.bind("SUPER + " .. key, hl.dsp.focus({ workspace = i }))
-    hl.bind("SUPER + SHIFT + " .. key, hl.dsp.window.move({ workspace = i }))
+-- Each screen has its own slots 1–10. Screens are numbered left to right, so
+-- slot N is workspace N on the 1st screen, 10+N on the 2nd, 20+N on the 3rd…
+-- (names don't matter, so this survives kanshi layouts).
+--
+-- SUPER + W cycles how the slot keys behave:
+--   paired      – all screens switch together (left N, right 10+N)
+--   locked      – only the left screen switches; the others stay put
+--   independent – only the focused screen switches
+local modes = { "paired", "locked", "independent" }
+local mode = 1
+
+local function screens()
+    local list = hl.get_monitors()
+    table.sort(list, function(a, b) return a.position.x < b.position.x end)
+    return list
 end
 
-hl.bind("SUPER + mouse_down", hl.dsp.focus({ workspace = "e+1" }))
-hl.bind("SUPER + mouse_up", hl.dsp.focus({ workspace = "e-1" }))
-hl.bind("CTRL + ALT + up", hl.dsp.focus({ workspace = "e-1" }))
-hl.bind("CTRL + ALT + down", hl.dsp.focus({ workspace = "e+1" }))
-hl.bind("CTRL + ALT + SHIFT + up", hl.dsp.window.move({ workspace = "e-1" }))
-hl.bind("CTRL + ALT + SHIFT + down", hl.dsp.window.move({ workspace = "e+1" }))
+local function screen_index(list, mon)
+    for i, m in ipairs(list) do
+        if m.name == mon.name then return i end
+    end
+    return 1
+end
+
+local function slot_of(id)
+    return ((id - 1) % 10) + 1
+end
+
+-- The screen the slot keys act on: the left one when locked, else the focused one
+local function base_screen(list, active)
+    if modes[mode] == "locked" then return list[1] end
+    return active
+end
+
+local function show(n)
+    local list, active = screens(), hl.get_active_monitor()
+    if not active then return end
+    local m = modes[mode]
+    if m == "paired" then
+        for i, s in ipairs(list) do
+            if s.name ~= active.name then s:set_workspace((i - 1) * 10 + n) end
+        end
+        hl.dispatch(hl.dsp.focus({ workspace = (screen_index(list, active) - 1) * 10 + n }))
+    elseif m == "locked" and list[1].name ~= active.name then
+        list[1]:set_workspace(n) -- change the left screen, keep focus where it is
+    else
+        hl.dispatch(hl.dsp.focus({ workspace = (screen_index(list, active) - 1) * 10 + n }))
+    end
+end
+
+local function send(n)
+    local list, active = screens(), hl.get_active_monitor()
+    if not active then return end
+    local ws = (screen_index(list, base_screen(list, active)) - 1) * 10 + n
+    hl.dispatch(hl.dsp.window.move({ workspace = ws }))
+    -- If focus followed the window, bring the other screens along
+    local now = hl.get_active_monitor()
+    if modes[mode] == "paired" and now and now.active_workspace and now.active_workspace.id == ws then
+        show(n)
+    end
+end
+
+-- Next/previous slot (wraps 10 → 1), measured on the screen the keys act on
+local function step(d, fn)
+    local list, active = screens(), hl.get_active_monitor()
+    if not active then return end
+    local ws = base_screen(list, active).active_workspace
+    local cur = ws and ws.id and ws.id > 0 and slot_of(ws.id) or 1
+    fn((cur - 1 + d) % 10 + 1)
+end
+
+for i = 1, 10 do
+    local key = i % 10 -- 10 maps to key 0
+    hl.bind("SUPER + " .. key, function() show(i) end)
+    hl.bind("SUPER + SHIFT + " .. key, function() send(i) end)
+end
+
+hl.bind("SUPER + W", function()
+    mode = mode % #modes + 1
+    hl.notification.create({ text = "Workspaces: " .. modes[mode], timeout = 2000 })
+    if modes[mode] == "paired" then
+        -- Line the other screens up with the focused one
+        local active = hl.get_active_monitor()
+        local ws = active and active.active_workspace
+        if ws and ws.id and ws.id > 0 then show(slot_of(ws.id)) end
+    end
+end)
+
+hl.bind("SUPER + mouse_down", function() step(1, show) end)
+hl.bind("SUPER + mouse_up", function() step(-1, show) end)
+hl.bind("CTRL + ALT + up", function() step(-1, show) end)
+hl.bind("CTRL + ALT + down", function() step(1, show) end)
+hl.bind("CTRL + ALT + SHIFT + up", function() step(-1, send) end)
+hl.bind("CTRL + ALT + SHIFT + down", function() step(1, send) end)
 
 -- Special workspace (scratchpad)
 hl.bind("SUPER + S", hl.dsp.workspace.toggle_special("magic"))
