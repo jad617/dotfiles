@@ -61,13 +61,17 @@ zstyle ':completion:*:cd:*' ignore-parents parent pwd
 zstyle ':completion:*' squeeze-slashes true
 [[ -n $LS_COLORS ]] && zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
 
-# Full check (picks up new completion files) at most once a day; fast cached load otherwise
-if [[ ! -s "$ZDOT/.zcompdump" || -n "$ZDOT/.zcompdump"(#qN.mh+24) ]]; then
+# Full check (picks up new completion files) at most once a day; fast cached load otherwise.
+# The array glob matches only a non-empty dump modified in the last 24h (a glob
+# inside [[ ]] never expands, which made every shell do the full check).
+_fresh_dump=( "$ZDOT/.zcompdump"(N.Lk+0mh-24) )
+if (( ${#_fresh_dump} )); then
+  compinit -i -C
+else
   compinit -i
   touch "$ZDOT/.zcompdump"
-else
-  compinit -i -C
 fi
+unset _fresh_dump
 
 ##################################
 # 3) Navigation & Search

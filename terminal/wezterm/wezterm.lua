@@ -219,10 +219,6 @@ wezterm.on("workspace-changed", function(window, _)
 	window:toast_notification("Workspace", "Switched to: " .. (ws or "default"), nil, 3000)
 end)
 
-wezterm.on("window-config-reloaded", function(window, _)
-	window:toast_notification("WezTerm", "Config reloaded ✓", nil, 2000)
-end)
-
 --------------------------------------------------------------------------------
 -- Borders and inactive pane dimming
 --------------------------------------------------------------------------------
