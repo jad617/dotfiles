@@ -65,6 +65,8 @@ nixos/install-from-linux.sh
 
 Full guide, options and safety checks: **[INSTALL.md](INSTALL.md)**.
 
+Disk encryption and layout (LUKS + Btrfs, Secure Boot + TPM, later move to the NVMe) is planned: **[ENCRYPTION.md](ENCRYPTION.md)**.
+
 ### Test in a VM on macOS (`nixos/vm.sh`)
 
 On an Apple Silicon Mac, `nixos/vm.sh` creates an aarch64 NixOS VM in
@@ -80,7 +82,8 @@ nixos/vm.sh console     # serial console (localhost:4555)
 nixos/vm.sh start | stop | status | destroy
 ```
 
-Log in at the Ly screen in the UTM window as `jelasmar`. The first install asks for the
+In the UTM window the VM logs in by itself and stops at Caelestia's lock screen: unlock as
+`jelasmar` (the default `VM_USER`). The first install asks for the
 password (or generates one) and keeps it in your macOS login Keychain, never in the repo:
 `security find-generic-password -s nixos-vm -w` shows it. `VM_USER`, `VM_PASSWORD`,
 `VM_CPUS`, `VM_MEMORY_MB` and `VM_DISK_GB` override the defaults.
@@ -155,7 +158,7 @@ sudo nixos-rebuild dry-activate --upgrade
 sudo nixos-rebuild switch --rollback
 ```
 
-Or reboot and select the previous generation from the boot menu (systemd-boot on UEFI, GRUB otherwise).
+Or reboot and select the previous generation from the boot menu (Limine on UEFI, GRUB otherwise).
 
 ### Clean up old generations (free disk space)
 

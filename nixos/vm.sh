@@ -335,7 +335,7 @@ cmd_install() {
     vm_start
     wait_for_ssh
     cmd_rebuild
-    info "Done. Log in at Ly as $VM_USER (password: security find-generic-password -s $KEYCHAIN_ITEM -w)"
+    info "Done. It logs in by itself: unlock Caelestia's lock screen as $VM_USER (password: security find-generic-password -s $KEYCHAIN_ITEM -w)"
 }
 
 cmd_sync() {

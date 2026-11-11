@@ -41,6 +41,17 @@ in
         package = if nvidiaModern then nvidiaPkgs.stable else nvidiaPkgs.legacy_580;
       };
 
+      # Load the driver in the initrd so the Plymouth splash gets a full-resolution
+      # framebuffer (nvidia_drm.fbdev) instead of a blank or low-res screen.
+      # simpledrm is kept from starting: otherwise Plymouth starts on it, loses
+      # the screen when NVIDIA takes over (~2 s later) and boot text shows
+      # through; this way Plymouth waits for the NVIDIA screen.
+      boot.initrd.kernelModules = [ "nvidia" "nvidia_modeset" "nvidia_uvm" "nvidia_drm" ];
+      boot.kernelParams = [
+        "nvidia_drm.fbdev=1"
+        "initcall_blacklist=simpledrm_platform_driver_init"
+      ];
+
       # Hardware video decode through VA-API
       hardware.graphics.extraPackages = [ pkgs.nvidia-vaapi-driver ];
 

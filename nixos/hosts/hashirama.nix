@@ -17,6 +17,26 @@ in {
   # (ASPM) is on. Turning ASPM off stops them; the cost on a desktop is a few watts.
   boot.kernelParams = [ "pcie_aspm=off" ];
 
+  # Pop!_OS in the Limine menu: hands off to Pop's own systemd-boot on the
+  # NVMe's EFI partition (by partition GUID), so Pop's kernel updates
+  # (kernelstub) keep working and none of Pop's files are touched.
+  boot.loader.limine.extraEntries = ''
+    /Pop!_OS
+      protocol: efi
+      path: guid(5e1e0a58-8622-46a8-a0e0-503b8390586c):/EFI/systemd/systemd-bootx64.efi
+  '';
+
+  # Never sleep: with the KVM on the other PC this one sees no input, idles,
+  # and didn't wake back up (NVIDIA resume / no wake event through the KVM).
+  # Caelestia only locks on idle (config/caelestia/shell.json); this also
+  # blocks suspend/hibernate from anything else (session menu, logind).
+  systemd.sleep.settings.Sleep = {
+    AllowSuspend              = "no";
+    AllowHibernation          = "no";
+    AllowHybridSleep          = "no";
+    AllowSuspendThenHibernate = "no";
+  };
+
   # Data partition shared with Pop!_OS; nofail so a missing disk never blocks boot
   fileSystems."/backup" = {
     device  = "/dev/disk/by-uuid/2c3a73fc-83cb-470b-8b57-ed1a361ad86c";
