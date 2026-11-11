@@ -16,8 +16,9 @@
 #   - Prompts for username / hostname / timezone
 #   - Copies flake.nix + configuration.nix (with substitutions) to /etc/nixos/
 #   - Enables Nix flakes
-#   - Runs nixos-rebuild switch
-#   - Creates all dotfiles symlinks
+#   - Creates all dotfiles symlinks (link-dotfiles.sh), first: they need no network
+#   - Runs nixos-rebuild switch (a failure, e.g. offline, is reported at the end;
+#     the steps after it still run)
 #   - Sets up TPM, neovim python, zsh default shell
 # =============================================================================
 set -euo pipefail
@@ -28,14 +29,6 @@ NIXOS_DIR="$DOTFILES/nixos"
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-symlink() {
-    local src=$1 dst=$2
-    mkdir -p "$(dirname "$dst")"
-    rm -rf "$dst"
-    ln -s "$src" "$dst"
-    echo "  linked: $dst"
-}
-
 clone_if_missing() {
     local repo=$1 dest=$2
     if [[ ! -d "$dest" ]]; then
@@ -134,60 +127,35 @@ echo "  Done — /etc/nixos/:"
 ls /etc/nixos/
 
 # ---------------------------------------------------------------------------
+# Dotfiles symlinks: before the rebuild, which needs network. Without them
+# Hyprland writes its own default config, which does not start Caelestia
+# ---------------------------------------------------------------------------
+header "Creating dotfiles symlinks"
+bash "$NIXOS_DIR/link-dotfiles.sh"
+
+# ---------------------------------------------------------------------------
 # nixos-rebuild switch
 # ---------------------------------------------------------------------------
 header "Running nixos-rebuild switch (this will take a while on first run)"
 # Lock first: adds inputs missing from flake.lock (never updates existing
 # ones). A lock written mid-rebuild breaks the flake's hash
-sudo nix --extra-experimental-features "nix-command flakes" flake lock /etc/nixos
-sudo nixos-rebuild switch --impure --flake "/etc/nixos#$FLAKE_HOST" 2>&1 | tee /tmp/nixos-rebuild.log || {
-    echo
-    echo "ERROR: nixos-rebuild failed. Check /tmp/nixos-rebuild.log"
-    exit 1
-}
-
-# Keep the last 3 system generations; the weekly nix-gc frees their space
-sudo nix-env --profile /nix/var/nix/profiles/system --delete-generations +3 >/dev/null
-
-# ---------------------------------------------------------------------------
-# Dotfiles symlinks
-# ---------------------------------------------------------------------------
-header "Creating dotfiles symlinks"
-
-# Shell
-symlink "$DOTFILES/shell/zsh/my_aliases.sh"  "$HOME/.my_aliases.sh"
-symlink "$DOTFILES/shell/zsh/zshrc"          "$HOME/.zshrc"
-
-# Prompt
-symlink "$DOTFILES/shell/prompt/ohmyposh"    "$HOME/.config/ohmyposh"
-
-# Editor
-symlink "$DOTFILES/editors/nvim"             "$HOME/.config/nvim"
-
-# Terminal
-symlink "$DOTFILES/terminal/wezterm/wezterm.lua" "$HOME/.wezterm.lua"
-symlink "$DOTFILES/terminal/kitty"           "$HOME/.config/kitty"
-symlink "$DOTFILES/terminal/zellij"          "$HOME/.config/zellij"
-symlink "$DOTFILES/terminal/tmux/tmux.conf"  "$HOME/.tmux.conf"
-
-# Hyprland ecosystem
-symlink "$NIXOS_DIR/config/hypr"             "$HOME/.config/hypr"
-
-# Display profiles
-symlink "$NIXOS_DIR/config/kanshi"           "$HOME/.config/kanshi"
-
-# Caelestia shell defaults (opaque panels). Copied, not linked: Caelestia
-# rewrites this file when settings change in its UI, so only seed it once
-if [[ ! -e "$HOME/.config/caelestia/shell.json" ]]; then
-    mkdir -p "$HOME/.config/caelestia"
-    cp "$NIXOS_DIR/config/caelestia/shell.json" "$HOME/.config/caelestia/shell.json"
-    echo "  created: $HOME/.config/caelestia/shell.json"
+REBUILD_FAILED=""
+REBUILD_LOG="$HOME/.cache/nixos-rebuild.log" # not /tmp: it must survive a reboot
+mkdir -p "$(dirname "$REBUILD_LOG")"
+if ! getent hosts github.com >/dev/null 2>&1 && ! getent hosts cache.nixos.org >/dev/null 2>&1; then
+    echo "  WARNING: no network (github.com does not resolve): the rebuild will probably fail."
+    echo "           Connect first (nmtui, or a cable), then run init.sh again."
 fi
-
-# GTK theme + icons
-symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-3.0/settings.ini"
-symlink "$NIXOS_DIR/config/gtk/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"
-symlink "$NIXOS_DIR/config/gtk/gtk-4.0.css"  "$HOME/.config/gtk-4.0/gtk.css"
+if sudo nix --extra-experimental-features "nix-command flakes" flake lock /etc/nixos &&
+    sudo nixos-rebuild switch --impure --flake "/etc/nixos#$FLAKE_HOST" 2>&1 | tee "$REBUILD_LOG"; then
+    # Keep the last 3 system generations; the weekly nix-gc frees their space
+    sudo nix-env --profile /nix/var/nix/profiles/system --delete-generations +3 >/dev/null
+else
+    REBUILD_FAILED=1
+    echo
+    echo "  ERROR: nixos-rebuild failed (log: $REBUILD_LOG). Continuing with the rest;"
+    echo "         the system stays as it was. Fix the cause, then run init.sh again."
+fi
 
 # Apply icon theme + dark mode via gsettings (required for GTK4/libadwaita apps)
 header "Applying GTK icon theme and color scheme"
@@ -195,13 +163,6 @@ export XDG_DATA_DIRS="/run/current-system/sw/share:${XDG_DATA_DIRS:-/usr/local/s
 gsettings set org.gnome.desktop.interface icon-theme  'Papirus-Dark'  2>/dev/null && echo "  icon-theme  → Papirus-Dark"   || echo "  gsettings unavailable (run after rebuild)"
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'  2>/dev/null && echo "  color-scheme → prefer-dark"    || true
 gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic' 2>/dev/null || true
-
-# Wallpapers
-mkdir -p "$HOME/Pictures"
-symlink "$DOTFILES/wallpapers" "$HOME/Pictures/Wallpapers"
-
-# Screenshots directory
-mkdir -p "$HOME/Pictures/Screenshots"
 
 # ---------------------------------------------------------------------------
 # Disable Copilot in Neovim by default (touch ~/.disable_copilot to keep off,
@@ -298,3 +259,9 @@ echo "│  Wallpapers: ~/Pictures/Wallpapers/                     │"
 echo "│    default → quasar.webp                                │"
 echo "└─────────────────────────────────────────────────────────┘"
 echo
+if [[ -n $REBUILD_FAILED ]]; then
+    echo "  ERROR: nixos-rebuild failed: see $REBUILD_LOG"
+    echo "         Everything else above is done. Run init.sh again once it is fixed."
+    echo
+    exit 1
+fi

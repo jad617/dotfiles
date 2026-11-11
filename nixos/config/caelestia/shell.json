@@ -3,5 +3,8 @@
     "transparency": {
       "enabled": false
     }
+  },
+  "dashboard": {
+    "showOnHover": false
   }
 }
