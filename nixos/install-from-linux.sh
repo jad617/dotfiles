@@ -17,17 +17,20 @@
 #                  or names separated by commas (the guided mode asks)
 #     --ssh S      SSH keys / files from ~/.ssh to copy to NixOS: none (default), all, or
 #                  names separated by commas, e.g. id_rsa,known_hosts (the guided mode asks)
+#     --encrypt    NixOS partition as LUKS2 (passphrase at boot) + Btrfs subvolumes
+#                  @ @home @nix @log, zstd compression (the guided mode asks)
 #     --host       flake host (default: this machine's hostname if hosts/<it>.nix exists;
 #                  required on a live CD)
 #     --user       NixOS user (default: you; required on a live CD)
 #     --timezone   e.g. Europe/Paris (default: this system's, America/Toronto on a live CD)
 #   NIXOS_PASSWORD=...                   skip the password prompt
+#   NIXOS_LUKS_PASSPHRASE=...            skip the disk passphrase prompt (--encrypt)
 #   NIXOS_INSTALL_YES=1                  skip the typed confirmation
 #   NIXOS_INSTALL_ALLOW_OS_DISK=/dev/X   let DISK mode erase X although it holds another OS
 #   NIXOS_INSTALL_TEXT=1                 numbered prompts instead of the arrow-key menus
 #
-# Then reboot, pick "Linux Boot Manager" on that disk in the firmware boot
-# menu (F8 / F11 / F12), log in and run: bash ~/nodestack/dotfiles/nixos/init.sh
+# Then reboot, pick "Limine" on that disk in the firmware boot menu
+# (F8 / F11 / F12), log in and run: bash ~/nodestack/dotfiles/nixos/init.sh
 # See nixos/INSTALL.md.
 # =============================================================================
 set -euo pipefail
@@ -228,7 +231,8 @@ ui_checklist() {
 
 # --- arguments ----------------------------------------------------------------------
 HOST="" USERNAME="" TIMEZONE="" DISK="" BOOT_PART="" ROOT_PART=""
-FREE_DISK="" SHRINK_PART="" SHRINK_GIB="" NIXOS_GIB="" WIFI_ARG="" SSH_ARG=""
+FREE_DISK="" SHRINK_PART="" SHRINK_GIB="" NIXOS_GIB="" WIFI_ARG="" SSH_ARG="" ENCRYPT=""
+LUKS_NAME=cryptroot LUKS_LABEL=nixos-crypt
 while (($#)); do
     case $1 in
     --host) HOST=$2 && shift 2 ;;
@@ -242,7 +246,8 @@ while (($#)); do
     --size) NIXOS_GIB=$2 && shift 2 ;;
     --wifi) WIFI_ARG=$2 && shift 2 ;;
     --ssh) SSH_ARG=$2 && shift 2 ;;
-    -h | --help) sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
+    --encrypt) ENCRYPT=1 && shift ;;
+    -h | --help) sed -n '3,33p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
     -*) die "unknown option: $1" ;;
     *) DISK=$1 && shift ;;
     esac
@@ -316,12 +321,14 @@ boot_entry_of() { # PARTITION -> name of the firmware boot entry that points to 
         sed 's/^Boot[0-9A-Fa-f]\{4\}\*\{0,1\} *//; s/[[:space:]]*HD(.*//' || true
 }
 # Another OS on the disk: a partition that a firmware boot entry points to (except NixOS's
-# own NIXBOOT, so re-installing works), or LUKS / LVM / Windows / ZFS partitions.
+# own NIXBOOT, so re-installing works), or LUKS / LVM / Windows / ZFS partitions (except
+# NixOS's own LUKS partition, labelled nixos-crypt by --encrypt).
 # Needs no mounting, so it also finds Pop!_OS from a live CD, where nothing of it is mounted.
 os_problem() { # DISK -> reason, or nothing
     local d=$1 p fstype entry
     while read -r p; do
         fstype=$(lsblk -dno FSTYPE "$p")
+        [[ $fstype == crypto_LUKS && $(lsblk -dno LABEL "$p") == "$LUKS_LABEL" ]] && continue
         case $fstype in
         crypto_LUKS | LVM2_member | ntfs | BitLocker | zfs_member)
             echo "$d holds another OS or encrypted data: $p is $fstype" && return
@@ -529,6 +536,17 @@ How many GiB should it keep? ($lo to $hi; NixOS gets the rest)" "$(((lo + hi) / 
         ROOT_PART=$REPLY
         ;;
     esac
+    if [[ -z $ENCRYPT ]] && ui_yesno "Encryption" "Encrypt NixOS's partition?
+
+Yes: LUKS2, with a passphrase typed at every boot (on the boot splash), and Btrfs
+inside it (subvolumes @ @home @nix @log, zstd compression). Without the passphrase
+the data can't be read, even from another computer or a live USB.
+No: plain ext4, as before.
+
+The EFI partition stays unencrypted (it only holds the boot loader and kernels)." "Encrypt (LUKS2 + Btrfs)" "No encryption (ext4)"; then
+        ENCRYPT=1
+    fi
+    [[ -n $ENCRYPT ]] && CRUMBS+=("encrypted")
 else
     if [[ -n $DISK ]]; then
         MODE=erase
@@ -589,7 +607,7 @@ parts)
         [[ /dev/$(lsblk -dno PKNAME "$p") == "$DISK" ]] || die "--boot-part and --root-part must be on the same disk"
         [[ -z $(mounted_in "$p") ]] || die "$p is in use (mounted on $(mounted_in "$p"))"
     done
-    [[ $(lsblk -dno PTTYPE "$DISK") == gpt ]] || die "$DISK is not GPT (systemd-boot needs a GPT EFI partition)"
+    [[ $(lsblk -dno PTTYPE "$DISK") == gpt ]] || die "$DISK is not GPT (the UEFI boot loader needs a GPT EFI partition)"
     [[ $(lsblk -dno PARTTYPE "$BOOT_PART") == "$EFI_TYPE" ]] || die "$BOOT_PART is not an EFI system partition (GPT type EF00)"
     BOOT_DEV=$BOOT_PART ROOT_DEV=$ROOT_PART
     ;;
@@ -629,6 +647,18 @@ while [[ -z $PASSWORD ]]; do
     ui_password "Password" "Again:"
     if [[ -n $p1 && $p1 == "$REPLY" ]]; then PASSWORD=$p1; else ui_msg "Password" "Empty, or they do not match. Try again."; fi
 done
+LUKS_PASS=""
+if [[ -n $ENCRYPT ]]; then
+    LUKS_PASS=${NIXOS_LUKS_PASSPHRASE:-}
+    while [[ -z $LUKS_PASS ]]; do
+        ui_password "Disk passphrase" "Passphrase to unlock NixOS's disk at boot (if it's lost, the data is gone):"
+        p1=$REPLY
+        ui_password "Disk passphrase" "Again:"
+        if [[ -n $p1 && $p1 == "$REPLY" ]]; then LUKS_PASS=$p1; else ui_msg "Disk passphrase" "Empty, or they do not match. Try again."; fi
+    done
+    # The boot prompt uses the US keyboard layout: characters typed differently elsewhere won't match
+    [[ $LUKS_PASS =~ ^[[:print:]]+$ ]] || die "the disk passphrase has characters that can't be typed at the boot prompt"
+fi
 
 # --- Wi-Fi to copy: NixOS is online at its first boot (init.sh, updates and the network menu need it)
 WIFI_UUIDS=() WIFI_NAMES=() WIFI_NOTE=""
@@ -700,7 +730,12 @@ fi
 # --- summary, warnings, confirmation --------------------------------------------------------------
 model=$(lsblk -dno MODEL "$DISK" 2>/dev/null | sed 's/ *$//' || true)
 disk_line="$DISK${model:+  $model}  $(lsblk -dno SIZE "$DISK" | tr -d ' ')"
-lines=("Host      $HOST ($host_system)" "User      $USERNAME" "Timezone  $TIMEZONE" "Disk      $disk_line" "")
+lines=("Host      $HOST ($host_system)" "User      $USERNAME" "Timezone  $TIMEZONE" "Disk      $disk_line")
+if [[ -n $ENCRYPT ]]; then
+    lines+=("NixOS     LUKS2 (passphrase at boot) + Btrfs: @ @home @nix @log, zstd" "")
+else
+    lines+=("NixOS     ext4, not encrypted" "")
+fi
 case $MODE in
 erase)
     lines+=("ERASED    everything on $DISK" "          -> new GPT: 1 GiB EFI (NIXBOOT) + NixOS (nixos) on the rest")
@@ -807,7 +842,8 @@ step "nixos-install and disk tools (nixpkgs ${rev:0:7})"
 tools=$("${NIX[@]}" build --no-link --print-out-paths \
     "github:nixos/nixpkgs/$rev#nixos-install-tools" "github:nixos/nixpkgs/$rev#parted" \
     "github:nixos/nixpkgs/$rev#dosfstools" "github:nixos/nixpkgs/$rev#e2fsprogs" \
-    "github:nixos/nixpkgs/$rev#gptfdisk" "github:nixos/nixpkgs/$rev#efibootmgr")
+    "github:nixos/nixpkgs/$rev#gptfdisk" "github:nixos/nixpkgs/$rev#efibootmgr" \
+    ${ENCRYPT:+"github:nixos/nixpkgs/$rev#cryptsetup" "github:nixos/nixpkgs/$rev#btrfs-progs"})
 TOOL_PATH=""
 for t in $tools; do
     if [[ -d $t/bin ]]; then TOOL_PATH+="$t/bin:"; fi
@@ -944,15 +980,44 @@ for p in "$BOOT_DEV" "$ROOT_DEV"; do
     is_sys_disk "/dev/$(lsblk -dno PKNAME "$p")" && die "$p is on the running system's disk: stopping"
 done
 as_root mkfs.fat -F 32 -n NIXBOOT "$BOOT_DEV" >/dev/null
-as_root mkfs.ext4 -qF -L nixos "$ROOT_DEV"
 sudo mkdir -p "$MNT"
-sudo mount "$ROOT_DEV" "$MNT"
-sudo mkdir -p "$MNT/boot"
+# unmount everything, then close the LUKS mapping (on exit, also after an error)
+cleanup_mnt() {
+    sudo umount -R "$MNT" 2>/dev/null || true
+    if [[ -n $ENCRYPT && -e /dev/mapper/$LUKS_NAME ]]; then as_root cryptsetup close "$LUKS_NAME" 2>/dev/null || true; fi
+    return 0
+}
+if [[ -n $ENCRYPT ]]; then
+    # --encrypt: LUKS2 on the NixOS partition, Btrfs inside, one subvolume per mount point
+    [[ ! -e /dev/mapper/$LUKS_NAME ]] || die "/dev/mapper/$LUKS_NAME is already open on this system: close it first (sudo cryptsetup close $LUKS_NAME)"
+    info "Encrypting $ROOT_DEV (LUKS2)"
+    # the passphrase goes through stdin, never on a command line
+    printf '%s' "$LUKS_PASS" | as_root cryptsetup luksFormat --type luks2 --label "$LUKS_LABEL" \
+        --batch-mode --key-file=- "$ROOT_DEV"
+    printf '%s' "$LUKS_PASS" | as_root cryptsetup open --key-file=- "$ROOT_DEV" "$LUKS_NAME"
+    trap cleanup_mnt EXIT
+    CRYPT_DEV=/dev/mapper/$LUKS_NAME
+    as_root mkfs.btrfs -q -f -L nixos "$CRYPT_DEV"
+    sudo mount "$CRYPT_DEV" "$MNT"
+    for sv in @ @home @nix @log; do as_root btrfs -q subvolume create "$MNT/$sv"; done
+    sudo umount "$MNT"
+    opts=compress=zstd,noatime
+    sudo mount -o "subvol=@,$opts" "$CRYPT_DEV" "$MNT"
+    sudo mkdir -p "$MNT/home" "$MNT/nix" "$MNT/var/log" "$MNT/boot"
+    sudo mount -o "subvol=@home,$opts" "$CRYPT_DEV" "$MNT/home"
+    sudo mount -o "subvol=@nix,$opts" "$CRYPT_DEV" "$MNT/nix"
+    sudo mount -o "subvol=@log,$opts" "$CRYPT_DEV" "$MNT/var/log"
+else
+    as_root mkfs.ext4 -qF -L nixos "$ROOT_DEV"
+    sudo mount "$ROOT_DEV" "$MNT"
+    sudo mkdir -p "$MNT/boot"
+fi
 sudo mount -o umask=077 "$BOOT_DEV" "$MNT/boot"
-trap 'sudo umount -R "$MNT" 2>/dev/null || true' EXIT
+trap cleanup_mnt EXIT
 echo "  mounted on $MNT"
 if [[ -n ${NIXOS_INSTALL_STOP_AFTER_DISK:-} ]]; then # tests only
-    sudo umount -R "$MNT" && trap - EXIT
+    findmnt -R -o TARGET,SOURCE,FSTYPE,OPTIONS "$MNT" | cut -c1-140
+    cleanup_mnt && trap - EXIT
     lsblk -o NAME,SIZE,FSTYPE,LABEL,PARTLABEL,UUID "$DISK"
     exit 0
 fi
@@ -964,6 +1029,17 @@ as_root bash "$NIXOS_DIR/write-config.sh" "$MNT" "$USERNAME" "$TIMEZONE"
 # (Pop!_OS: encrypted cryptswap; a live CD: zram), which NixOS would then wait for at boot
 sudo sed -z -i 's/swapDevices[[:space:]]*=[[:space:]]*\[[^]]*\];/swapDevices = [ ];/' \
     "$MNT/etc/nixos/hardware-configuration.nix"
+if [[ -n $ENCRYPT ]]; then
+    HWCONF=$MNT/etc/nixos/hardware-configuration.nix
+    # nixos-generate-config keeps subvol= but not the other mount options
+    sudo sed -i 's/"subvol=\(@[a-z]*\)"/"subvol=\1" "compress=zstd" "noatime"/g' "$HWCONF"
+    # Without the LUKS entry the initrd can't unlock the disk: NixOS wouldn't boot
+    sudo grep -q 'boot.initrd.luks.devices' "$HWCONF" ||
+        die "nixos-generate-config did not add boot.initrd.luks.devices to $HWCONF: stopping before the install"
+    [[ $(sudo grep -c '"compress=zstd"' "$HWCONF") -ge 4 ]] || warn "compress=zstd was not added to every Btrfs mount in $HWCONF"
+    echo "  LUKS unlock and Btrfs mounts in hardware-configuration.nix:"
+    sudo grep -E 'luks.devices|subvol=' "$HWCONF" | sed 's/^ */    /'
+fi
 
 # --- 6. install -------------------------------------------------------------------------------------
 step "nixos-install ${DIM}(the first build takes a while)${R}"
@@ -1010,23 +1086,50 @@ for u in ${STALE_UUIDS[@]+"${STALE_UUIDS[@]}"}; do
         as_root efibootmgr -q -b "$num" -B
     done
 done
+# A reformatted EFI partition keeps its partition GUID, so the firmware entries of the boot
+# loader it held before (e.g. systemd-boot, before Limine) still point at it, at files that
+# are gone. Done after the install: only entries whose file is really missing are removed
+# (the install itself writes Limine and the fallback EFI/BOOT/BOOTX64.EFI).
+boot_uuid=$(lsblk -dno PARTUUID "$BOOT_DEV")
+if [[ -n $boot_uuid ]]; then
+    while IFS=$'\t' read -r num file; do
+        [[ -n $file ]] || continue
+        if [[ -z $(sudo find "$MNT/boot" -ipath "$MNT/boot/$file" -print -quit 2>/dev/null) ]]; then
+            info "Removing the firmware boot entry Boot$num (its file $file is gone from the EFI partition)"
+            as_root efibootmgr -q -b "$num" -B
+        fi
+    done < <(as_root efibootmgr -v | grep -i "HD([0-9]*,GPT,$boot_uuid" |
+        sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\).*HD([^)]*)\/\(File(\)\{0,1\}\(\\[^ )]*\.[Ee][Ff][Ii]\).*/\1\t\3/p' |
+        sed 's/\\/\//g; s/\t\//\t/')
+fi
+# Entries whose device path is only a vendor placeholder (no disk, no file) are left from
+# installs that are gone on some firmware (AMI); they're listed, not removed, since that
+# format is firmware-specific
+ORPHAN_ENTRIES=$(as_root efibootmgr -v | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} \(.*\)\tVenHw([^)]*)$/\1 \2/p' || true)
 
-sudo umount -R "$MNT"
+cleanup_mnt
 trap - EXIT
 
 # --- done -------------------------------------------------------------------------------------------
 boot_now=$(as_root efibootmgr 2>/dev/null || true)
-nixos_entry=$(sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} Linux Boot Manager.*/\1/p' <<<"$boot_now" | head -1)
+nixos_entry=$(sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\{0,1\} Limine.*/\1/p' <<<"$boot_now" | head -1)
 order=$(sed -n 's/^BootOrder: //p' <<<"$boot_now")
 done_lines=()
 [[ -n $LIVE ]] && done_lines+=("0. Remove the live CD / USB")
 done_lines+=("1. Reboot, open the firmware boot menu (F8 / F11 / F12) and pick"
-    "     \"Linux Boot Manager\" on ${model:-$DISK} ($DISK)"
+    "     \"Limine\" on ${model:-$DISK} ($DISK)"
     "2. Log in as $USERNAME, then run:"
     "     bash ~/nodestack/dotfiles/nixos/init.sh"
     "3. Change the password if it was a temporary one: passwd")
 [[ -f $TABLE_BACKUP ]] && done_lines+=("" "Old partition table of $DISK: $TABLE_BACKUP")
 ((${#WIFI_UUIDS[@]})) || done_lines+=("" "No Wi-Fi was copied: on NixOS, connect with nmtui (or plug in a cable)")
+[[ -n $ENCRYPT ]] && done_lines+=("" "The boot asks for the disk passphrase on the splash (US keyboard layout),"
+    "then shows Caelestia's lock screen: unlock it with $USERNAME's password.")
+if [[ -n $ORPHAN_ENTRIES ]]; then
+    done_lines+=("" "Firmware entries that point at no disk (left from old installs?):")
+    while read -r num name; do done_lines+=("     Boot$num $name"); done <<<"$ORPHAN_ENTRIES"
+    done_lines+=("  remove one with: sudo efibootmgr -b NNNN -B")
+fi
 if [[ -n $order ]]; then
     done_lines+=("" "Boot order now: $order${nixos_entry:+ (NixOS = $nixos_entry)}")
     IFS=, read -ra o <<<"$order"

@@ -6,5 +6,16 @@
   },
   "dashboard": {
     "showOnHover": false
+  },
+  "general": {
+    "idle": {
+      "lockBeforeSleep": true,
+      "timeouts": [
+        {
+          "timeout": 900,
+          "idleAction": "lock"
+        }
+      ]
+    }
   }
 }

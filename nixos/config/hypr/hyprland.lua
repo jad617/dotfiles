@@ -45,7 +45,19 @@ end
 -- ---------------------------------------------------------------------------
 -- Autostart
 -- ---------------------------------------------------------------------------
+-- Auto-login from greetd (CAELESTIA_AUTOLOCK=1): Caelestia's lock screen is
+-- the login screen. Keybinds are off in this empty submap until autolock.sh
+-- confirms the lock (it logs out if it can't), and windows start only after.
+-- (Hyprland ignores a submap with no binds, hence the do-nothing one)
+hl.define_submap("autolock", function()
+    hl.bind("SUPER + F12", hl.dsp.no_op())
+end)
+local autolock = os.getenv("CAELESTIA_AUTOLOCK") == "1"
+
 hl.on("hyprland.start", function()
+    if autolock then
+        hl.dispatch(hl.dsp.submap("autolock"))
+    end
     -- Caelestia shell: bar, launcher, notifications, lock screen, idle, wallpaper
     hl.exec_cmd("caelestia shell -d")
     -- First login only: default wallpaper and the light theme generated from it
@@ -53,7 +65,11 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("[ -f ~/.local/state/caelestia/wallpaper/path.txt ] || { caelestia wallpaper -f ~/Pictures/Wallpapers/quasar.webp; caelestia scheme set -n dynamic -m light; }")
     hl.exec_cmd("wl-paste --watch cliphist store")
     hl.exec_cmd("blueman-applet")
-    hl.exec_cmd("/run/current-system/sw/bin/wezterm")
+    if autolock then
+        hl.exec_cmd("bash ~/.config/hypr/autolock.sh /run/current-system/sw/bin/wezterm")
+    else
+        hl.exec_cmd("/run/current-system/sw/bin/wezterm")
+    end
 end)
 
 -- KVM switching unplugs every screen at once; Wayland clients lose their

@@ -29,9 +29,37 @@ in {
   # ---------------------------------------------------------------------------
   # Boot
   # ---------------------------------------------------------------------------
-  # Auto-detected: systemd-boot on UEFI, GRUB on BIOS/MBR
-  boot.loader.systemd-boot.enable      = isEfi;
-  boot.loader.systemd-boot.configurationLimit = 3;   # boot menu: last 3 generations
+  # Auto-detected: Limine on UEFI (themed menu), GRUB on BIOS/MBR
+  boot.loader.limine = {
+    enable         = isEfi;
+    maxGenerations = 3;                 # boot menu: last 3 generations
+    # enableEditor stays off (default): editing entries would allow init=/bin/sh
+    # Also put Limine at the firmware's fallback path (EFI/BOOT/BOOT*.EFI), so
+    # NixOS still boots if the firmware forgets its boot entries (BIOS reset)
+    extraInstallCommands = ''
+      esp=${config.boot.loader.efi.efiSysMountPoint}
+      ${pkgs.coreutils}/bin/mkdir -p "$esp/EFI/BOOT"
+      for f in "$esp"/EFI/limine/BOOT*.EFI; do
+        if [ -e "$f" ]; then ${pkgs.coreutils}/bin/cp "$f" "$esp/EFI/BOOT/"; fi
+      done
+    '';
+    style = {
+      # NixOS-logo pattern in Catppuccin Macchiato, to match the Plymouth splash
+      wallpapers     = [ pkgs.nixos-artwork.wallpapers.nineish-catppuccin-macchiato.gnomeFilePath ];
+      wallpaperStyle = "stretched";
+      interface = {
+        branding        = "NixOS";
+        brandingColor   = "c6a0f6";     # Mauve
+        helpColor       = "8aadf4";     # Blue
+        helpColorBright = "a6da95";     # Green (countdown)
+      };
+      graphicalTerminal = {
+        foreground    = "cad3f5";       # Text
+        palette       = "494d64;ed8796;a6da95;eed49f;8aadf4;f5bde6;8bd5ca;b8c0e0";
+        brightPalette = "5b6078;ed8796;a6da95;eed49f;8aadf4;f5bde6;8bd5ca;a5adcb";
+      };
+    };
+  };
   boot.loader.grub.configurationLimit         = 3;
   boot.loader.efi.canTouchEfiVariables = isEfi;
   boot.loader.grub.enable              = !isEfi;
@@ -40,6 +68,23 @@ in {
   # Use latest kernel (matches NixOS ISO default)
   boot.kernelPackages = pkgs.linuxPackages_latest;
   # Host-specific kernelParams (e.g. NVIDIA) are set in hosts/
+
+  # Polished boot: menu for 2 s (dual boot), then a Catppuccin splash instead
+  # of kernel text (the initrd is systemd-based, so the handover is smooth);
+  # gpu.nix loads the GPU driver early so the splash has the full resolution.
+  boot.loader.timeout = 2;
+  boot.plymouth = {
+    enable = true;
+    theme  = "catppuccin-macchiato";
+    themePackages = [ (pkgs.catppuccin-plymouth.override { variant = "macchiato"; }) ];
+  };
+  boot.consoleLogLevel = 3;
+  boot.kernelParams = [
+    "quiet" "splash"
+    "loglevel=3" "rd.udev.log_level=3" "udev.log_priority=3"
+    "rd.systemd.show_status=auto"
+    "vt.global_cursor_default=0"   # no blinking text cursor before/after the splash
+  ];
 
   # ---------------------------------------------------------------------------
   # Networking
@@ -82,19 +127,27 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Display Manager — Ly (TUI DM, nixpkgs) — Catppuccin Macchiato
+  # Login — Caelestia's lock screen is the login screen
   # ---------------------------------------------------------------------------
-  services.displayManager = {
-    defaultSession = "hyprland";
-    ly = {
-      enable = true;
-      settings = {
-        # Catppuccin Macchiato: 0xSSRRGGBB (SS = styling bits)
-        bg       = "0x0024273a"; # Base
-        fg       = "0x00cad3f5"; # Text
-        border_fg = "0x00c6a0f6"; # Mauve
-        error_fg = "0x01ed8796"; # Red + bold
-        error_bg = "0x0024273a"; # Base
+  # greetd logs straight into Hyprland once per boot (initial_session) with
+  # CAELESTIA_AUTOLOCK=1, and hyprland.lua locks with Caelestia before anything
+  # else starts; if the lock can't be confirmed it logs out instead.
+  # After a logout, greetd shows tuigreet (text login) as the fallback.
+  # Hyprland's stdout/stderr (startup debug lines, Xwayland's xkbcomp warnings)
+  # go to the journal (journalctl -t hyprland) instead of the console, where
+  # they showed between the splash and the lock screen.
+  services.greetd = let
+    hyprland = "${pkgs.systemd}/bin/systemd-cat -t hyprland ${config.programs.hyprland.package}/bin/start-hyprland";
+  in {
+    enable = true;
+    settings = {
+      initial_session = {
+        user    = "YOUR_USERNAME";
+        command = "env CAELESTIA_AUTOLOCK=1 ${hyprland}";
+      };
+      default_session = {
+        user    = "greeter";
+        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --asterisks --cmd '${hyprland}'";
       };
     };
   };
@@ -189,6 +242,13 @@ in {
   };
   systemd.services.nix-gc.preStart =
     "${config.nix.package}/bin/nix-env --profile /nix/var/nix/profiles/system --delete-generations +3";
+
+  # Btrfs installs (install-from-linux.sh --encrypt): read everything once a month
+  # against its checksums, repairing metadata and reporting any damaged file
+  services.btrfs.autoScrub = {
+    enable   = (config.fileSystems."/".fsType or "") == "btrfs";
+    interval = "monthly";
+  };
 
   # ---------------------------------------------------------------------------
   # Shell

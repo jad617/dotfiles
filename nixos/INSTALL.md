@@ -6,11 +6,16 @@ pick one in the firmware boot menu.
 
 ```
 nvme0n1  Pop!_OS  ── never offered ──  EFI: nvme0n1p1, entry "Pop!_OS"
-sda      NixOS    sda2 EFI (NIXBOOT) + sda3 root (nixos)   entry "Linux Boot Manager"
+sda      NixOS    sda2 EFI (NIXBOOT) + sda3 root (nixos)   entry "Limine"
          + kept data partition (sda1 = /backup)
 ```
 
 The host must exist in `flake.nix` / `hosts/` (e.g. `hashirama`).
+
+With **encryption** (`--encrypt`, or "Encrypt" in the menus), the NixOS partition is LUKS2
+(label `nixos-crypt`) with Btrfs inside, subvolumes `@` `@home` `@nix` `@log`, zstd compression.
+The passphrase is typed at every boot on the Plymouth splash, then the boot shows Caelestia's lock
+screen. Plan and background: [ENCRYPTION.md](ENCRYPTION.md).
 
 ---
 
@@ -103,6 +108,7 @@ nixos/install-from-linux.sh --host hashirama /dev/nvme1n1                      #
 nixos/install-from-linux.sh --host hashirama --free-space /dev/sda [--size 400]
 nixos/install-from-linux.sh --host hashirama --shrink /dev/sda1 --keep 530 [--size 400]
 nixos/install-from-linux.sh --host hashirama --boot-part /dev/sda2 --root-part /dev/sda3
+nixos/install-from-linux.sh --host hashirama --boot-part /dev/sda2 --root-part /dev/sda3 --encrypt
 ```
 
 | Option / variable | Effect |
@@ -112,7 +118,9 @@ nixos/install-from-linux.sh --host hashirama --boot-part /dev/sda2 --root-part /
 | `--host`, `--user`, `--timezone` | as in the menus (`--host` and `--user` are required on a live CD) |
 | `--wifi W` | Wi-Fi networks to copy: `active` (default: the one connected now), `all`, `none`, or names separated by commas |
 | `--ssh S` | SSH items from `~/.ssh` to copy: `none` (default), `all`, or names separated by commas, e.g. `id_rsa,known_hosts` |
+| `--encrypt` | NixOS partition as LUKS2 + Btrfs (any layout); asks for the disk passphrase twice |
 | `NIXOS_PASSWORD=...` | password for the NixOS user, instead of the prompt |
+| `NIXOS_LUKS_PASSPHRASE=...` | disk passphrase (with `--encrypt`), instead of the prompt |
 | `NIXOS_INSTALL_YES=1` | skip the typed confirmation |
 | `NIXOS_INSTALL_ALLOW_OS_DISK=/dev/X` | let the erase mode wipe X although it holds another OS |
 
@@ -153,20 +161,28 @@ What changes on a live system (detected from `/etc/os-release` or a RAM root fil
 ## What the script does, in order
 
 1. **Nix**: installed if missing (`/nix` + `nix-daemon`), the only change to the running system.
-2. **Tools**: `nixos-install`, parted, gptfdisk, e2fsprogs, dosfstools, efibootmgr, from the nixpkgs
-   revision pinned in `flake.lock`.
+2. **Tools**: `nixos-install`, parted, gptfdisk, e2fsprogs, dosfstools, efibootmgr (+ cryptsetup
+   and btrfs-progs with `--encrypt`), from the nixpkgs revision pinned in `flake.lock`.
 3. **Disk**: unmount what the layout changes, then erase / convert MBR → GPT / shrink / add the two
    partitions.
 4. **Format**: EFI as FAT32 `NIXBOOT`, NixOS as ext4 `nixos`, mounted on `/mnt/nixos-install`.
+   With `--encrypt`: LUKS2 `nixos-crypt` opened as `cryptroot`, Btrfs `nixos` inside, subvolumes
+   `@` `@home` `@nix` `@log` mounted with `compress=zstd,noatime`. The passphrase only goes
+   through stdin.
 5. **Config**: `/etc/nixos` from this checkout (`write-config.sh`: flake, `configuration.nix`, hosts,
    GPU detection). The running system's swap is removed from `hardware-configuration.nix`, so NixOS
-   does not wait for Pop's encrypted swap at boot.
-6. **nixos-install**: systemd-boot on the new EFI partition. **The first build is long**: some
+   does not wait for Pop's encrypted swap at boot. With `--encrypt`, the generated
+   `boot.initrd.luks.devices."cryptroot"` entry is checked (it stops otherwise: NixOS couldn't
+   unlock its disk) and `compress=zstd` / `noatime` are added to the Btrfs mounts; the monthly
+   Btrfs scrub turns itself on (`configuration.nix`).
+6. **nixos-install**: Limine (themed boot menu) on the new EFI partition. **The first build is long**: some
    packages (Terraform, Vault, Steam, Chrome, Rust crates) are built from source.
 7. **User**: password; this checkout copied to `~/nodestack/dotfiles` on NixOS and its configs linked
    (`link-dotfiles.sh`: zsh, Neovim, WezTerm, tmux, Hyprland, GTK, wallpapers, Caelestia's
    `shell.json`); the chosen Wi-Fi networks copied (`export-wifi.sh`) and the chosen SSH keys
-   (`copy-ssh.sh`); stale firmware entries of an erased OS removed.
+   (`copy-ssh.sh`); stale firmware entries removed: those of an erased OS, and those that point at
+   the NixOS EFI partition at a file that's gone (e.g. the old boot loader's, after a reinstall).
+   Entries that point at no disk at all are listed at the end, not removed.
 
 So the first login already has your Hyprland config, which starts Caelestia, and is online, before
 `init.sh` ever runs.
@@ -181,7 +197,8 @@ Never offered, and refused when passed as arguments:
 
 - the disk the running system needs: what `/` and active swap sit on, and the live medium;
 - a disk holding another OS, except for an erase (behind the warning, or
-  `NIXOS_INSTALL_ALLOW_OS_DISK`);
+  `NIXOS_INSTALL_ALLOW_OS_DISK`). LUKS, LVM, Windows and ZFS partitions count as another OS,
+  except NixOS's own LUKS partition (label `nixos-crypt`), so an encrypted NixOS can be reinstalled;
 - for "two existing partitions": mounted partitions, partitions on different disks, a non-GPT disk,
   or a boot partition that is not an EFI System partition (type EF00).
 
@@ -193,11 +210,11 @@ grows the filesystem back to fill it and checks it again.
 
 ## After the install
 
-1. **Boot entries.** NixOS adds "Linux Boot Manager" and puts it first. Pop's entry stays. The
+1. **Boot entries.** NixOS adds "Limine" and puts it first. Pop's entry stays. The
    final box shows the exact command to put the other OS first again, e.g.:
 
    ```bash
-   efibootmgr                          # Boot0004* Pop!_OS, Boot0005* Linux Boot Manager
+   efibootmgr                          # Boot0004* Pop!_OS, Boot0007* Limine
    sudo efibootmgr -o 0004,0005,...    # Pop first again (keep the other numbers)
    ```
 
@@ -227,7 +244,7 @@ passwords are encrypted per system): use Chrome sync.
 NixOS lives only on its two partitions, so removing it does not affect Pop!_OS:
 
 ```bash
-efibootmgr                           # find "Linux Boot Manager" (and its "Fallback")
+efibootmgr                           # find "Limine" (and "UEFI OS" on NixOS's EFI partition)
 sudo efibootmgr -b 0005 -B           # delete each entry
 sudo wipefs -a /dev/sda2 /dev/sda3   # or delete the partitions and grow the data one
 ```
