@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# =============================================================================
+# nixos-shortcuts — the keyboard shortcuts Hyprland has loaded right now,
+# grouped, from `hyprctl binds` (so it is always the current config, edits
+# included once Hyprland reloads them).
+#
+#   nixos-shortcuts            everything
+#   nixos-shortcuts work       only lines matching "work" (group, keys or text)
+#
+# Groups and texts come from each bind's description in
+# nixos/config/hypr/hyprland.lua, written "Group: what it does". A bind with
+# no description is listed under "Other", so nothing goes missing.
+# Linked to ~/.local/bin by nixos/lib/link-dotfiles.sh.
+# =============================================================================
+set -euo pipefail
+
+case ${1:-} in
+-h | --help) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
+esac
+filter=${1:-}
+
+command -v hyprctl >/dev/null || { echo "nixos-shortcuts: hyprctl not found (this lists Hyprland's shortcuts)" >&2 && exit 1; }
+# From a TTY or SSH session: use the running Hyprland
+if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    sig=$(ls -t "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hypr" 2>/dev/null | head -1) || true
+    [[ -n $sig ]] && export HYPRLAND_INSTANCE_SIGNATURE=$sig
+fi
+binds=$(hyprctl binds -j 2>/dev/null) && [[ $binds == \[* ]] ||
+    { echo "nixos-shortcuts: Hyprland isn't running (or hyprctl can't reach it)" >&2 && exit 1; }
+
+# One line per action, in config order: group <TAB> keys <TAB> what it does.
+# Binds sharing a description are merged: "SUPER + ← / H", "SUPER + 1…0",
+# "SUPER + Scroll down, CTRL + ALT + ↓".
+rows=$(jq -r '
+  def mods: [
+    (if (./64|floor)%2==1 then "SUPER" else empty end),
+    (if (./4|floor)%2==1 then "CTRL" else empty end),
+    (if (./8|floor)%2==1 then "ALT" else empty end),
+    (if .%2==1 then "SHIFT" else empty end)
+  ] | join(" + ");
+  def pretty: {
+      "left": "←", "right": "→", "up": "↑", "down": "↓", "Return": "Enter",
+      "mouse:272": "Left drag", "mouse:273": "Right drag",
+      "mouse_down": "Scroll down", "mouse_up": "Scroll up",
+      "XF86AudioRaiseVolume": "Volume up key", "XF86AudioLowerVolume": "Volume down key",
+      "XF86AudioMute": "Mute key", "XF86AudioMicMute": "Mic mute key",
+      "XF86AudioPlay": "Play key", "XF86AudioPrev": "Previous key", "XF86AudioNext": "Next key",
+      "XF86MonBrightnessUp": "Brightness up key", "XF86MonBrightnessDown": "Brightness down key"
+    }[.] // .;
+  # in order of first appearance: [{k, items}]
+  def ordered_groups(f): reduce .[] as $x ([];
+      ($x | f) as $k
+      | (map(.k) | index($k)) as $i
+      | if $i == null then . + [{k: $k, items: [$x]}] else .[$i].items += [$x] end);
+
+  [ .[]
+    | select(.submap == "")                                  # not the login-only autolock map
+    | select(.description != "" or (.key != "" and (.key | test("_Lock$") | not)))  # Caelestia watchers
+    | .description = (if .description == "" then "Other: \(.dispatcher | sub("^HL.Dispatcher\\((?<d>.*)\\)$"; "\(.d)"))" else .description end)
+  ]
+  | ordered_groups(.description)[]
+  | .k as $desc
+  | (.items | ordered_groups(.modmask | mods)
+      | map(
+          (.items | map(.key)) as $ks
+          | (if ($ks | length) == 10 and all($ks[]; test("^[0-9]$")) then "1…0"
+             else $ks | map(pretty) | join(" / ") end) as $keys
+          | if .k == "" then $keys else "\(.k) + \($keys)" end)
+      | join(", ")) as $combo
+  | ($desc | capture("^(?<g>[^:]+): (?<t>.*)$") // {g: "Other", t: $desc}) as $d
+  | [$d.g, $combo, $d.t] | @tsv
+' <<<"$binds")
+
+if [[ -n $filter ]]; then
+    rows=$(grep -i -F -- "$filter" <<<"$rows") || { echo "No shortcut matches \"$filter\"" >&2 && exit 1; }
+fi
+
+# Colors only on a terminal (Catppuccin Macchiato: mauve groups, blue keys)
+if [[ -t 1 ]]; then
+    G=$'\e[1;38;2;198;160;246m' K=$'\e[38;2;138;173;244m' D=$'\e[2m' R=$'\e[0m'
+else
+    G= K= D= R=
+fi
+
+# Width of the keys column: the longest combo, at most 40 (longer ones get
+# their own line). ${#var} counts characters, so ← and … line up.
+width=0
+while IFS=$'\t' read -r _ combo _; do
+    ((${#combo} > width && ${#combo} <= 40)) && width=${#combo}
+done <<<"$rows"
+
+group=
+while IFS=$'\t' read -r g combo text; do
+    if [[ $g != "$group" ]]; then
+        [[ -n $group ]] && echo
+        printf '%s%s%s\n' "$G" "$g" "$R"
+        group=$g
+    fi
+    if ((${#combo} > width)); then
+        printf '  %s%s%s\n  %*s  %s\n' "$K" "$combo" "$R" "$width" "" "$text"
+    else
+        printf '  %s%s%s%*s  %s\n' "$K" "$combo" "$R" $((width - ${#combo})) "" "$text"
+    fi
+done <<<"$rows"
+[[ -n $filter ]] || printf '\n%sLive from Hyprland · nixos-shortcuts <word> to filter%s\n' "$D" "$R"

@@ -136,6 +136,12 @@ hl.config({
         new_status = "master",
     },
 
+    -- No switch to HDR for fullscreen apps. The LG is HDR-capable, and fullscreen
+    -- Chrome made it go HDR and show its (SDR) pages very dark; desktop stays sRGB
+    render = {
+        cm_auto_hdr = 0,
+    },
+
     misc = {
         force_default_wallpaper  = 0,
         disable_hyprland_logo    = true,
@@ -163,13 +169,17 @@ hl.window_rule({ name = "pip", match = { title = "Picture-in-Picture" }, float =
 local exec = hl.dsp.exec_cmd
 local dirs = { left = "left", right = "right", up = "up", down = "down", H = "left", J = "down", K = "up", L = "right" }
 
+-- Every bind has a description, "Group: what it does": nixos-shortcuts
+-- (nixos/bin) lists them from the running Hyprland, grouped, so keep one on
+-- each new bind (one without shows up under "Other")
+
 -- ── Launchers ───────────────────────────────────────────────────────────────
-hl.bind("SUPER + Return", exec("wezterm"))
+hl.bind("SUPER + Return", exec("wezterm"), { description = "Apps: Terminal (WezTerm)" })
 -- Over IPC: the caelestia:launcher shortcut only toggles on key release
-hl.bind("SUPER + D", exec("caelestia shell drawers toggle launcher"))
-hl.bind("SUPER + E", exec("nautilus"))
-hl.bind("SUPER + B", exec('sh -c \'exec "$BROWSER"\''))
-hl.bind("CTRL + ALT + H", exec("pkill fuzzel || caelestia clipboard"))
+hl.bind("SUPER + D", exec("caelestia shell drawers toggle launcher"), { description = "Apps: Launcher" })
+hl.bind("SUPER + E", exec("nautilus"), { description = "Apps: Files (Nautilus)" })
+hl.bind("SUPER + B", exec('sh -c \'exec "$BROWSER"\''), { description = "Apps: Browser" })
+hl.bind("CTRL + ALT + H", exec("pkill fuzzel || caelestia clipboard"), { description = "Clipboard: History" })
 
 -- ── Copy / paste on ALT (the ⌘ position), like macOS and the Pop!_OS keyd setup
 -- Other apps get CTRL + C / V. WezTerm gets ALT + C / V passed through, since
@@ -181,40 +191,53 @@ local function clipboard_key(key)
         hl.dispatch(hl.dsp.send_shortcut({ mods = mods, key = key }))
     end
 end
-hl.bind("ALT + C", clipboard_key("c"))
-hl.bind("ALT + V", clipboard_key("v"))
+hl.bind("ALT + C", clipboard_key("c"), { description = "Clipboard: Copy" })
+hl.bind("ALT + V", clipboard_key("v"), { description = "Clipboard: Paste" })
 
 -- ── Caelestia ───────────────────────────────────────────────────────────────
-hl.bind("SUPER + N", hl.dsp.global("caelestia:sidebar"))
+hl.bind("SUPER + N", hl.dsp.global("caelestia:sidebar"), { description = "Shell: Sidebar (notifications)" })
 -- Hover-to-open is off (config/caelestia/shell.json), so the dashboard is on a key
-hl.bind("SUPER + A", hl.dsp.global("caelestia:dashboard"))
-hl.bind("CTRL + ALT + Delete", hl.dsp.global("caelestia:session"))
-hl.bind("SUPER + L", hl.dsp.global("caelestia:lock"))
-hl.bind("CTRL + SUPER + SHIFT + R", exec("caelestia shell -k; caelestia shell -d"))
+hl.bind("SUPER + A", hl.dsp.global("caelestia:dashboard"), { description = "Shell: Dashboard" })
+hl.bind("CTRL + ALT + Delete", hl.dsp.global("caelestia:session"), { description = "Shell: Session menu (log out, reboot, power off)" })
+hl.bind("SUPER + L", hl.dsp.global("caelestia:lock"), { description = "Shell: Lock screen" })
+hl.bind("CTRL + SUPER + SHIFT + R", exec("caelestia shell -k; caelestia shell -d"), { description = "Shell: Restart Caelestia" })
 
 -- ── Screenshots ─────────────────────────────────────────────────────────────
-hl.bind("Print", exec("grimblast copy area"))
-hl.bind("SHIFT + Print", exec("grimblast copy output"))
-hl.bind("SUPER + Print", exec("grimblast copysave output ~/Pictures/Screenshots/$(date +%Y%m%d_%H%M%S).png"))
+-- Saved as ~/Pictures/screenshots/YYYYMMDD_HHMMSS.png (folder made if missing,
+-- e.g. ~/Pictures is the shared drive), and on the clipboard. The capital
+-- ~/Pictures/Screenshots is Pop!_OS's
+local shot = "mkdir -p ~/Pictures/screenshots && grimblast copysave %s ~/Pictures/screenshots/$(date +%%Y%%m%%d_%%H%%M%%S).png"
+hl.bind("Print", exec(shot:format("area")), { description = "Screenshots: Area, saved + clipboard" })
+-- The Logitech keyboard's screenshot key sends SUPER + SHIFT + S (the Windows snip shortcut)
+hl.bind("SUPER + SHIFT + S", exec(shot:format("area")), { description = "Screenshots: Area, saved + clipboard" })
+hl.bind("SHIFT + Print", exec("grimblast copy output"), { description = "Screenshots: Screen, to the clipboard" })
+hl.bind("SUPER + Print", exec(shot:format("output")), { description = "Screenshots: Screen, saved + clipboard" })
 
 -- ── Window management ───────────────────────────────────────────────────────
-hl.bind("SUPER + Q", hl.dsp.window.close())
-hl.bind("SUPER + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
-hl.bind("SUPER + SHIFT + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
-hl.bind("SUPER + V", hl.dsp.window.float({ action = "toggle" }))
-hl.bind("SUPER + P", hl.dsp.window.pseudo())
-hl.bind("SUPER + G", hl.dsp.group.toggle())
+hl.bind("SUPER + Q", hl.dsp.window.close(), { description = "Windows: Close" })
+hl.bind("SUPER + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }), { description = "Windows: Fullscreen" })
+hl.bind("SUPER + SHIFT + F", hl.dsp.window.fullscreen({ mode = "maximized" }), { description = "Windows: Maximize (bar stays)" })
+hl.bind("SUPER + V", hl.dsp.window.float({ action = "toggle" }), { description = "Windows: Float / tile" })
+hl.bind("SUPER + P", hl.dsp.window.pseudo(), { description = "Windows: Pseudo-tile" })
+hl.bind("SUPER + G", hl.dsp.group.toggle(), { description = "Windows: Group (tabs)" })
 
 -- ── Focus / move / resize: arrows and H J K L ───────────────────────────────
 -- SUPER + L is the lock screen, so focus-right is only on the arrow key
+-- (in a fixed order, arrow then letter, so nixos-shortcuts lists them that way)
 local resize = { left = { -50, 0 }, right = { 50, 0 }, up = { 0, -50 }, down = { 0, 50 } }
-for key, dir in pairs(dirs) do
+local order = { "left", "H", "down", "J", "up", "K", "right", "L" }
+for _, key in ipairs(order) do
     if key ~= "L" then
-        hl.bind("SUPER + " .. key, hl.dsp.focus({ direction = dir }))
+        hl.bind("SUPER + " .. key, hl.dsp.focus({ direction = dirs[key] }), { description = "Focus: Focus " .. dirs[key] })
     end
-    hl.bind("SUPER + SHIFT + " .. key, hl.dsp.window.move({ direction = dir }))
-    local d = resize[dir]
-    hl.bind("SUPER + ALT + " .. key, hl.dsp.window.resize({ x = d[1], y = d[2], relative = true }), { repeating = true })
+end
+for _, key in ipairs(order) do
+    hl.bind("SUPER + SHIFT + " .. key, hl.dsp.window.move({ direction = dirs[key] }), { description = "Focus: Move window " .. dirs[key] })
+end
+for _, key in ipairs(order) do
+    local d = resize[dirs[key]]
+    hl.bind("SUPER + ALT + " .. key, hl.dsp.window.resize({ x = d[1], y = d[2], relative = true }),
+        { repeating = true, description = "Focus: Resize window " .. dirs[key] })
 end
 
 -- ── Workspaces ──────────────────────────────────────────────────────────────
@@ -222,12 +245,14 @@ end
 -- slot N is workspace N on the 1st screen, 10+N on the 2nd, 20+N on the 3rd…
 -- (port names don't matter, so this survives screens being re-plugged).
 --
--- SUPER + W cycles how the slot keys behave:
---   paired      – all screens switch together (left N, right 10+N)
---   locked      – only the left screen switches; the others stay put
---   independent – only the focused screen switches
-local modes = { "paired", "locked", "independent" }
-local mode = 1
+-- SUPER + W toggles how the slot keys behave:
+--   paired – all screens switch together (left N, right 10+N)
+--   locked – one screen stays put, the others switch (together, if several),
+--            even with focus on the locked one. The locked screen is the one
+--            that had focus when SUPER + W locked it (named in the
+--            notification). To lock another one: focus it, SUPER + W twice
+local mode = "paired"
+local locked_name -- name of the locked screen
 
 local function screens()
     local list = hl.get_monitors()
@@ -246,28 +271,56 @@ local function slot_of(id)
     return ((id - 1) % 10) + 1
 end
 
--- The screen the slot keys act on: the left one when locked, else the focused one
+-- Whether the slot keys leave this screen alone (locked, and more than one
+-- screen: with only the locked one left, it switches as usual)
+local function frozen(list, s)
+    return mode == "locked" and #list > 1 and s.name == locked_name
+end
+
+-- The screen the slot keys act on: the focused one, or when that one is
+-- locked, the first screen that isn't
 local function base_screen(list, active)
-    if modes[mode] == "locked" then return list[1] end
+    if frozen(list, active) then
+        for _, s in ipairs(list) do
+            if not frozen(list, s) then return s end
+        end
+    end
     return active
 end
 
+-- Hyprland sends no "workspace" event when a screen without focus switches,
+-- so Caelestia's bar on it wouldn't update (or animate). Focus going over to
+-- that screen and back sends "focusedmon", which makes it re-read the screens;
+-- warps are off meanwhile, so the cursor doesn't move
+local function announce(name, back)
+    local warps = hl.get_config("cursor.no_warps")
+    hl.config({ cursor = { no_warps = true } })
+    hl.dispatch(hl.dsp.focus({ monitor = name }))
+    hl.dispatch(hl.dsp.focus({ monitor = back }))
+    hl.config({ cursor = { no_warps = warps } })
+end
+
+-- Every screen that isn't locked goes to slot N; focus stays where it is,
+-- moving with the switch only when the focused screen is one of them
 local function show(n)
     local list, active = screens(), hl.get_active_monitor()
     if not active then return end
-    local m = modes[mode]
-    if m == "paired" then
-        for i, s in ipairs(list) do
-            if s.name ~= active.name then s:set_workspace((i - 1) * 10 + n) end
+    local switched
+    for i, s in ipairs(list) do
+        if s.name ~= active.name and not frozen(list, s) then
+            s:set_workspace((i - 1) * 10 + n)
+            switched = switched or s.name
         end
+    end
+    if not frozen(list, active) then
+        -- this focus change sends "workspace": every bar re-reads its screen
         hl.dispatch(hl.dsp.focus({ workspace = (screen_index(list, active) - 1) * 10 + n }))
-    elseif m == "locked" and list[1].name ~= active.name then
-        list[1]:set_workspace(n) -- change the left screen, keep focus where it is
-    else
-        hl.dispatch(hl.dsp.focus({ workspace = (screen_index(list, active) - 1) * 10 + n }))
+    elseif switched then
+        announce(switched, active.name)
     end
 end
 
+-- From the locked screen this sends the window to a screen that isn't locked
 local function send(n)
     local list, active = screens(), hl.get_active_monitor()
     if not active then return end
@@ -275,7 +328,7 @@ local function send(n)
     hl.dispatch(hl.dsp.window.move({ workspace = ws }))
     -- If focus followed the window, bring the other screens along
     local now = hl.get_active_monitor()
-    if modes[mode] == "paired" and now and now.active_workspace and now.active_workspace.id == ws then
+    if now and now.active_workspace and now.active_workspace.id == ws then
         show(n)
     end
 end
@@ -291,46 +344,54 @@ end
 
 for i = 1, 10 do
     local key = i % 10 -- 10 maps to key 0
-    hl.bind("SUPER + " .. key, function() show(i) end)
-    hl.bind("SUPER + SHIFT + " .. key, function() send(i) end)
+    hl.bind("SUPER + " .. key, function() show(i) end, { description = "Workspaces: Go to slot 1–10" })
+    hl.bind("SUPER + SHIFT + " .. key, function() send(i) end, { description = "Workspaces: Send window to slot 1–10" })
 end
 
 hl.bind("SUPER + W", function()
-    mode = mode % #modes + 1
-    hl.notification.create({ text = "Workspaces: " .. modes[mode], timeout = 2000 })
-    if modes[mode] == "paired" then
+    local active = hl.get_active_monitor()
+    if not active then return end
+    if mode == "paired" then
+        mode, locked_name = "locked", active.name
+        -- "LG Electronics LG HDR WFHD 0x0005B707" -> "LG Electronics LG HDR WFHD"
+        local label = (active.description or "") ~= "" and active.description or active.name
+        local serial = active.serial or ""
+        if serial ~= "" and label:sub(-#serial) == serial then label = label:sub(1, -#serial - 2) end
+        hl.notification.create({ text = "Workspaces: " .. label .. " locked, stays put", timeout = 2000 })
+    else
+        mode, locked_name = "paired", nil
+        hl.notification.create({ text = "Workspaces: paired", timeout = 2000 })
         -- Line the other screens up with the focused one
-        local active = hl.get_active_monitor()
-        local ws = active and active.active_workspace
+        local ws = active.active_workspace
         if ws and ws.id and ws.id > 0 then show(slot_of(ws.id)) end
     end
-end)
+end, { description = "Workspaces: Toggle paired / locked (the focused screen stays put)" })
 
-hl.bind("SUPER + mouse_down", function() step(1, show) end)
-hl.bind("SUPER + mouse_up", function() step(-1, show) end)
-hl.bind("CTRL + ALT + up", function() step(-1, show) end)
-hl.bind("CTRL + ALT + down", function() step(1, show) end)
-hl.bind("CTRL + ALT + SHIFT + up", function() step(-1, send) end)
-hl.bind("CTRL + ALT + SHIFT + down", function() step(1, send) end)
+hl.bind("SUPER + mouse_down", function() step(1, show) end, { description = "Workspaces: Next slot" })
+hl.bind("SUPER + mouse_up", function() step(-1, show) end, { description = "Workspaces: Previous slot" })
+hl.bind("CTRL + ALT + up", function() step(-1, show) end, { description = "Workspaces: Previous slot" })
+hl.bind("CTRL + ALT + down", function() step(1, show) end, { description = "Workspaces: Next slot" })
+hl.bind("CTRL + ALT + SHIFT + up", function() step(-1, send) end, { description = "Workspaces: Send window to the previous slot" })
+hl.bind("CTRL + ALT + SHIFT + down", function() step(1, send) end, { description = "Workspaces: Send window to the next slot" })
 
 -- Special workspace (scratchpad)
-hl.bind("SUPER + S", hl.dsp.workspace.toggle_special("magic"))
-hl.bind("SUPER + SHIFT + S", hl.dsp.window.move({ workspace = "special:magic" }))
+hl.bind("SUPER + S", hl.dsp.workspace.toggle_special("magic"), { description = "Workspaces: Scratchpad, show / hide" })
+hl.bind("SUPER + CTRL + S", hl.dsp.window.move({ workspace = "special:magic" }), { description = "Workspaces: Scratchpad, send window there" })
 
 -- ── Media / volume / brightness ─────────────────────────────────────────────
-hl.bind("XF86AudioRaiseVolume", exec("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"), { locked = true, repeating = true })
-hl.bind("XF86AudioLowerVolume", exec("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { locked = true, repeating = true })
-hl.bind("XF86AudioMute", exec("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { locked = true })
-hl.bind("XF86AudioMicMute", exec("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { locked = true })
-hl.bind("XF86AudioPlay", exec("playerctl play-pause"), { locked = true })
-hl.bind("XF86AudioPrev", exec("playerctl previous"), { locked = true })
-hl.bind("XF86AudioNext", exec("playerctl next"), { locked = true })
-hl.bind("XF86MonBrightnessUp", exec("brightnessctl s 10%+"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown", exec("brightnessctl s 10%-"), { locked = true, repeating = true })
+hl.bind("XF86AudioRaiseVolume", exec("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"), { description = "Media: Volume up", locked = true, repeating = true })
+hl.bind("XF86AudioLowerVolume", exec("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-"), { description = "Media: Volume down", locked = true, repeating = true })
+hl.bind("XF86AudioMute", exec("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), { description = "Media: Mute", locked = true })
+hl.bind("XF86AudioMicMute", exec("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), { description = "Media: Mute the microphone", locked = true })
+hl.bind("XF86AudioPlay", exec("playerctl play-pause"), { description = "Media: Play / pause", locked = true })
+hl.bind("XF86AudioPrev", exec("playerctl previous"), { description = "Media: Previous track", locked = true })
+hl.bind("XF86AudioNext", exec("playerctl next"), { description = "Media: Next track", locked = true })
+hl.bind("XF86MonBrightnessUp", exec("brightnessctl s 10%+"), { description = "Media: Brightness up", locked = true, repeating = true })
+hl.bind("XF86MonBrightnessDown", exec("brightnessctl s 10%-"), { description = "Media: Brightness down", locked = true, repeating = true })
 
 -- ── Mouse: drag to move, right-drag to resize ───────────────────────────────
-hl.bind("SUPER + mouse:272", hl.dsp.window.drag(), { mouse = true })
-hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { mouse = true })
+hl.bind("SUPER + mouse:272", hl.dsp.window.drag(), { description = "Mouse: Move a window", mouse = true })
+hl.bind("SUPER + mouse:273", hl.dsp.window.resize(), { description = "Mouse: Resize a window", mouse = true })
 
 -- ---------------------------------------------------------------------------
 -- HyprMod managed settings (last, so changes made in the app win)

@@ -65,6 +65,8 @@ link() { # SRC DST, both as seen on NixOS
 link "$DOTFILES/shell/zsh/my_aliases.sh" "$HOME_DIR/.my_aliases.sh"
 link "$DOTFILES/shell/zsh/zshrc" "$HOME_DIR/.zshrc"
 link "$DOTFILES/shell/zsh/completions/_claude" "$HOME_DIR/.zfunc/_claude"
+# Commands (~/.local/bin is on PATH via my_aliases.sh)
+link "$NIXOS_DIR/bin/nixos-shortcuts" "$HOME_DIR/.local/bin/nixos-shortcuts"
 link "$DOTFILES/shell/prompt/ohmyposh" "$HOME_DIR/.config/ohmyposh"
 # Editor
 link "$DOTFILES/editors/nvim" "$HOME_DIR/.config/nvim"
@@ -81,7 +83,7 @@ link "$NIXOS_DIR/config/gtk/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.in
 link "$NIXOS_DIR/config/gtk/gtk-4.0.css" "$HOME_DIR/.config/gtk-4.0/gtk.css"
 # Wallpapers, screenshots
 link "$DOTFILES/wallpapers" "$HOME_DIR/Pictures/Wallpapers"
-[[ -L $ROOT$HOME_DIR/Pictures && ! -d $ROOT$HOME_DIR/Pictures ]] || mkdirs "$HOME_DIR/Pictures/Screenshots"
+[[ -L $ROOT$HOME_DIR/Pictures && ! -d $ROOT$HOME_DIR/Pictures ]] || mkdirs "$HOME_DIR/Pictures/screenshots"
 
 # Caelestia shell defaults (opaque panels). Copied, not linked: Caelestia
 # rewrites this file when settings change in its UI, so only seed it once

@@ -338,6 +338,7 @@ in {
     yaml-language-server
     basedpyright
     terraform-ls
+    tflint               # Terraform linter, run by nvim as an LSP (tflint --langserver)
     lua-language-server
     gopls
 

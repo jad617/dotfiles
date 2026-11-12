@@ -2,7 +2,25 @@ return {
   {
     "iamcco/markdown-preview.nvim",
     enabled = true,
-    build = function()
+    build = function(plugin)
+      -- NixOS can't run the prebuilt binary mkdp#util#install downloads (a
+      -- generic dynamically linked Linux executable). Without it the plugin
+      -- runs the same server with node (app/index.js), so install the app's
+      -- node packages instead and drop any downloaded binary
+      if vim.fn.filereadable("/etc/NIXOS") == 1 then
+        local app = plugin.dir .. "/app"
+        vim.fn.delete(app .. "/bin", "rf")
+        -- yarn (through npx, nothing to install) with the plugin's yarn.lock:
+        -- the exact versions the app is built for (npm resolves newer ones that
+        -- miss msgpack-lite), and --frozen-lockfile leaves the checkout clean
+        -- so Lazy can still update it
+        local out = vim.fn.system({ "npx", "--yes", "yarn", "install", "--cwd", app,
+          "--frozen-lockfile", "--production", "--non-interactive", "--silent" })
+        if vim.v.shell_error ~= 0 then
+          error("markdown-preview: yarn install failed:\n" .. out)
+        end
+        return
+      end
       require("lazy").load({ plugins = { "markdown-preview.nvim" } })
       vim.fn["mkdp#util#install"]()
     end,

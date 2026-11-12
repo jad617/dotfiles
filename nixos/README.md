@@ -101,32 +101,14 @@ If `utmctl` is not allowed to control UTM, the script asks you to press ▶ in U
 
 ### Keybinds
 
-| Key | Action |
-|-----|--------|
-| `SUPER + Enter` | Open terminal (WezTerm) |
-| `SUPER + D` | App launcher (Caelestia) |
-| `SUPER + N` | Sidebar: notifications and quick settings (Caelestia) |
-| `CTRL + ALT + Delete` | Session menu: lock, log out, reboot, shut down (Caelestia) |
-| `SUPER + L` | Lock screen (Caelestia) |
-| `CTRL + ALT + H` | Clipboard history (`caelestia clipboard`) |
-| `CTRL + SUPER + SHIFT + R` | Restart the Caelestia shell |
-| `SUPER + E` | File manager (Nautilus) |
-| `SUPER + B` | Browser (Chrome; Chromium on arm64) |
-| `SUPER + Q` | Close window |
-| `SUPER + F` | Fullscreen |
-| `SUPER + V` | Toggle floating |
-| `SUPER + S` | Toggle scratchpad |
-| `SUPER + 1-0` | Switch workspace |
-| `SUPER + SHIFT + 1-0` | Move window to workspace |
-| `SUPER + Arrows / H J K` | Focus window |
-| `SUPER + SHIFT + Arrows / H J K L` | Move window |
-| `SUPER + ALT + Arrows / H J K L` | Resize window |
-| `SUPER + mouse drag` | Move floating window |
-| `SUPER + right-click drag` | Resize floating window |
-| `Print` | Screenshot selection → clipboard |
-| `SHIFT + Print` | Screenshot monitor → clipboard |
-| `SUPER + SHIFT + S` | Move window to scratchpad |
-| `SUPER + Print` | Screenshot monitor → file |
+Run `nixos-shortcuts` in a terminal: it lists every shortcut Hyprland has
+loaded right now, grouped (apps, windows, workspaces, media…), so it is always
+up to date. `nixos-shortcuts <word>` filters, e.g. `nixos-shortcuts slot`.
+
+The texts are the `description` of each `hl.bind` in `config/hypr/hyprland.lua`,
+written `"Group: what it does"`; give new binds one too (a bind without one is
+listed under "Other"). The script is `bin/nixos-shortcuts`, linked to
+`~/.local/bin` by `lib/link-dotfiles.sh`.
 
 ---
 
