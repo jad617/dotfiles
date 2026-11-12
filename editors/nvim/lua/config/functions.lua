@@ -134,11 +134,10 @@ function GitCommitAmendAndForcePush()
   end
 end
 
+-- ALT + F only: SUPER + F (<D-f>) never reaches nvim (Hyprland's fullscreen,
+-- WezTerm's search on macOS, and WezTerm doesn't pass SUPER to apps)
 map("n", "<A-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
 map("i", "<A-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
-
-map("n", "<D-f>", ":lua GitCommitAmendAndForcePush()<CR>", options)
-map("i", "<D-f>", "<C-c>:lua GitCommitAmendAndForcePush()<CR>", options)
 
 map("n", "<A-/>", ':lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
 map("i", "<A-/>", '<C-c>:lua GitCommitAndPush(vim.fn.input("Git Push commit message: "))<CR> ', options)
