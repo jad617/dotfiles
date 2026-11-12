@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# =============================================================================
+# nixos-sync — apply this checkout to the running system, as it is right now
+# (whatever branch is checked out):
+#   1. writes flake.nix, configuration.nix, gpu.nix and hosts/ into /etc/nixos,
+#      filling in the placeholders (user, timezone) like init.sh does; keeps
+#      /etc/nixos's own hardware-configuration.nix, gpu.json and flake.lock
+#   2. shows what changed, then rebuilds and switches (only if something did);
+#      a failed rebuild puts the previous /etc/nixos back
+#   3. merges config/caelestia/shell.json into ~/.config/caelestia/shell.json,
+#      keeping what was changed in Caelestia's UI (lib/caelestia-merge.py)
+#   4. refreshes the dotfile links (lib/link-dotfiles.sh)
+#
+#   nixos-sync           ask before rebuilding
+#   nixos-sync -y        don't ask
+#   nixos-sync -n        dry run: only show the /etc/nixos diff
+#
+# Package versions don't change (that's nixos-update). Linked to ~/.local/bin
+# by nixos/lib/link-dotfiles.sh.
+# =============================================================================
+set -euo pipefail
+
+YES="" DRY=""
+for a in "$@"; do
+    case $a in
+    -y | --yes) YES=1 ;;
+    -n | --dry-run) DRY=1 ;;
+    -h | --help) sed -n '3,19p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
+    *) echo "nixos-sync: unknown option '$a' (see --help)" >&2 && exit 2 ;;
+    esac
+done
+[[ $EUID -ne 0 ]] || { echo "nixos-sync: run it as yourself, not root (it uses sudo)" >&2 && exit 1; }
+
+NIXOS_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)" # nixos/ (this file is in nixos/bin)
+ETC=/etc/nixos
+B=$'\033[1m' DIM=$'\033[2m' R=$'\033[0m'
+step() { printf '\n%s==> %s%s\n' "$B" "$1" "$R"; }
+
+[[ -f $ETC/hardware-configuration.nix ]] ||
+    { echo "nixos-sync: no $ETC/hardware-configuration.nix; this isn't an installed system (run init.sh)" >&2 && exit 1; }
+
+# Same host choice as init.sh / nixos-update
+host=$(hostname)
+if [[ -n ${NIXOS_HOST:-} ]]; then
+    host=$NIXOS_HOST
+elif [[ ! -f $NIXOS_DIR/hosts/$host.nix ]]; then
+    [[ $(uname -m) == aarch64 ]] && host=nixos-arm ||
+        { echo "nixos-sync: no flake host for '$host'; run: NIXOS_HOST=<host> nixos-sync" >&2 && exit 1; }
+fi
+
+# Placeholder values: the user running this, and the timezone /etc/nixos has now
+user=$(id -un)
+tz=$(sed -n 's/^ *time\.timeZone *= *"\(.*\)";.*/\1/p' "$ETC/configuration.nix" | head -1)
+[[ -n $tz ]] || tz=$(timedatectl show -p Timezone --value 2>/dev/null || true)
+[[ -n $tz ]] || { echo "nixos-sync: can't tell the timezone (time.timeZone in $ETC/configuration.nix)" >&2 && exit 1; }
+
+branch=$(git -C "$NIXOS_DIR" branch --show-current 2>/dev/null || true)
+echo "${B}nixos-sync${R}: ${NIXOS_DIR/#$HOME/\~}${branch:+ (branch $branch)} -> $ETC#$host"
+echo "  user $user, timezone $tz"
+
+# 1. Stage the new /etc/nixos: repo files + this machine's own ones
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+new=$work/new
+mkdir -p "$new"
+cp -r "$ETC/." "$new/"
+rm -rf "$new/hosts"
+cp "$NIXOS_DIR/flake.nix" "$NIXOS_DIR/configuration.nix" "$NIXOS_DIR/gpu.nix" "$new/"
+cp -r "$NIXOS_DIR/hosts" "$new/hosts"
+sed -i "s/YOUR_USERNAME/$user/g" "$new/configuration.nix" "$new/hosts/"*.nix
+sed -i "s|YOUR_TIMEZONE|$tz|g" "$new/configuration.nix"
+if grep -rn 'YOUR_[A-Z]*' "$new" --include='*.nix'; then
+    echo "nixos-sync: placeholders left unfilled (above); not applying" >&2 && exit 1
+fi
+
+# 2. Diff, then apply + rebuild
+step "Changes to $ETC"
+if diff -r -q "$ETC" "$new" >/dev/null; then
+    echo "  none: the system already matches this checkout"
+    changed=""
+else
+    diff -ru --color=auto "$ETC" "$new" | sed 's/^/  /' || true
+    changed=1
+fi
+[[ -n $DRY ]] && exit 0
+
+if [[ -n $changed ]]; then
+    if [[ -z $YES ]]; then
+        read -rp $'\n'"Apply and rebuild? [y/N] " ok
+        [[ $ok == [yY]* ]] || { echo "Nothing applied." && exit 1; }
+    fi
+    step "Rebuilding $ETC#$host"
+    cp -a "$ETC" "$work/old"
+    sudo rsync -a --delete --chown=root:root "$new/" "$ETC/"
+    # Adds inputs missing from flake.lock (never updates existing ones)
+    if ! { sudo nix --extra-experimental-features "nix-command flakes" flake lock "$ETC" &&
+        sudo nixos-rebuild switch --impure --flake "$ETC#$host"; }; then
+        sudo rsync -a --delete --chown=root:root "$work/old/" "$ETC/"
+        echo "nixos-sync: rebuild failed; $ETC is back as it was (the running system didn't change)" >&2
+        exit 1
+    fi
+fi
+
+# 3. Caelestia settings
+step "Caelestia settings"
+python3 -I "$NIXOS_DIR/lib/caelestia-merge.py" "$NIXOS_DIR/config/caelestia/shell.json" \
+    "$HOME/.config/caelestia/shell.json" "${XDG_STATE_HOME:-$HOME/.local/state}/nixos-sync/caelestia-shell.base.json"
+
+# 4. Links
+step "Dotfile links"
+bash "$NIXOS_DIR/lib/link-dotfiles.sh"
+echo "  done"

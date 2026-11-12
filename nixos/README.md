@@ -126,11 +126,26 @@ The `apt update && apt upgrade -y` of this setup: bumps every flake input in
 only refreshes channels, so it fetches nothing new on a flake system.) The
 script is `bin/nixos-update`, linked to `~/.local/bin` by `lib/link-dotfiles.sh`.
 
-### Update dotfiles config
+### Apply repo changes
 
 ```bash
-git pull && bash nixos/init.sh
+nixos-sync          # shows the diff, asks, rebuilds
+nixos-sync -n       # dry run: only the diff
+nixos-sync -y       # no question
 ```
+
+Applies this checkout (whatever branch is checked out) to the running system:
+copies `flake.nix`, `configuration.nix`, `gpu.nix` and `hosts/` into
+`/etc/nixos` with your user name and timezone filled in, keeps the machine's
+own `hardware-configuration.nix`, `gpu.json` and `flake.lock`, and rebuilds
+only if something changed (a failed rebuild puts the old `/etc/nixos` back).
+Then it merges `config/caelestia/shell.json` into
+`~/.config/caelestia/shell.json`: settings the repo changed are applied,
+settings changed in Caelestia's UI are kept, and nothing ever goes from the
+live file back into the repo. Last, it refreshes the dotfile links. Package
+versions don't change; that's `nixos-update`. The script is `bin/nixos-sync`.
+
+For a full re-setup (TPM, zsh default shell…): `git pull && bash nixos/init.sh`.
 
 ### Update the WezTerm fork
 
