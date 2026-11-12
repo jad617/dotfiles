@@ -67,12 +67,12 @@ link "$DOTFILES/shell/zsh/zshrc" "$HOME_DIR/.zshrc"
 link "$DOTFILES/shell/zsh/completions/_claude" "$HOME_DIR/.zfunc/_claude"
 # Commands (~/.local/bin is on PATH via my_aliases.sh)
 link "$NIXOS_DIR/bin/nixos-shortcuts" "$HOME_DIR/.local/bin/nixos-shortcuts"
+link "$NIXOS_DIR/bin/nixos-update" "$HOME_DIR/.local/bin/nixos-update"
 link "$DOTFILES/shell/prompt/ohmyposh" "$HOME_DIR/.config/ohmyposh"
 # Editor
 link "$DOTFILES/editors/nvim" "$HOME_DIR/.config/nvim"
 # Terminal
 link "$DOTFILES/terminal/wezterm/wezterm.lua" "$HOME_DIR/.wezterm.lua"
-link "$DOTFILES/terminal/kitty" "$HOME_DIR/.config/kitty"
 link "$DOTFILES/terminal/zellij" "$HOME_DIR/.config/zellij"
 link "$DOTFILES/terminal/tmux/tmux.conf" "$HOME_DIR/.tmux.conf"
 # Hyprland (its hyprland.lua starts Caelestia)

@@ -145,7 +145,6 @@ alias vimo='nvim -O'
 alias vimdiff='nvim -d'
 alias mybash='nvim ~/.my_aliases.sh'
 alias myzsh='nvim ~/.zshrc'
-alias vimkitty='nvim ~/.config/kitty/kitty.conf'
 alias vimtmux='nvim ~/.tmux.conf'
 alias mytmux='nvim ~/.tmux.conf'
 

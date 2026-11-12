@@ -117,8 +117,14 @@ listed under "Other"). The script is `bin/nixos-shortcuts`, linked to
 ### Update everything
 
 ```bash
-sudo nixos-rebuild switch --upgrade
+nixos-update
 ```
+
+The `apt update && apt upgrade -y` of this setup: bumps every flake input in
+`/etc/nixos/flake.lock` to its latest commit, then rebuilds and switches.
+`nixos-update nixpkgs` updates only the named inputs. (`nixos-rebuild --upgrade`
+only refreshes channels, so it fetches nothing new on a flake system.) The
+script is `bin/nixos-update`, linked to `~/.local/bin` by `lib/link-dotfiles.sh`.
 
 ### Update dotfiles config
 
@@ -131,13 +137,13 @@ git pull && bash nixos/init.sh
 WezTerm is built from the `floating-splits` branch of `jad617/wezterm`, pinned in `flake.lock`:
 
 ```bash
-sudo nix flake update wezterm-src --flake /etc/nixos && sudo nixos-rebuild switch --impure --flake /etc/nixos#$(hostname)
+nixos-update wezterm-src
 ```
 
 ### Preview changes before applying
 
 ```bash
-sudo nixos-rebuild dry-activate --upgrade
+sudo nix flake update --flake /etc/nixos && sudo nixos-rebuild dry-activate --impure --flake /etc/nixos#$(hostname)
 ```
 
 ### Roll back if something breaks

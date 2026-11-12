@@ -77,7 +77,6 @@ dotfiles/
 │   └── zsh/               zshrc, my_aliases.sh
 └── terminal/
     ├── ghostty/           Ghostty config
-    ├── kitty/             Kitty config (cross-platform font split)
     ├── tmux/              Tmux configs (Linux / macOS)
     ├── wezterm/           WezTerm config
     └── zellij/            Zellij config + layouts

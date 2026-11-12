@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# =============================================================================
+# nixos-update — the NixOS "apt update && apt upgrade -y": bumps every flake
+# input in /etc/nixos/flake.lock (nixpkgs, neovim nightly, caelestia, wezterm
+# fork…) to its latest commit, then rebuilds and switches to the new system.
+#
+#   nixos-update               update all inputs, rebuild, switch
+#   nixos-update nixpkgs ...   update only the named inputs
+#
+# The old generation stays in the boot menu; undo with
+# `sudo nixos-rebuild switch --rollback`.
+# Linked to ~/.local/bin by nixos/lib/link-dotfiles.sh.
+# =============================================================================
+set -euo pipefail
+
+case ${1:-} in
+-h | --help) sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
+esac
+
+# Same host choice as init.sh: NIXOS_HOST, else the one named like this
+# machine, else the UTM VM on an arm64 Mac
+host=$(hostname)
+if [[ -n ${NIXOS_HOST:-} ]]; then
+    host=$NIXOS_HOST
+elif [[ ! -f /etc/nixos/hosts/$host.nix ]]; then
+    [[ $(uname -m) == aarch64 ]] && host=nixos-arm ||
+        { echo "nixos-update: no flake host for '$host'; run: NIXOS_HOST=<host> nixos-update" >&2 && exit 1; }
+fi
+
+echo "==> Updating flake inputs${*:+: $*}"
+sudo nix flake update "$@" --flake /etc/nixos
+echo "==> Rebuilding /etc/nixos#$host"
+sudo nixos-rebuild switch --impure --flake "/etc/nixos#$host"
