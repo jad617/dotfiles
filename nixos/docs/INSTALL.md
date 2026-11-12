@@ -32,7 +32,7 @@ nixos/install-from-linux.sh
 | Layout | what this disk allows (see below) |
 | Encryption | right after the layout, for any layout: LUKS2 + Btrfs (passphrase at every boot) or plain ext4. **No** is pre-selected. Then the disk passphrase, twice |
 | Size | the NixOS partition size, or how much the shrunk partition keeps |
-| User, timezone, password | user and timezone only on a live CD (otherwise: you, this system's timezone) |
+| User, timezone, password | the user is always asked (pre-filled with your login name when run from an installed Linux; empty on a live CD); the timezone only on a live CD (otherwise: this system's) |
 | Wi-Fi | the Wi-Fi networks saved on this system (Pop, or the live session), all ticked: `Space` ticks, `a` all / none. Copied with their passwords so NixOS is online at its first boot |
 | SSH keys | optional: the key pairs, `config` and `known_hosts` from your `~/.ssh` (fingerprint and comment shown, passphrase-protected keys marked), all ticked; untick what NixOS should not have |
 | Summary | in sections (NixOS, Disk, Copied to NixOS, Other disks), colored by what happens: **red** destroyed (erased, deleted, formatted), **yellow** changed with data kept (shrunk, converted, unmounted), **green** created or kept, **blue** copied. **Cancel** is pre-selected |

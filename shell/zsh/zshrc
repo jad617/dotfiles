@@ -104,6 +104,11 @@ for map in emacs; do
   bindkey -M $map "\e[1~" beginning-of-line
   bindkey -M $map "\e[4~" end-of-line
 
+  # --- Delete → delete the char under the cursor (NixOS's system zshrc,
+  # unlike Pop!_OS / macOS, doesn't bind it, so it typed "~") ---
+  [[ -n ${terminfo[kdch1]} ]] && bindkey -M $map "${terminfo[kdch1]}" delete-char
+  bindkey -M $map "\e[3~" delete-char
+
   # --- Plain Left / Right → char-wise movement ---
   # Use terminfo if available (WezTerm with xterm-256color gives these)
   [[ -n ${terminfo[kcub1]} ]] && bindkey -M $map "${terminfo[kcub1]}" backward-char

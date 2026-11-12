@@ -28,7 +28,7 @@ in {
 
   # Never sleep: with the KVM on the other PC this one sees no input, idles,
   # and didn't wake back up (NVIDIA resume / no wake event through the KVM).
-  # Caelestia only locks on idle (config/caelestia/shell.json); this also
+  # Caelestia only locks and blanks the screens on idle (config/caelestia/shell.json); this also
   # blocks suspend/hibernate from anything else (session menu, logind).
   systemd.sleep.settings.Sleep = {
     AllowSuspend              = "no";

@@ -12,10 +12,32 @@
       "lockBeforeSleep": true,
       "timeouts": [
         {
+          "timeout": 600,
+          "idleAction": [
+            "sh",
+            "-c",
+            "caelestia shell lock isLocked | grep -qx true && hyprctl dispatch 'hl.dsp.dpms({ action = \"disable\" })'"
+          ],
+          "returnAction": "dpms on"
+        },
+        {
           "timeout": 900,
           "idleAction": "lock"
+        },
+        {
+          "timeout": 1500,
+          "idleAction": "dpms off",
+          "returnAction": "dpms on"
         }
       ]
     }
+  },
+  "bar": {
+    "activeWindow": {
+      "showOnHover": false
+    }
+  },
+  "services": {
+    "weatherUnits": "Celsius"
   }
 }
