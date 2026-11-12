@@ -8,27 +8,46 @@
 -- hyprland-gui.lua, loaded at the end so they override the values below
 
 -- ---------------------------------------------------------------------------
--- Wayland environment
+-- Environment: the Wayland variables (Qt, Electron, Java…) come from the login
+-- (environment.sessionVariables in configuration.nix); only the cursor here
 -- ---------------------------------------------------------------------------
-hl.env("XDG_SESSION_TYPE", "wayland")
-hl.env("NIXOS_OZONE_WL", "1")
-hl.env("ELECTRON_OZONE_PLATFORM_HINT", "wayland")
-hl.env("QT_QPA_PLATFORM", "wayland")
-hl.env("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
-hl.env("_JAVA_AWT_WM_NONREPARENTING", "1")
 hl.env("XCURSOR_SIZE", "24")
 hl.env("XCURSOR_THEME", "Adwaita")
 
 -- ---------------------------------------------------------------------------
--- Monitors: fallback for any monitor, then the lines nwg-displays writes to
--- monitors.conf ("monitor=NAME,MODE,POSITION,SCALE"), then the pinned desk layout.
+-- Monitors: fallback for any monitor, then the desk layouts below, then the
+-- lines nwg-displays writes to monitors.conf ("monitor=NAME,MODE,POSITION,SCALE").
 -- ---------------------------------------------------------------------------
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 
--- Desk layout, pinned by model so the order survives KVM switches (with
--- "auto", whichever screen reconnects first ends up on the left)
-hl.monitor({ output = "desc:LG Electronics LG HDR WFHD 0x0005B707", mode = "preferred", position = "0x0", scale = 1 })
-hl.monitor({ output = "desc:ViewSonic Corporation VA2246 SERIES TSP154382384", mode = "preferred", position = "2560x0", scale = 1 })
+-- Desk layouts: screens pinned by model (desc:), so the order survives KVM
+-- switches (with "auto", whichever screen reconnects first ends up on the
+-- left). A desk's positions apply only while ALL its screens are connected;
+-- any other mix (a laptop with one of them, a different desk) stays "auto".
+-- The same config runs on every machine: add a desk = add an entry.
+local desks = {
+    { -- home desk: LG on the left, ViewSonic on the right
+        { desc = "LG Electronics LG HDR WFHD 0x0005B707", position = "0x0" },
+        { desc = "ViewSonic Corporation VA2246 SERIES TSP154382384", position = "2560x0" },
+    },
+}
+local function apply_desks()
+    local connected = {}
+    for _, m in ipairs(hl.get_monitors()) do
+        connected[m.description] = true
+    end
+    for _, desk in ipairs(desks) do
+        local complete = true
+        for _, screen in ipairs(desk) do
+            complete = complete and connected[screen.desc] == true
+        end
+        for _, screen in ipairs(desk) do
+            hl.monitor({ output = "desc:" .. screen.desc, mode = "preferred",
+                position = complete and screen.position or "auto", scale = 1 })
+        end
+    end
+end
+apply_desks() -- screens connected now (a reload); at login they arrive later: monitor.added
 
 local monitors = io.open(os.getenv("HOME") .. "/.config/hypr/monitors.conf", "r")
 if monitors then
@@ -75,9 +94,12 @@ end)
 -- outputs and Caelestia (and the GTK portal / polkit agent) exit. When a
 -- screen comes back, restart whatever died.
 hl.on("monitor.added", function()
+    apply_desks()
     hl.exec_cmd("pgrep -u \"$USER\" -f 'share/caelestia-shell' >/dev/null || caelestia shell -d")
     hl.exec_cmd("systemctl --user restart --no-block xdg-desktop-portal-gtk.service polkit-agent.service")
 end)
+-- A desk screen unplugged: the others of that desk go back to "auto"
+hl.on("monitor.removed", function() apply_desks() end)
 
 -- ---------------------------------------------------------------------------
 -- Options

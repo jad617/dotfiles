@@ -40,14 +40,9 @@ step() { printf '\n%s==> %s%s\n' "$B" "$1" "$R"; }
 [[ -f $ETC/hardware-configuration.nix ]] ||
     { echo "nixos-sync: no $ETC/hardware-configuration.nix; this isn't an installed system (run init.sh)" >&2 && exit 1; }
 
-# Same host choice as init.sh / nixos-update
-host=$(hostname)
-if [[ -n ${NIXOS_HOST:-} ]]; then
-    host=$NIXOS_HOST
-elif [[ ! -f $NIXOS_DIR/hosts/$host.nix ]]; then
-    [[ $(uname -m) == aarch64 ]] && host=nixos-arm ||
-        { echo "nixos-sync: no flake host for '$host'; run: NIXOS_HOST=<host> nixos-sync" >&2 && exit 1; }
-fi
+# shellcheck source=../lib/nixos-config.sh
+source "$NIXOS_DIR/lib/nixos-config.sh"
+host=$(nixos_flake_host "$NIXOS_DIR") || exit 1
 
 # Placeholder values: the user running this, and the timezone /etc/nixos has now
 user=$(id -un)
@@ -65,15 +60,7 @@ trap 'rm -rf "$work"' EXIT
 new=$work/new
 mkdir -p "$new"
 cp -r "$ETC/." "$new/"
-rm -rf "$new/hosts" "$new/patches"
-cp "$NIXOS_DIR/flake.nix" "$NIXOS_DIR/configuration.nix" "$NIXOS_DIR/gpu.nix" "$new/"
-cp -r "$NIXOS_DIR/hosts" "$new/hosts"
-cp -r "$NIXOS_DIR/patches" "$new/patches" # source patches the flake applies (e.g. Caelestia)
-sed -i "s/YOUR_USERNAME/$user/g" "$new/configuration.nix" "$new/hosts/"*.nix
-sed -i "s|YOUR_TIMEZONE|$tz|g" "$new/configuration.nix"
-if grep -rn 'YOUR_[A-Z]*' "$new" --include='*.nix'; then
-    echo "nixos-sync: placeholders left unfilled (above); not applying" >&2 && exit 1
-fi
+nixos_write_config "$NIXOS_DIR" "$new" "$user" "$tz" || { echo "nixos-sync: not applying" >&2 && exit 1; }
 
 # 2. Diff, then apply + rebuild
 step "Changes to $ETC"

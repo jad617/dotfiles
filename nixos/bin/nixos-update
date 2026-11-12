@@ -18,15 +18,10 @@ case ${1:-} in
 -h | --help) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
 esac
 
-# Same host choice as init.sh: NIXOS_HOST, else the one named like this
-# machine, else the UTM VM on an arm64 Mac
-host=$(hostname)
-if [[ -n ${NIXOS_HOST:-} ]]; then
-    host=$NIXOS_HOST
-elif [[ ! -f /etc/nixos/hosts/$host.nix ]]; then
-    [[ $(uname -m) == aarch64 ]] && host=nixos-arm ||
-        { echo "nixos-update: no flake host for '$host'; run: NIXOS_HOST=<host> nixos-update" >&2 && exit 1; }
-fi
+NIXOS_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)" # nixos/ (this file is in nixos/bin)
+# shellcheck source=../lib/nixos-config.sh
+source "$NIXOS_DIR/lib/nixos-config.sh"
+host=$(nixos_flake_host "$NIXOS_DIR") || exit 1
 
 echo "==> Updating flake inputs${*:+: $*}"
 sudo nix flake update "$@" --flake /etc/nixos
@@ -35,7 +30,7 @@ sudo nixos-rebuild switch --impure --flake "/etc/nixos#$host"
 
 # Copy the new lock back to the checkout, so a fresh install (or nixos-sync
 # on another machine) gets the versions that were just tested here
-repo_lock="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)/flake.lock"
+repo_lock=$NIXOS_DIR/flake.lock
 if ! cmp -s /etc/nixos/flake.lock "$repo_lock"; then
     cp /etc/nixos/flake.lock "$repo_lock"
     echo "==> Copied the new flake.lock to ${repo_lock/#$HOME/\~}: commit it"

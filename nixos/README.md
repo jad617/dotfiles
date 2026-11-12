@@ -137,7 +137,7 @@ nixos-sync -y       # no question
 ```
 
 Applies this checkout (whatever branch is checked out) to the running system:
-copies `flake.nix`, `configuration.nix`, `gpu.nix` and `hosts/` into
+copies `flake.nix`, `configuration.nix`, `gpu.nix`, `hosts/` and `patches/` into
 `/etc/nixos` with your user name and timezone filled in, keeps the machine's
 own `hardware-configuration.nix`, `gpu.json` and `flake.lock`, and rebuilds
 only if something changed (a failed rebuild puts the old `/etc/nixos` back).
@@ -145,9 +145,21 @@ Then it merges `config/caelestia/shell.json` into
 `~/.config/caelestia/shell.json`: settings the repo changed are applied,
 settings changed in Caelestia's UI are kept, and nothing ever goes from the
 live file back into the repo. Last, it refreshes the dotfile links. Package
-versions don't change; that's `nixos-update`. The script is `bin/nixos-sync`.
+versions don't change; that's `nixos-update`. If the rebuild changed Caelestia,
+the running one is swapped for the new build (`caelestia-restart`, not while
+the screen is locked). The script is `bin/nixos-sync`; what it writes into
+`/etc/nixos` comes from `lib/nixos-config.sh`, shared with `init.sh` and the
+installers.
 
-For a full re-setup (TPM, zsh default shell…): `git pull && bash nixos/init.sh`.
+For a full re-setup (tmux plugins, zsh as default shell…): `git pull && bash nixos/init.sh`.
+
+### Caelestia tweaks
+
+Our changes to Caelestia (bar clicks, clock → dashboard, brightness keys…) are
+patch files in `nixos/patches/`, each starting with a note on what it does, and
+listed in `flake.nix`. When a Caelestia update changes the code a patch
+touches, the build stops with an error instead of dropping the tweak: update
+the patch, then rebuild.
 
 ### Update the WezTerm fork
 
@@ -198,7 +210,7 @@ All config files are symlinked from this repo — edit here, not in `~/.config`.
 | Neovim    | `editors/nvim/` |
 | WezTerm   | `terminal/wezterm/wezterm.lua` (the `jad617/wezterm` fork, `floating-splits` branch, built by Nix) |
 | Zsh       | `shell/zsh/zshrc` + `my_aliases.sh` |
-| NixOS     | `nixos/configuration.nix` + `nixos/hosts/*.nix` (copied to `/etc/nixos/`) |
+| NixOS     | `nixos/configuration.nix` + `nixos/hosts/*.nix` + `nixos/patches/` (copied to `/etc/nixos/`) |
 
 After editing `configuration.nix`, apply with:
 

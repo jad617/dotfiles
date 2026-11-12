@@ -12,13 +12,13 @@ ROOT=$1 USERNAME=$2 TIMEZONE=$3
 NIXOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" # nixos/ (this file is in nixos/lib)
 ETC="$ROOT/etc/nixos"
 
+# shellcheck source=nixos-config.sh
+source "$NIXOS_DIR/lib/nixos-config.sh"
+
 nixos-generate-config --root "$ROOT"
-cp "$NIXOS_DIR/flake.nix" "$NIXOS_DIR/configuration.nix" "$NIXOS_DIR/gpu.nix" "$ETC/"
+nixos_write_config "$NIXOS_DIR" "$ETC" "$USERNAME" "$TIMEZONE"
 [[ -f "$NIXOS_DIR/flake.lock" ]] && cp "$NIXOS_DIR/flake.lock" "$ETC/"
-rm -rf "$ETC/hosts" "$ETC/patches" && cp -r "$NIXOS_DIR/hosts" "$ETC/hosts" && cp -r "$NIXOS_DIR/patches" "$ETC/patches"
 bash "$NIXOS_DIR/lib/detect-gpu.sh" >"$ETC/gpu.json"
-sed -i "s/YOUR_USERNAME/$USERNAME/g" "$ETC/configuration.nix" "$ETC/hosts/"*.nix
-sed -i "s|YOUR_TIMEZONE|$TIMEZONE|g" "$ETC/configuration.nix"
 echo "  GPU: $(cat "$ETC/gpu.json")"
 
 # Lock first: adds inputs missing from flake.lock. If nixos-install wrote the

@@ -135,6 +135,13 @@ alias gitundoall='git reset --hard HEAD'
 alias gitclean='git clean -fd'
 
 ##################################
+# Search
+##################################
+# fd also lists files .gitignore excludes (build output, lambda.zip...) and
+# hidden ones; fd's own default skips both. `command fd` for the plain one.
+alias fd='fd -u'
+
+##################################
 # Editor
 ##################################
 alias v='nvim'

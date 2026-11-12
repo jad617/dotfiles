@@ -1,11 +1,13 @@
 # =============================================================================
 # NixOS Hyprland workstation — shared base configuration
 #
-# Placeholders replaced by nixos/init.sh:
+# Placeholders, filled in when /etc/nixos is written (lib/nixos-config.sh,
+# used by init.sh, nixos-sync and the installers):
 #   YOUR_USERNAME → your actual username
 #   YOUR_TIMEZONE → e.g. America/Toronto
 #
-# Host-specific config (hostname, GPU drivers) lives in hosts/
+# Per machine: hosts/<host>.nix (hostname, disks, quirks); GPU drivers:
+# gpu.nix (picked from the detected cards)
 # =============================================================================
 { config, pkgs, lib, ... }:
 
@@ -60,14 +62,14 @@ in {
       };
     };
   };
-  boot.loader.grub.configurationLimit         = 3;
   boot.loader.efi.canTouchEfiVariables = isEfi;
   boot.loader.grub.enable              = !isEfi;
   boot.loader.grub.device              = grubDisk;
   boot.loader.grub.useOSProber         = false;
+  boot.loader.grub.configurationLimit  = 3;   # boot menu: last 3 generations
   # Use latest kernel (matches NixOS ISO default)
   boot.kernelPackages = pkgs.linuxPackages_latest;
-  # Host-specific kernelParams (e.g. NVIDIA) are set in hosts/
+  # More kernelParams: per machine in hosts/, GPU ones (NVIDIA) in gpu.nix
 
   # Polished boot: menu for 2 s (dual boot), then a Catppuccin splash instead
   # of kernel text (the initrd is systemd-based, so the handover is smooth);
@@ -311,13 +313,10 @@ in {
     cliphist
     wlsunset             # blue light filter / night mode
     nwg-displays         # GUI to arrange monitors (writes config/hypr/monitors.conf)
-    blueman
     pavucontrol
-    polkit_gnome
 
     # ── Terminal ──────────────────────────────────────────────────────────────
     wezterm
-    zsh
     zsh-syntax-highlighting
 
     # ── Shell utilities ───────────────────────────────────────────────────────
@@ -333,6 +332,7 @@ in {
     btop
     wget
     curl
+    zip
     unzip
     git
     pwgen
@@ -410,7 +410,7 @@ in {
     # ── GUI apps ──────────────────────────────────────────────────────────────
     (if isX86 then google-chrome else chromium)
     nautilus             # file manager
-    gnome-calendar       # calendar (launch from wofi or click clock)
+    gnome-calendar       # calendar (from the launcher, SUPER + D)
     (catppuccin-gtk.override { accents = [ "mauve" ]; variant = "macchiato"; })
     papirus-icon-theme          # much better folder/file icons
     adwaita-icon-theme          # provides Adwaita cursor theme
@@ -421,7 +421,7 @@ in {
 
     # ── Screenshot ────────────────────────────────────────────────────────────
     grimblast            # quick area/screen grabs (CLI, Hyprland-native)
-    flameshot            # annotated screenshots (GUI, SUPER+SHIFT+S)
+    flameshot            # annotated screenshots: `flameshot gui` (no shortcut; SUPER + SHIFT + S is grimblast)
 
     # ── Nix tooling ───────────────────────────────────────────────────────────
     nix-output-monitor
@@ -474,8 +474,9 @@ in {
   };
 
   # ---------------------------------------------------------------------------
-  # Environment — Wayland + app defaults
-  # (NVIDIA-specific vars are added per-host in hosts/hashirama.nix)
+  # Environment — Wayland + app defaults. Hyprland and everything it starts
+  # get these from the login (PAM), so hyprland.lua doesn't repeat them
+  # (NVIDIA-specific vars are added by gpu.nix)
   # ---------------------------------------------------------------------------
   environment.sessionVariables = {
     XDG_SESSION_TYPE         = "wayland";
@@ -505,8 +506,6 @@ in {
   # ---------------------------------------------------------------------------
   # Services
   # ---------------------------------------------------------------------------
-  services.dbus.enable         = true;
-  services.udev.enable         = true;
   services.gvfs.enable         = true;    # auto-mount
   services.tumbler.enable      = true;    # thumbnails
   services.openssh.enable      = true;

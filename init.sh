@@ -551,7 +551,7 @@ BREW_DEVOPS_CASKS=(azure-cli)
 # (.NET 8 support ended 2026-11-10; .NET 10 is the LTS, brew's dotnet formula is 10)
 APP_RENAMES=("tfsec trivy" "mysql-client@8.0 mysql-client@8.4" "dotnet@8 dotnet" "dotnet-sdk-8.0 dotnet-sdk-10.0")
 # The script itself needs these, so they can't be omitted
-APT_CORE=(zsh curl git unzip jq fontconfig ca-certificates gnupg procps)
+APT_CORE=(zsh curl git zip unzip jq fontconfig ca-certificates gnupg procps)
 APT_BASE=(zsh-syntax-highlighting htop wget bat fd-find ripgrep tmux wl-clipboard wofi wtype
     btop pipx p7zip-full nmap mtr-tiny ipcalc)
 APT_DEVOPS=(terraform vault gh azure-cli ansible yamllint maven dotnet-sdk-10.0)
