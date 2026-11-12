@@ -90,6 +90,23 @@ bindkey '\eOB'  down-line-or-beginning-search
 autoload -U select-word-style
 select-word-style bash
 
+# CTRL + W: delete back one word, or one run of symbols (-- - / . ~ "…), with
+# the spaces after it. Hyphens inside a word keep it whole, so
+# "cmd --skip-perms --b" -> "cmd --skip-perms --" -> "cmd --skip-perms "
+# -> "cmd --" -> "cmd " -> "". The deleted text goes to the cut buffer
+# (CTRL + Y pastes it)
+backward-kill-token() {
+    if [[ $LBUFFER =~ '([[:alnum:]_]+(-[[:alnum:]_]+)*|[^[:alnum:]_[:space:]]+)[[:space:]]*$' ]]; then
+        CUTBUFFER=$MATCH
+        LBUFFER=${LBUFFER[1,-$(( ${#MATCH} + 1 ))]}
+    else
+        CUTBUFFER=$LBUFFER
+        LBUFFER=''
+    fi
+}
+zle -N backward-kill-token
+bindkey '^W' backward-kill-token
+
 ##################################
 # 4) Home / End / Ctrl-Arrows (tmux + WezTerm safe)
 ##################################
