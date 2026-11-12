@@ -1,0 +1,22 @@
+Bar popouts (status icons, tray menus) open on click, not hover; a second
+click on the same icon closes it.
+
+--- a/modules/drawers/Interactions.qml	2026-11-12 12:22:55.559689327 -0500
++++ b/modules/drawers/Interactions.qml	2026-11-12 12:22:55.560403968 -0500
+@@ -65,6 +65,7 @@
+     hoverEnabled: true
+ 
+     onPressed: event => dragStart = Qt.point(event.x, event.y)
++    onClicked: event => { if (fullscreen || event.x >= bar.implicitWidth) return; const prev = popouts.hasCurrent ? popouts.currentName : ""; bar.checkPopout(event.y); if (prev !== "" && popouts.currentName === prev) popouts.hasCurrent = false; }
+     onContainsMouseChanged: {
+         if (!containsMouse) {
+             // Only hide if not activated by shortcut
+@@ -243,7 +244,7 @@
+ 
+         // Show popouts on hover
+         if (x < bar.implicitWidth) {
+-            bar.checkPopout(y);
++            // click only: see onClicked
+         } else if ((!popouts.currentName.startsWith("traymenu") || ((popouts.current as StackView)?.depth ?? 0) <= 1) && !inLeftPanel(panels.popoutsWrapper, x, y)) {
+             popouts.hasCurrent = false;
+             bar.closeTray();

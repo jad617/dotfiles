@@ -1,0 +1,14 @@
+Tray icons with a menu let a left click through, so it opens that menu like
+hover did (Steam has no "open" action, only a menu).
+
+--- a/modules/bar/components/TrayItem.qml	2026-11-12 12:22:55.561547135 -0500
++++ b/modules/bar/components/TrayItem.qml	2026-11-12 12:22:55.561653981 -0500
+@@ -12,7 +12,7 @@
+ 
+     required property SystemTrayItem modelData
+ 
+-    acceptedButtons: Qt.LeftButton | Qt.RightButton
++    acceptedButtons: modelData.hasMenu ? Qt.RightButton : (Qt.LeftButton | Qt.RightButton)
+     implicitWidth: Tokens.font.body.small.pointSize * 2
+     implicitHeight: Tokens.font.body.small.pointSize * 2
+ 

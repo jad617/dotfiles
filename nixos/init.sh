@@ -76,19 +76,9 @@ echo "  Username : $USERNAME"
 echo "  Hostname : $HOSTNAME"
 echo "  Timezone : $TIMEZONE"
 
-# Flake host: NIXOS_HOST, else the one named like this machine, else the
-# UTM VM on an arm64 Mac (nixos-arm)
-if [[ -n "${NIXOS_HOST:-}" ]]; then
-    FLAKE_HOST="$NIXOS_HOST"
-elif [[ -f "$NIXOS_DIR/hosts/$HOSTNAME.nix" ]]; then
-    FLAKE_HOST="$HOSTNAME"
-elif [[ "$(uname -m)" == aarch64 ]]; then
-    FLAKE_HOST="nixos-arm"
-else
-    echo "ERROR: no flake host for '$HOSTNAME' (hosts: $(sed -n 's/^ *\([A-Za-z0-9_-]*\) *= *mkHost .*/\1/p' "$NIXOS_DIR/flake.nix" | xargs))."
-    echo "       Add nixos/hosts/$HOSTNAME.nix + an entry in nixos/flake.nix, or run: NIXOS_HOST=<host> $0"
-    exit 1
-fi
+# shellcheck source=lib/nixos-config.sh
+source "$NIXOS_DIR/lib/nixos-config.sh"
+FLAKE_HOST=$(nixos_flake_host "$NIXOS_DIR") || { echo "ERROR: see above (or run: NIXOS_HOST=<host> $0)" && exit 1; }
 echo "  Host     : $FLAKE_HOST"
 
 # ---------------------------------------------------------------------------
@@ -108,23 +98,17 @@ if [[ ! -f /etc/nixos/hardware-configuration.nix ]]; then
     exit 1
 fi
 
-echo "  Copying flake.nix + hosts/"
-sudo cp "$NIXOS_DIR/flake.nix" /etc/nixos/flake.nix
+echo "  Writing flake.nix, configuration.nix, gpu.nix, hosts/, patches/ (placeholders filled in)"
+staged=$(mktemp -d)
+nixos_write_config "$NIXOS_DIR" "$staged" "$USERNAME" "$TIMEZONE" || exit 1
 sudo rm -rf /etc/nixos/hosts /etc/nixos/patches
-sudo cp -r "$NIXOS_DIR/hosts" /etc/nixos/hosts
-sudo cp -r "$NIXOS_DIR/patches" /etc/nixos/patches
-sudo cp "$NIXOS_DIR/gpu.nix" /etc/nixos/gpu.nix
+sudo cp -r "$staged/." /etc/nixos/
+sudo chown -R root:root /etc/nixos
+rm -rf "$staged"
 # GPU drivers: gpu.nix reads the detected cards from gpu.json
 bash "$NIXOS_DIR/lib/detect-gpu.sh" | sudo tee /etc/nixos/gpu.json >/dev/null
 echo "  GPU      : $(cat /etc/nixos/gpu.json)"
 [[ -f "$NIXOS_DIR/flake.lock" ]] && sudo cp "$NIXOS_DIR/flake.lock" /etc/nixos/flake.lock
-
-echo "  Copying configuration.nix (substituting placeholders)"
-sudo cp "$NIXOS_DIR/configuration.nix" /etc/nixos/configuration.nix
-
-sudo sed -i "s/YOUR_USERNAME/$USERNAME/g" /etc/nixos/configuration.nix /etc/nixos/hosts/*.nix
-sudo sed -i "s/YOUR_HOSTNAME/$HOSTNAME/g" /etc/nixos/configuration.nix
-sudo sed -i "s|YOUR_TIMEZONE|$TIMEZONE|g"  /etc/nixos/configuration.nix
 
 echo "  Done — /etc/nixos/:"
 ls /etc/nixos/

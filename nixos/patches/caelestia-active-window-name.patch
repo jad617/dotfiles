@@ -1,0 +1,22 @@
+Bar's active window: the app's name (WezTerm, Google Chrome), not the window
+title, which changes with every split / tab / page.
+
+--- a/modules/bar/components/ActiveWindow.qml	2026-11-12 12:22:55.558017386 -0500
++++ b/modules/bar/components/ActiveWindow.qml	2026-11-12 12:22:55.558506161 -0500
+@@ -1,6 +1,7 @@
+ pragma ComponentBehavior: Bound
+ 
+ import QtQuick
++import Quickshell
+ import Caelestia.Config
+ import Caelestia.I18n
+ import qs.components
+@@ -15,7 +16,7 @@
+     property color colour: Colours.palette.m3primary
+ 
+     readonly property string windowTitle: {
+-        const title = Hypr.activeToplevel?.title;
++        const cls = Hypr.activeToplevel?.lastIpcObject.class; const title = cls ? (DesktopEntries.heuristicLookup(cls)?.name || cls) : "";
+         if (!title)
+             return Tr.trCtx("Desktop", "shown when no window is focused");
+         if (Config.bar.activeWindow.compact) {
