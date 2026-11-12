@@ -175,15 +175,32 @@ in {
   services.blueman.enable = true;
 
   # ---------------------------------------------------------------------------
-  # Key Remapping — Capslock → a  (mirrors keyd on Pop!_OS)
+  # Key Remapping — Capslock → a  (mirrors keyd on Pop!_OS); F1 / F2 are
+  # monitor brightness down / up; F11 / F12 are
+  # mute / volume down without Fn (the Logitech keyboard has them on Fn + F11 /
+  # Fn + F12, while volume up is its own key). Plain F11 / F12 are never used
   # ---------------------------------------------------------------------------
   services.keyd = {
     enable = true;
     keyboards.default = {
       ids = [ "*" ];
-      settings.main.capslock = "a";
+      settings.main = {
+        capslock = "a";
+        f1       = "brightnessdown";   # monitors over DDC/CI, via Caelestia
+        f2       = "brightnessup";
+        f11      = "mute";
+        f12      = "volumedown";
+      };
     };
   };
+
+  # Monitor brightness over DDC/CI (desktop screens have no backlight device):
+  # Caelestia's brightness keys run ddcutil on /dev/i2c-*. uaccess gives the
+  # logged-in user access right away, no i2c group / re-login needed
+  hardware.i2c.enable = true;
+  services.udev.extraRules = ''
+    KERNEL=="i2c-[0-9]*", SUBSYSTEM=="i2c-dev", TAG+="uaccess"
+  '';
 
   # ---------------------------------------------------------------------------
   # Polkit agent (runs as a systemd user service, started by Hyprland session)
@@ -422,7 +439,8 @@ in {
     # ── System / misc ─────────────────────────────────────────────────────────
     fontconfig
     libnotify            # notify-send
-    brightnessctl        # backlight (useful even on desktops for external panels)
+    brightnessctl        # backlight (laptops)
+    ddcutil              # external monitors' brightness (DDC/CI), used by Caelestia
     playerctl            # media keys
     xdg-utils
   ] ++ lib.optionals isX86 [
