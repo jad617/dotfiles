@@ -10,7 +10,7 @@
 { config, pkgs, lib, ... }:
 
 let
-  # Steam and Google Chrome only exist for x86_64 (the arm64 VM gets Chromium)
+  # Steam, Google Chrome and Spotify only exist for x86_64 (the arm64 VM gets Chromium)
   isX86 = pkgs.stdenv.hostPlatform.isx86_64;
 
   # ── Auto-detect boot mode ──────────────────────────────────────────────────
@@ -425,6 +425,8 @@ in {
     brightnessctl        # backlight (useful even on desktops for external panels)
     playerctl            # media keys
     xdg-utils
+  ] ++ lib.optionals isX86 [
+    spotify              # music (x86_64 only; Caelestia's media panel controls it)
   ];
 
   # ---------------------------------------------------------------------------
