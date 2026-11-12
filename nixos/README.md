@@ -89,7 +89,7 @@ nixos/vm/vm.sh start | stop | status | destroy
 ```
 
 In the UTM window the VM logs in by itself and stops at Caelestia's lock screen: unlock as
-`jelasmar` (the default `VM_USER`). The first install asks for the
+your workstation login name (the default `VM_USER`). The first install asks for the
 password (or generates one) and keeps it in your macOS login Keychain, never in the repo:
 `security find-generic-password -s nixos-vm -w` shows it. `VM_USER`, `VM_PASSWORD`,
 `VM_CPUS`, `VM_MEMORY_MB` and `VM_DISK_GB` override the defaults.

@@ -38,6 +38,17 @@
                   --replace-fail 'import QtQuick' $'import QtQuick\nimport Quickshell' \
                   --replace-fail 'const title = Hypr.activeToplevel?.title;' \
                     'const cls = Hypr.activeToplevel?.lastIpcObject.class; const title = cls ? (DesktopEntries.heuristicLookup(cls)?.name || cls) : "";'
+                # Bar popouts (status icons, tray menus) open on click, not
+                # hover; a second click on the same icon closes it
+                substituteInPlace modules/drawers/Interactions.qml \
+                  --replace-fail 'bar.checkPopout(y);' '// click only: see onClicked' \
+                  --replace-fail 'onPressed: event => dragStart = Qt.point(event.x, event.y)' \
+                    $'onPressed: event => dragStart = Qt.point(event.x, event.y)\n    onClicked: event => { if (fullscreen || event.x >= bar.implicitWidth) return; const prev = popouts.hasCurrent ? popouts.currentName : ""; bar.checkPopout(event.y); if (prev !== "" && popouts.currentName === prev) popouts.hasCurrent = false; }'
+                # Tray icons with a menu (Steam has no "open" action, only a menu)
+                # let a left click through, so it opens that menu like hover did
+                substituteInPlace modules/bar/components/TrayItem.qml \
+                  --replace-fail 'acceptedButtons: Qt.LeftButton | Qt.RightButton' \
+                    'acceptedButtons: modelData.hasMenu ? Qt.RightButton : (Qt.LeftButton | Qt.RightButton)'
               '';
             });
             # with-cli only puts `caelestia` on the shell's own PATH; Hyprland binds need it too

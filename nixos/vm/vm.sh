@@ -12,7 +12,7 @@
 # The VM's SSH is forwarded to localhost:2222 and its serial console to
 # localhost:4555. The installer runs over that serial console (no clicks).
 #
-#   VM_USER (default: jelasmar)
+#   VM_USER (default: your login name on this workstation)
 #   VM_PASSWORD (default: the "nixos-vm" item in your login Keychain; the first
 #   install asks for one, or generates one, and saves it there, never in the repo)
 #   VM_CPUS=8  VM_MEMORY_MB=16384  VM_DISK_GB=64  VM_TIMEZONE (default: Mac's)
@@ -30,7 +30,7 @@ CACHE="$HOME/.cache/nixos-vm"
 ISO_URL=${NIXOS_ISO_URL:-https://channels.nixos.org/nixos-26.05/latest-nixos-minimal-aarch64-linux.iso}
 ISO="$CACHE/$(basename "$ISO_URL")"
 
-VM_USER=${VM_USER:-jelasmar}
+VM_USER=${VM_USER:-$(id -un)}
 KEYCHAIN_ITEM=nixos-vm
 VM_CPUS=${VM_CPUS:-8}
 VM_MEMORY_MB=${VM_MEMORY_MB:-16384}

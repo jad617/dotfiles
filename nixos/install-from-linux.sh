@@ -1178,12 +1178,18 @@ Nothing has been changed. Go back and pick something else."
 step_user() {
     USERNAME=$USERNAME_ARG
     if [[ -n $USERNAME ]]; then skip && return 0; fi
-    if [[ -z $LIVE ]]; then USERNAME=$(id -un) && skip && return 0; fi
-    [[ -n $GUIDED ]] || die "on a live CD, pass --user NAME"
+    # Guided: always ask. From an installed Linux the current login name is
+    # only the pre-filled default (Enter keeps it), never assumed.
+    local default=""
+    [[ -z $LIVE ]] && default=$(id -un)
+    if [[ -z $GUIDED ]]; then
+        [[ -n $default ]] || die "on a live CD, pass --user NAME"
+        USERNAME=$default && skip && return 0
+    fi
     while [[ ! $USERNAME =~ ^[a-z_][a-z0-9._-]*$ ]]; do
-        ui_input "User" "NixOS user name (lowercase):" ""
+        ui_input "User" "NixOS user name (lowercase):" "$default"
         if went_back; then return 0; fi
-        USERNAME=$REPLY
+        USERNAME=${REPLY:-$default}
     done
     return 0
 }

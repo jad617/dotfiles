@@ -64,7 +64,6 @@ hl.on("hyprland.start", function()
     -- (Caelestia keeps whatever is picked later: launcher >wallpaper, >scheme)
     hl.exec_cmd("[ -f ~/.local/state/caelestia/wallpaper/path.txt ] || { caelestia wallpaper -f ~/Pictures/Wallpapers/quasar.webp; caelestia scheme set -n dynamic -m light; }")
     hl.exec_cmd("wl-paste --watch cliphist store")
-    hl.exec_cmd("blueman-applet")
     if autolock then
         hl.exec_cmd("bash ~/.config/hypr/autolock.sh /run/current-system/sw/bin/wezterm")
     else
