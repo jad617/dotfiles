@@ -231,7 +231,7 @@ hl.bind("SUPER + N", hl.dsp.global("caelestia:sidebar"), { description = "Shell:
 hl.bind("SUPER + A", hl.dsp.global("caelestia:dashboard"), { description = "Shell: Dashboard" })
 hl.bind("CTRL + ALT + Delete", hl.dsp.global("caelestia:session"), { description = "Shell: Session menu (log out, reboot, power off)" })
 hl.bind("SUPER + L", hl.dsp.global("caelestia:lock"), { description = "Shell: Lock screen" })
-hl.bind("CTRL + SUPER + SHIFT + R", exec("caelestia shell -k; caelestia shell -d"), { description = "Shell: Restart Caelestia" })
+hl.bind("CTRL + SUPER + SHIFT + R", exec("~/.local/bin/caelestia-restart"), { description = "Shell: Restart Caelestia (any build; not while locked)" })
 
 -- ── Screenshots ─────────────────────────────────────────────────────────────
 -- Saved as ~/Pictures/screenshots/YYYYMMDD_HHMMSS.png (folder made if missing,

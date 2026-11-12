@@ -71,6 +71,7 @@ link "$DOTFILES/shell/zsh/completions/_claude" "$HOME_DIR/.zfunc/_claude"
 link "$NIXOS_DIR/bin/nixos-shortcuts" "$HOME_DIR/.local/bin/nixos-shortcuts"
 link "$NIXOS_DIR/bin/nixos-update" "$HOME_DIR/.local/bin/nixos-update"
 link "$NIXOS_DIR/bin/nixos-sync" "$HOME_DIR/.local/bin/nixos-sync"
+link "$NIXOS_DIR/bin/caelestia-restart" "$HOME_DIR/.local/bin/caelestia-restart"
 link "$DOTFILES/shell/prompt/ohmyposh" "$HOME_DIR/.config/ohmyposh"
 # Editor
 link "$DOTFILES/editors/nvim" "$HOME_DIR/.config/nvim"
