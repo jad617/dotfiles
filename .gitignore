@@ -19,3 +19,6 @@ editors/github-copilot/
 
 # Written by Caelestia on every colour-scheme change
 nixos/config/hypr/scheme/
+
+# Claude Code local settings (permissions, per-machine), never pushed
+**/.claude/

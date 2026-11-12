@@ -20,6 +20,8 @@ return {
     -- Point each linter at the Mason-managed binary so nvim-lint can always
     -- find them regardless of the shell PATH Neovim was launched with.
     -- Some linters are defined as functions in nvim-lint, so we wrap those.
+    -- Only when Mason has it: on NixOS Mason is off (nixpkgs installs the
+    -- linters), so the default command, found on PATH, is kept.
     local mason_bin = vim.fn.stdpath("data") .. "/mason/bin/"
     local mason_linters = {
       ["golangcilint"] = "golangci-lint", -- nvim-lint key → Mason binary name
@@ -31,7 +33,7 @@ return {
     }
     for linter_key, bin_name in pairs(mason_linters) do
       local linter = lint.linters[linter_key]
-      if linter then
+      if linter and vim.fn.executable(mason_bin .. bin_name) == 1 then
         if type(linter) == "function" then
           lint.linters[linter_key] = function()
             local l = linter()
