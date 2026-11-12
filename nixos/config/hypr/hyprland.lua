@@ -251,6 +251,8 @@ end, { description = "Windows: Close (CTRL + D; tab in Chrome, EOF in WezTerm)" 
 hl.bind("SUPER + N", hl.dsp.global("caelestia:sidebar"), { description = "Shell: Sidebar (notifications)" })
 -- Hover-to-open is off (config/caelestia/shell.json), so the dashboard is on a key
 hl.bind("SUPER + A", hl.dsp.global("caelestia:dashboard"), { description = "Shell: Dashboard" })
+-- Sticky like SUPER + A; also drag up from the bottom-right corner, hover doesn't open it (patches/caelestia-utilities-no-hover.patch)
+hl.bind("SUPER + I", hl.dsp.global("caelestia:utilities"), { description = "Shell: Utilities (bottom-right panel)" })
 hl.bind("CTRL + ALT + Delete", hl.dsp.global("caelestia:session"), { description = "Shell: Session menu (log out, reboot, power off)" })
 hl.bind("SUPER + L", hl.dsp.global("caelestia:lock"), { description = "Shell: Lock screen" })
 hl.bind("CTRL + SUPER + SHIFT + R", exec("~/.local/bin/caelestia-restart"), { description = "Shell: Restart Caelestia (any build; not while locked)" })

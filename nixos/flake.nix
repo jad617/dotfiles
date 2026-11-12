@@ -40,6 +40,7 @@
                 ./patches/caelestia-tray-left-click-menu.patch
                 ./patches/caelestia-clock-opens-dashboard.patch
                 ./patches/caelestia-brightness.patch
+                ./patches/caelestia-utilities-no-hover.patch
               ];
             });
             # with-cli only puts `caelestia` on the shell's own PATH; Hyprland binds need it too
