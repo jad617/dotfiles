@@ -1,0 +1,59 @@
+Utilities panel (bottom right) is sticky, like the dashboard on SUPER + A:
+hover never opens or closes it. Drag up from the bottom-right corner opens it,
+drag down closes it (like the launcher); a click outside closes it (focus
+grab); the caelestia:utilities shortcut (SUPER + I in hyprland.lua) toggles it.
+
+--- a/modules/drawers/ContentWindow.qml	2026-11-12 16:33:45.086854440 -0500
++++ b/modules/drawers/ContentWindow.qml	2026-11-12 16:33:56.385685988 -0500
+@@ -120,6 +120,8 @@
+                 return true;
+             if (!conf.dashboard.showOnHover && s.dashboard && conf.dashboard.enabled)
+                 return true;
++            if (s.utilities)
++                return true;
+             if (panels.popouts.currentName.startsWith("traymenu") && (panels.popouts.current as StackView)?.depth > 1)
+                 return true;
+             return false;
+@@ -130,6 +132,7 @@
+             root.screenState.session = false;
+             root.screenState.sidebar = false;
+             root.screenState.dashboard = false;
++            root.screenState.utilities = false;
+             panels.popouts.hasCurrent = false;
+             bar.closeTray();
+         }
+--- a/modules/drawers/Interactions.qml	2026-11-12 16:27:40.793446397 -0500
++++ b/modules/drawers/Interactions.qml	2026-11-12 16:33:56.384229209 -0500
+@@ -234,12 +234,14 @@
+         // Show utilities on hover
+         const showUtilities = inBottomPanel(panels.utilities, x, y, true);
+ 
+-        // Always update visibility based on hover if not in shortcut mode
+-        if (!utilitiesShortcutActive) {
+-            screenState.utilities = showUtilities;
+-        } else if (showUtilities) {
+-            // If hovering over utilities area while in shortcut mode, transition to hover control
+-            utilitiesShortcutActive = false;
++        // Sticky, like the dashboard on SUPER + A: hover neither opens nor closes it.
++        // Drag up from the bottom-right corner opens it, drag down closes it (like
++        // the launcher); a click outside closes it (ContentWindow focus grab)
++        if (pressed && inBottomPanel(panels.utilities, dragStart.x, dragStart.y, true) && withinPanelWidth(panels.utilities, x, y)) {
++            if (dragY < -Config.launcher.dragThreshold)
++                screenState.utilities = true;
++            else if (dragY > Config.launcher.dragThreshold)
++                screenState.utilities = false;
+         }
+ 
+         // Show popouts on hover
+@@ -304,10 +306,7 @@
+         function onUtilitiesChanged() {
+             if (root.screenState.utilities) {
+                 // Utilities became visible, immediately check if this should be shortcut mode
+-                const inUtilitiesArea = root.inBottomPanel(root.panels.utilities, root.mouseX, root.mouseY);
+-                if (!inUtilitiesArea) {
+-                    root.utilitiesShortcutActive = true;
+-                }
++                root.utilitiesShortcutActive = true; // always sticky
+             } else {
+                 // Utilities hidden, clear shortcut flag
+                 root.utilitiesShortcutActive = false;
