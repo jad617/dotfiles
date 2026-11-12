@@ -1,6 +1,6 @@
 # =============================================================================
 # GPU drivers, picked from the GPUs init.sh detected (/etc/nixos/gpu.json,
-# written by nixos/detect-gpu.sh). No NVIDIA / AMD GPU (VMs): Mesa defaults.
+# written by nixos/lib/detect-gpu.sh). No NVIDIA / AMD GPU (VMs): Mesa defaults.
 # =============================================================================
 { config, lib, pkgs, ... }:
 

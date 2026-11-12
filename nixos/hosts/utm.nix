@@ -1,6 +1,6 @@
 # =============================================================================
 # Host: nixos-arm — NixOS VM on an Apple Silicon Mac (UTM / QEMU, aarch64)
-# Created and installed by nixos/vm.sh, which also syncs the dotfiles into
+# Created and installed by nixos/vm/vm.sh, which also syncs the dotfiles into
 # ~/nodestack/dotfiles over SSH (localhost:2222).
 # =============================================================================
 { ... }: {

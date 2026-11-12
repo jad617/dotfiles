@@ -56,10 +56,7 @@
     };
   in {
     nixosConfigurations = {
-      # VM (VirtualBox / VMware — no GPU)
-      nixos      = mkHost "x86_64-linux" ./hosts/vm.nix;
-
-      # VM on an Apple Silicon Mac (UTM, see nixos/vm.sh)
+      # VM on an Apple Silicon Mac (UTM, see nixos/vm/vm.sh)
       nixos-arm  = mkHost "aarch64-linux" ./hosts/utm.nix;
 
       # hashirama — i7-8700K + GTX 1070

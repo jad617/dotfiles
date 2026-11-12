@@ -2,7 +2,7 @@
 # =============================================================================
 # Prints the machine's NVIDIA / AMD GPUs as JSON for nixos/gpu.nix:
 #   {"nvidia":["0x1b81"],"amd":[]}     (PCI device IDs)
-# init.sh and vm-install.sh save it as /etc/nixos/gpu.json. Nix can't read
+# init.sh and vm/vm-install.sh save it as /etc/nixos/gpu.json. Nix can't read
 # /sys itself (sysfs files report a 4 KiB size and builtins.readFile fails).
 # =============================================================================
 set -euo pipefail

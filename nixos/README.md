@@ -36,6 +36,9 @@ reboot
 
 ### 2. Clone dotfiles & bootstrap
 
+(Only for a NixOS installed by hand from the ISO. `install-from-linux.sh` does all of this during
+the install: after it, nothing has to be run.)
+
 ```bash
 nix-shell -p git --command "git clone https://github.com/jad617/dotfiles ~/nodestack/dotfiles"
 cd ~/nodestack/dotfiles && bash nixos/init.sh
@@ -56,30 +59,33 @@ caelestia wallpaper -f ~/Pictures/Wallpapers/kurzgesagt.webp
 ### Dual boot from Pop!_OS, on a second disk (no live USB)
 
 `nixos/install-from-linux.sh` installs NixOS from the running Pop!_OS or from a live CD, with
-arrow-key menus to pick the disk and the layout: erase it, use its free space, shrink an ext4
-partition, or two existing partitions. Pop!_OS's disk is never offered.
+arrow-key menus to pick the disk and the layout: delete some partitions and keep the others, use its
+free space, shrink an ext4 partition, or erase it. Pop!_OS's disk can't be picked.
 
 ```bash
 nixos/install-from-linux.sh
 ```
 
-Full guide, options and safety checks: **[INSTALL.md](INSTALL.md)**.
+After the confirmation the install runs in the background: you can close the terminal and check on it
+with `bash nixos/install-from-linux.sh --status` (log: `~/nixos-install-<date>.log`).
 
-Disk encryption and layout (LUKS + Btrfs, Secure Boot + TPM, later move to the NVMe) is planned: **[ENCRYPTION.md](ENCRYPTION.md)**.
+Full guide, options and safety checks: **[docs/INSTALL.md](docs/INSTALL.md)**.
 
-### Test in a VM on macOS (`nixos/vm.sh`)
+Disk encryption and layout (LUKS + Btrfs, Secure Boot + TPM, later move to the NVMe) is planned: **[docs/ENCRYPTION.md](docs/ENCRYPTION.md)**.
 
-On an Apple Silicon Mac, `nixos/vm.sh` creates an aarch64 NixOS VM in
+### Test in a VM on macOS (`nixos/vm/vm.sh`)
+
+On an Apple Silicon Mac, `nixos/vm/vm.sh` creates an aarch64 NixOS VM in
 [UTM](https://mac.getutm.app) and installs the `nixos-arm` host from your checkout,
 uncommitted changes included. It needs no admin rights: UTM goes into `~/Applications`
 and `qemu` comes from Homebrew.
 
 ```bash
-nixos/vm.sh install     # download the ISO, create ~/VMs/nixos-dotfiles.utm, install (unattended)
-nixos/vm.sh rebuild     # copy this checkout into the VM and run nixos/init.sh
-nixos/vm.sh ssh         # SSH in (localhost:2222, your ~/.ssh key)
-nixos/vm.sh console     # serial console (localhost:4555)
-nixos/vm.sh start | stop | status | destroy
+nixos/vm/vm.sh install     # download the ISO, create ~/VMs/nixos-dotfiles.utm, install (unattended)
+nixos/vm/vm.sh rebuild     # copy this checkout into the VM and run nixos/init.sh
+nixos/vm/vm.sh ssh         # SSH in (localhost:2222, your ~/.ssh key)
+nixos/vm/vm.sh console     # serial console (localhost:4555)
+nixos/vm/vm.sh start | stop | status | destroy
 ```
 
 In the UTM window the VM logs in by itself and stops at Caelestia's lock screen: unlock as
@@ -259,7 +265,7 @@ Hyprland
 
 ### GPU drivers
 
-`init.sh` detects the GPU (`nixos/detect-gpu.sh` → `/etc/nixos/gpu.json`) and `nixos/gpu.nix`
+`init.sh` detects the GPU (`nixos/lib/detect-gpu.sh` → `/etc/nixos/gpu.json`) and `nixos/gpu.nix`
 configures it. Steam is installed on every x86_64 host.
 
 | GPU | Driver |

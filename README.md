@@ -63,11 +63,14 @@ dotfiles/
 │   ├── symbolichotkeys.plist   System keyboard shortcuts (which ones are disabled)
 │   └── rectangle.plist    Rectangle shortcuts; imported when Rectangle has none, update with `rectangle-save`
 ├── nixos/                 NixOS + Hyprland + Caelestia (see nixos/README.md)
-│   ├── hosts/             Per-host config (vm, utm = arm64 VM on a Mac, hashirama)
-│   ├── gpu.nix            NVIDIA / AMD drivers from the GPU detect-gpu.sh finds
-│   ├── install-from-linux.sh   Dual boot: install NixOS on a second disk from Pop!_OS
-│   ├── vm.sh              macOS: create a UTM VM and install the config into it
-│   └── vm-install.sh      Runs inside the installer ISO (started by vm.sh)
+│   ├── install-from-linux.sh   Install NixOS from another Linux or a live USB (guided)
+│   ├── init.sh            On NixOS: link the configs, rebuild the system
+│   ├── flake.nix, configuration.nix, gpu.nix   The system (gpu.nix: NVIDIA / AMD drivers)
+│   ├── hosts/             Per-host config (hashirama, utm = arm64 VM on a Mac)
+│   ├── config/            Hyprland, Caelestia, GTK configs (linked into ~/.config)
+│   ├── lib/               Helpers the two scripts above use (Wi-Fi / SSH copy, links, GPU detection)
+│   ├── vm/                macOS: create a UTM VM and install the config into it
+│   └── docs/              INSTALL.md (the installer), ENCRYPTION.md (disk encryption plan)
 ├── notes/                 Reference snippets (AWS, Terraform, etc.)
 ├── shell/
 │   ├── prompt/ohmyposh/   Oh-My-Posh theme (zsh.toml)
