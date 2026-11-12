@@ -110,6 +110,21 @@ hl.config({
         resize_on_border = true,
     },
 
+    -- Tab groups (SUPER + G): orange like WezTerm's borders, not the default
+    -- see-through yellow; the dimmer one is a group without focus
+    group = {
+        col = {
+            border_active   = "rgba(ff5f1fff)",
+            border_inactive = "rgba(ff5f1f66)",
+        },
+        groupbar = {
+            col = {
+                active   = "rgba(ff5f1fff)",
+                inactive = "rgba(ff5f1f55)",
+            },
+        },
+    },
+
     decoration = {
         rounding = 12,
 
@@ -178,7 +193,7 @@ hl.bind("SUPER + Return", exec("wezterm"), { description = "Apps: Terminal (WezT
 -- Over IPC: the caelestia:launcher shortcut only toggles on key release
 hl.bind("SUPER + D", exec("caelestia shell drawers toggle launcher"), { description = "Apps: Launcher" })
 hl.bind("SUPER + E", exec("nautilus"), { description = "Apps: Files (Nautilus)" })
-hl.bind("SUPER + B", exec('sh -c \'exec "$BROWSER"\''), { description = "Apps: Browser" })
+hl.bind("SUPER + B", exec("bash ~/.config/hypr/browser.sh"), { description = "Apps: Browser (cursor in the address bar)" })
 hl.bind("CTRL + ALT + H", exec("pkill fuzzel || caelestia clipboard"), { description = "Clipboard: History" })
 
 -- ── Copy / paste on ALT (the ⌘ position), like macOS and the Pop!_OS keyd setup
@@ -235,7 +250,10 @@ hl.bind("SUPER + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }), { descri
 hl.bind("SUPER + SHIFT + F", hl.dsp.window.fullscreen({ mode = "maximized" }), { description = "Windows: Maximize (bar stays)" })
 hl.bind("SUPER + V", hl.dsp.window.float({ action = "toggle" }), { description = "Windows: Float / tile" })
 hl.bind("SUPER + P", hl.dsp.window.pseudo(), { description = "Windows: Pseudo-tile" })
-hl.bind("SUPER + G", hl.dsp.group.toggle(), { description = "Windows: Group (tabs)" })
+hl.bind("SUPER + G", hl.dsp.group.toggle(), { description = "Groups: Make / break up a tab group" })
+hl.bind("SUPER + Tab", hl.dsp.group.next(), { description = "Groups: Next tab" })
+hl.bind("SUPER + SHIFT + Tab", hl.dsp.group.prev(), { description = "Groups: Previous tab" })
+hl.bind("SUPER + U", hl.dsp.window.move({ out_of_group = true }), { description = "Groups: Pop the tab out of its group" })
 hl.bind("SUPER + T", hl.dsp.layout("togglesplit"), { description = "Windows: Flip the split (side by side <-> stacked)" })
 
 -- Where the next window opens: by default it splits the focused window along
@@ -257,8 +275,45 @@ for _, key in ipairs(order) do
         hl.bind("SUPER + " .. key, hl.dsp.focus({ direction = dirs[key] }), { description = "Focus: Focus " .. dirs[key] })
     end
 end
+-- SUPER + SHIFT + direction moves the window. A window that is itself in a tab
+-- group (SUPER + G) joins the group on that side instead, as a new tab; a
+-- window without a group always just moves
+local function neighbour(w, dir)
+    local ax, ay, aw, ah = w.at.x, w.at.y, w.size.x, w.size.y
+    local best, bestGap
+    for _, o in ipairs(hl.get_windows()) do
+        if o.address ~= w.address and o.mapped and not o.hidden and not o.floating
+            and o.workspace and w.workspace and o.workspace.id == w.workspace.id then
+            local bx, by, bw, bh = o.at.x, o.at.y, o.size.x, o.size.y
+            local gap, overlap
+            if dir == "left" or dir == "right" then
+                gap = dir == "left" and ax - (bx + bw) or bx - (ax + aw)
+                overlap = math.min(ay + ah, by + bh) - math.max(ay, by)
+            else
+                gap = dir == "up" and ay - (by + bh) or by - (ay + ah)
+                overlap = math.min(ax + aw, bx + bw) - math.max(ax, bx)
+            end
+            if gap > -10 and overlap > 0 and (not bestGap or gap < bestGap) then
+                best, bestGap = o, gap
+            end
+        end
+    end
+    return best
+end
+local function move_or_join(dir)
+    return function()
+        local w = hl.get_active_window()
+        if not w then return end
+        local o = neighbour(w, dir)
+        if w.group and o and o.group and tostring(w.group) ~= tostring(o.group) then
+            hl.dispatch(hl.dsp.window.move({ into_group = dir }))
+        else
+            hl.dispatch(hl.dsp.window.move({ direction = dir }))
+        end
+    end
+end
 for _, key in ipairs(order) do
-    hl.bind("SUPER + SHIFT + " .. key, hl.dsp.window.move({ direction = dirs[key] }), { description = "Focus: Move window " .. dirs[key] })
+    hl.bind("SUPER + SHIFT + " .. key, move_or_join(dirs[key]), { description = "Focus: Move window " .. dirs[key] .. " (a grouped one joins the group there)" })
 end
 for _, key in ipairs(order) do
     local d = resize[dirs[key]]
@@ -267,9 +322,10 @@ for _, key in ipairs(order) do
 end
 
 -- ── Workspaces ──────────────────────────────────────────────────────────────
--- Each screen has its own slots 1–10. Screens are numbered left to right, so
--- slot N is workspace N on the 1st screen, 10+N on the 2nd, 20+N on the 3rd…
--- (port names don't matter, so this survives screens being re-plugged).
+-- Each screen has its own slots 1–SLOTS (5). Screens are numbered left to
+-- right, and each gets a block of 10 workspace ids: slot N is workspace N on
+-- the 1st screen, 10+N on the 2nd, 20+N on the 3rd… (port names don't matter,
+-- so this survives screens being re-plugged).
 --
 -- SUPER + W toggles how the slot keys behave:
 --   paired – all screens switch together (left N, right 10+N)
@@ -277,6 +333,7 @@ end
 --            even with focus on the locked one. The locked screen is the one
 --            that had focus when SUPER + W locked it (named in the
 --            notification). To lock another one: focus it, SUPER + W twice
+local SLOTS = 5 -- slots per screen: SUPER + 1–5, CTRL + ALT + arrows cycle 1 → 5
 local mode = "paired"
 local locked_name -- name of the locked screen
 
@@ -359,19 +416,19 @@ local function send(n)
     end
 end
 
--- Next/previous slot (wraps 10 → 1), measured on the screen the keys act on
+-- Next/previous slot (wraps SLOTS → 1), measured on the screen the keys act on
 local function step(d, fn)
     local list, active = screens(), hl.get_active_monitor()
     if not active then return end
     local ws = base_screen(list, active).active_workspace
-    local cur = ws and ws.id and ws.id > 0 and slot_of(ws.id) or 1
-    fn((cur - 1 + d) % 10 + 1)
+    local cur = ws and ws.id and ws.id > 0 and math.min(slot_of(ws.id), SLOTS) or 1
+    fn((cur - 1 + d) % SLOTS + 1)
 end
 
-for i = 1, 10 do
+for i = 1, SLOTS do
     local key = i % 10 -- 10 maps to key 0
-    hl.bind("SUPER + " .. key, function() show(i) end, { description = "Workspaces: Go to slot 1–10" })
-    hl.bind("SUPER + SHIFT + " .. key, function() send(i) end, { description = "Workspaces: Send window to slot 1–10" })
+    hl.bind("SUPER + " .. key, function() show(i) end, { description = "Workspaces: Go to slot 1–" .. SLOTS })
+    hl.bind("SUPER + SHIFT + " .. key, function() send(i) end, { description = "Workspaces: Send window to slot 1–" .. SLOTS })
 end
 
 hl.bind("SUPER + W", function()

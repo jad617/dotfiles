@@ -49,6 +49,11 @@
                 substituteInPlace modules/bar/components/TrayItem.qml \
                   --replace-fail 'acceptedButtons: Qt.LeftButton | Qt.RightButton' \
                     'acceptedButtons: modelData.hasMenu ? Qt.RightButton : (Qt.LeftButton | Qt.RightButton)'
+                # A click on the bar's clock / calendar toggles the dashboard
+                # on that screen, like SUPER + A
+                substituteInPlace modules/bar/Bar.qml \
+                  --replace-fail '} else if (id === "activeWindow"' \
+                    '} else if (id === "clock") { popouts.hasCurrent = false; root.screenState.dashboard = !root.screenState.dashboard; } else if (id === "activeWindow"'
               '';
             });
             # with-cli only puts `caelestia` on the shell's own PATH; Hyprland binds need it too

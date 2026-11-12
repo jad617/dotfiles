@@ -35,6 +35,10 @@
   "bar": {
     "activeWindow": {
       "showOnHover": false
+    },
+    "clock": {
+      "showDate": true,
+      "showIcon": true
     }
   },
   "services": {
