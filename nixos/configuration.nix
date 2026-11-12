@@ -193,9 +193,14 @@ in {
     description = "Polkit authentication agent";
     wantedBy    = [ "graphical-session.target" ];
     partOf      = [ "graphical-session.target" ];
+    # No start limit: when Hyprland restarts (e.g. after a crash) the agent
+    # fails until the new display is up, and 5 quick failures used to stop it
+    # for good (no password prompts until the next login)
+    unitConfig.StartLimitIntervalSec = 0;
     serviceConfig = {
-      ExecStart = "${pkgs.polkit_gnome}/libexec/polkit-gnome-authentication-agent-1";
-      Restart   = "on-failure";
+      ExecStart  = "${pkgs.polkit_gnome}/libexec/polkit-gnome-authentication-agent-1";
+      Restart    = "on-failure";
+      RestartSec = 2;
     };
   };
 

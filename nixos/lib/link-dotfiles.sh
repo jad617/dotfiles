@@ -50,6 +50,8 @@ link() { # SRC DST, both as seen on NixOS
     mkdirs "$(dirname "$dst")"
     # e.g. ~/Pictures linked to /backup/shared/Pictures while /backup is not mounted
     [[ -d $ROOT$(dirname "$dst") ]] || { echo "  skipped (not available now): $(dirname "$dst")" && return 0; }
+    # Already right: leave it (no moment without it, e.g. for Hyprland's config watcher)
+    [[ -L $ROOT$dst && $(readlink "$ROOT$dst") == "$src" ]] && return 0
     if [[ -L $ROOT$dst ]]; then
         rm "$ROOT$dst"
     elif [[ -e $ROOT$dst ]]; then
@@ -68,6 +70,7 @@ link "$DOTFILES/shell/zsh/completions/_claude" "$HOME_DIR/.zfunc/_claude"
 # Commands (~/.local/bin is on PATH via my_aliases.sh)
 link "$NIXOS_DIR/bin/nixos-shortcuts" "$HOME_DIR/.local/bin/nixos-shortcuts"
 link "$NIXOS_DIR/bin/nixos-update" "$HOME_DIR/.local/bin/nixos-update"
+link "$NIXOS_DIR/bin/nixos-sync" "$HOME_DIR/.local/bin/nixos-sync"
 link "$DOTFILES/shell/prompt/ohmyposh" "$HOME_DIR/.config/ohmyposh"
 # Editor
 link "$DOTFILES/editors/nvim" "$HOME_DIR/.config/nvim"
@@ -85,6 +88,8 @@ link "$NIXOS_DIR/config/gtk/gtk-4.0.css" "$HOME_DIR/.config/gtk-4.0/gtk.css"
 link "$DOTFILES/wallpapers" "$HOME_DIR/Pictures/Wallpapers"
 [[ -L $ROOT$HOME_DIR/Pictures && ! -d $ROOT$HOME_DIR/Pictures ]] || mkdirs "$HOME_DIR/Pictures/screenshots"
 
+# Caelestia CLI: the scheme leaves terminal colours alone (WezTerm keeps its own)
+link "$NIXOS_DIR/config/caelestia/cli.json" "$HOME_DIR/.config/caelestia/cli.json"
 # Caelestia shell defaults (opaque panels). Copied, not linked: Caelestia
 # rewrites this file when settings change in its UI, so only seed it once
 if [[ ! -e $ROOT$HOME_DIR/.config/caelestia/shell.json ]]; then
