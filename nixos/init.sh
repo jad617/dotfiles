@@ -16,7 +16,7 @@
 #   - Prompts for username / hostname / timezone
 #   - Copies flake.nix + configuration.nix (with substitutions) to /etc/nixos/
 #   - Enables Nix flakes
-#   - Creates all dotfiles symlinks (link-dotfiles.sh), first: they need no network
+#   - Creates all dotfiles symlinks (lib/link-dotfiles.sh), first: they need no network
 #   - Runs nixos-rebuild switch (a failure, e.g. offline, is reported at the end;
 #     the steps after it still run)
 #   - Sets up TPM, neovim python, zsh default shell
@@ -76,8 +76,8 @@ echo "  Username : $USERNAME"
 echo "  Hostname : $HOSTNAME"
 echo "  Timezone : $TIMEZONE"
 
-# Flake host: NIXOS_HOST, else the one named like this machine, else the VM
-# config for this CPU (nixos = x86_64, nixos-arm = aarch64)
+# Flake host: NIXOS_HOST, else the one named like this machine, else the
+# UTM VM on an arm64 Mac (nixos-arm)
 if [[ -n "${NIXOS_HOST:-}" ]]; then
     FLAKE_HOST="$NIXOS_HOST"
 elif [[ -f "$NIXOS_DIR/hosts/$HOSTNAME.nix" ]]; then
@@ -85,7 +85,9 @@ elif [[ -f "$NIXOS_DIR/hosts/$HOSTNAME.nix" ]]; then
 elif [[ "$(uname -m)" == aarch64 ]]; then
     FLAKE_HOST="nixos-arm"
 else
-    FLAKE_HOST="nixos"
+    echo "ERROR: no flake host for '$HOSTNAME' (hosts: $(sed -n 's/^ *\([A-Za-z0-9_-]*\) *= *mkHost .*/\1/p' "$NIXOS_DIR/flake.nix" | xargs))."
+    echo "       Add nixos/hosts/$HOSTNAME.nix + an entry in nixos/flake.nix, or run: NIXOS_HOST=<host> $0"
+    exit 1
 fi
 echo "  Host     : $FLAKE_HOST"
 
@@ -112,7 +114,7 @@ sudo rm -rf /etc/nixos/hosts
 sudo cp -r "$NIXOS_DIR/hosts" /etc/nixos/hosts
 sudo cp "$NIXOS_DIR/gpu.nix" /etc/nixos/gpu.nix
 # GPU drivers: gpu.nix reads the detected cards from gpu.json
-bash "$NIXOS_DIR/detect-gpu.sh" | sudo tee /etc/nixos/gpu.json >/dev/null
+bash "$NIXOS_DIR/lib/detect-gpu.sh" | sudo tee /etc/nixos/gpu.json >/dev/null
 echo "  GPU      : $(cat /etc/nixos/gpu.json)"
 [[ -f "$NIXOS_DIR/flake.lock" ]] && sudo cp "$NIXOS_DIR/flake.lock" /etc/nixos/flake.lock
 
@@ -131,7 +133,7 @@ ls /etc/nixos/
 # Hyprland writes its own default config, which does not start Caelestia
 # ---------------------------------------------------------------------------
 header "Creating dotfiles symlinks"
-bash "$NIXOS_DIR/link-dotfiles.sh"
+bash "$NIXOS_DIR/lib/link-dotfiles.sh"
 
 # ---------------------------------------------------------------------------
 # nixos-rebuild switch
@@ -162,15 +164,14 @@ header "Applying GTK icon theme and color scheme"
 export XDG_DATA_DIRS="/run/current-system/sw/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 gsettings set org.gnome.desktop.interface icon-theme  'Papirus-Dark'  2>/dev/null && echo "  icon-theme  → Papirus-Dark"   || echo "  gsettings unavailable (run after rebuild)"
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'  2>/dev/null && echo "  color-scheme → prefer-dark"    || true
-gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic' 2>/dev/null || true
+gsettings set org.gnome.desktop.interface cursor-theme 'Adwaita' 2>/dev/null || true # = Hyprland's
 
 # ---------------------------------------------------------------------------
-# Disable Copilot in Neovim by default (touch ~/.disable_copilot to keep off,
-# remove it to re-enable)
+# Home setup: Copilot off in Neovim, tmux plugin manager, Terraform completion
+# (lib/home-setup.sh; the installer already ran it on a fresh install)
 # ---------------------------------------------------------------------------
-header "Disabling Copilot in Neovim"
-touch "$HOME/.disable_copilot"
-echo "  ~/.disable_copilot created — remove it to re-enable Copilot"
+header "Home setup (Copilot flag, tmux plugins, zsh completions)"
+bash "$NIXOS_DIR/lib/home-setup.sh"
 
 # ---------------------------------------------------------------------------
 # gh copilot extension
@@ -209,25 +210,6 @@ if cmd_exists pip3; then
     echo "  pynvim installed"
 else
     echo "  pip3 not found — skipping (pynvim is in system packages)"
-fi
-
-# ---------------------------------------------------------------------------
-# tmux plugin manager + Terraform zsh completion (same as init.sh elsewhere)
-# ---------------------------------------------------------------------------
-header "tmux plugins and zsh completions"
-if [[ ! -d "$HOME/.tmux/plugins/tpm" ]]; then
-    git clone -q https://github.com/tmux-plugins/tpm "$HOME/.tmux/plugins/tpm" &&
-        echo "  tpm installed (press prefix + I in tmux to install plugins)"
-else
-    echo "  tpm already installed"
-fi
-TF_COMP="$HOME/.config/zsh-completion/terraform/_terraform"
-if [[ ! -s "$TF_COMP" ]]; then
-    mkdir -p "$(dirname "$TF_COMP")"
-    curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/plugins/terraform/_terraform -o "$TF_COMP" &&
-        echo "  terraform completion installed"
-else
-    echo "  terraform completion already installed"
 fi
 
 # ---------------------------------------------------------------------------

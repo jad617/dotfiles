@@ -1247,6 +1247,7 @@ shell/prompt/ohmyposh|$HOME/.config/ohmyposh
 terminal/zellij|$HOME/.config/zellij
 terminal/kitty|$HOME/.config/kitty
 shell/zsh/zshrc|$HOME/.zshrc
+shell/zsh/completions/_claude|$HOME/.zfunc/_claude
 EOF
     if [[ "$OS" == "macos" ]]; then
         cat <<EOF

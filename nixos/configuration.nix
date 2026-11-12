@@ -90,7 +90,7 @@ in {
   # Networking
   # ---------------------------------------------------------------------------
   networking = {
-    # hostName is set per-host in hosts/vm.nix or hosts/hashirama.nix
+    # hostName is set per-host in hosts/<host>.nix (hashirama.nix, utm.nix)
     networkmanager.enable = true;
   };
 
@@ -254,6 +254,20 @@ in {
   # Shell
   # ---------------------------------------------------------------------------
   programs.zsh.enable = true;
+
+  # Dark mode + icon / cursor theme for GTK4 / libadwaita apps (they read dconf, not
+  # settings.ini): system defaults, there from the first login; a user can still change them
+  programs.dconf = {
+    enable = true;
+    profiles.user.databases = [{
+      settings."org/gnome/desktop/interface" = {
+        color-scheme = "prefer-dark";
+        icon-theme   = "Papirus-Dark";
+        cursor-theme = "Adwaita";   # the one Hyprland uses (XCURSOR_THEME in hyprland.lua)
+        cursor-size  = lib.gvariant.mkInt32 24;
+      };
+    }];
+  };
   # ~/.zshrc runs compinit with a daily cache; the global one in /etc/zshrc
   # would rebuild the completion dump on every new shell (~0.2 s)
   programs.zsh.enableGlobalCompInit = false;

@@ -2,12 +2,12 @@
 # =============================================================================
 # NixOS test VM on an Apple Silicon Mac (UTM, aarch64, no admin rights needed).
 #
-#   nixos/vm.sh install   create the VM and install the nixos-arm host from
+#   nixos/vm/vm.sh install   create the VM and install the nixos-arm host from
 #                         this checkout (uncommitted changes included)
-#   nixos/vm.sh install --retry   after a failed install: run the installer
+#   nixos/vm/vm.sh install --retry   after a failed install: run the installer
 #                         again in the still-running ISO (no new VM, no click)
-#   nixos/vm.sh rebuild   copy this checkout into the VM and run nixos/init.sh
-#   nixos/vm.sh start | stop | status | ssh [cmd] | console | destroy
+#   nixos/vm/vm.sh rebuild   copy this checkout into the VM and run nixos/init.sh
+#   nixos/vm/vm.sh start | stop | status | ssh [cmd] | console | destroy
 #
 # The VM's SSH is forwarded to localhost:2222 and its serial console to
 # localhost:4555. The installer runs over that serial console (no clicks).
@@ -20,7 +20,7 @@
 # =============================================================================
 set -euo pipefail
 
-NIXOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NIXOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" # nixos/ (this file is in nixos/vm)
 DOTFILES="$(dirname "$NIXOS_DIR")"
 
 VM_NAME=nixos-dotfiles
@@ -314,7 +314,7 @@ cmd_install() {
     local url="http://10.0.2.2:$HTTP_PORT"
     local guest="for i in \$(seq 60); do curl -fsS $url/nixos.tar -o /tmp/n.tar && break; sleep 2; done;"
     guest+=" curl -fsS $url/vm.env -o /tmp/vm.env && tar -xf /tmp/n.tar -C /tmp &&"
-    guest+=" sudo bash -c 'set -a; . /tmp/vm.env; set +a; bash /tmp/nixos/vm-install.sh' || echo VM-INSTALL-\"FAILED\""
+    guest+=" sudo bash -c 'set -a; . /tmp/vm.env; set +a; bash /tmp/nixos/vm/vm-install.sh' || echo VM-INSTALL-\"FAILED\""
     info "Installing over the serial console (log: $CACHE/install.log)"
     serial_install "$guest"
     kill "$HTTP_PID" 2>/dev/null || true

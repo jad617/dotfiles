@@ -64,8 +64,10 @@ zstyle ':completion:*' squeeze-slashes true
 # Full check (picks up new completion files) at most once a day; fast cached load otherwise.
 # The array glob matches only a non-empty dump modified in the last 24h (a glob
 # inside [[ ]] never expands, which made every shell do the full check).
+# Also a full check when ~/.zfunc changed since the dump (a completion linked or
+# copied there by init.sh / link-dotfiles.sh), so it works in the next shell.
 _fresh_dump=( "$ZDOT/.zcompdump"(N.Lk+0mh-24) )
-if (( ${#_fresh_dump} )); then
+if (( ${#_fresh_dump} )) && [[ ! "$ZFUNC_DIR" -nt "$ZDOT/.zcompdump" ]]; then
   compinit -i -C
 else
   compinit -i

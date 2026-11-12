@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Copies Wi-Fi networks saved in this system's NetworkManager (Pop!_OS, or a
+# Copies Wi-Fi networks saved in this system's NetworkManager (another distro, or a
 # live CD session) into another system, so it is online at its first boot.
 # Used by install-from-linux.sh; run as root (reading the passwords needs it).
 #

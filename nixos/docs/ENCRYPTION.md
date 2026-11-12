@@ -119,7 +119,8 @@ see INSTALL.md for the options. In order:
 
 Its safety checks treat LUKS partitions as another OS's data, except its own
 (`nixos-crypt`), so an encrypted NixOS can be reinstalled later. Pop!_OS's
-LUKS disk is still never offered.
+LUKS disk is listed but can't be picked
+(it's the running system's disk when the installer runs from Pop!_OS).
 
 Tested on a loop device (format path with and without `--encrypt`; the
 generated hardware config: LUKS entry by UUID, 4 Btrfs mounts with
@@ -155,8 +156,9 @@ and a `@snapshots` subvolume.
    names there (`lsblk -f`): the NixOS EFI partition is `NIXBOOT`, the NixOS
    one is labelled `nixos`; the shared data partition and Pop's NVMe must not
    be picked.
-2. Run the guided installer and choose "Use two existing partitions", the
-   NixOS EFI + NixOS partitions, then "Encrypt":
+2. Run the guided installer: the SATA disk, "Delete some partitions, keep the
+   others", tick the NixOS EFI (`NIXBOOT`) and NixOS (`nixos`) partitions only,
+   then "Encrypt" (the first choice):
    ```bash
    bash nixos/install-from-linux.sh
    ```
@@ -164,8 +166,9 @@ and a `@snapshots` subvolume.
    ```bash
    bash nixos/install-from-linux.sh --boot-part /dev/<nixos-efi> --root-part /dev/<nixos-root> --encrypt
    ```
-   The summary must say `NixOS  LUKS2 (passphrase at boot) + Btrfs` and list the
-   shared data partition as `Kept`. Pop!_OS's disk and the shared data
+   The summary must say `Storage   encrypted: LUKS2 ...` and list the shared
+   data partition as `Kept`; the last screen says `Deleting:` with the two NixOS
+   partitions only (the command-line form formats them in place instead). Pop!_OS's disk and the shared data
    partition are untouched.
 3. First boot: the Plymouth splash asks for the LUKS passphrase (works with
    the NVIDIA settings in `gpu.nix`: driver in the initrd, `nvidia_drm.fbdev=1`,

@@ -29,7 +29,7 @@ done
 HOME_DIR=/home/$USERNAME
 if [[ -z $ROOT ]]; then
     HOME_DIR=$HOME
-    DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    DOTFILES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" # this file is in nixos/lib
 else
     DOTFILES=$HOME_DIR/nodestack/dotfiles
 fi
@@ -64,6 +64,7 @@ link() { # SRC DST, both as seen on NixOS
 # Shell
 link "$DOTFILES/shell/zsh/my_aliases.sh" "$HOME_DIR/.my_aliases.sh"
 link "$DOTFILES/shell/zsh/zshrc" "$HOME_DIR/.zshrc"
+link "$DOTFILES/shell/zsh/completions/_claude" "$HOME_DIR/.zfunc/_claude"
 link "$DOTFILES/shell/prompt/ohmyposh" "$HOME_DIR/.config/ohmyposh"
 # Editor
 link "$DOTFILES/editors/nvim" "$HOME_DIR/.config/nvim"
