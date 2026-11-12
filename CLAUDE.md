@@ -13,3 +13,4 @@
   4. push `main` + the tag to origin — never stop at a local merge.
 - **Always squash commits** before merging a branch into main (`git merge --squash` or rebase squash), so main history stays clean.
 - **Always delete merged branches**, locally and on origin, as the last step of a merge (check first that their content is in `main`; squash-merged branches don't look merged to git, so delete them with `git branch -D`).
+- **After every merge, branch switch or checkout, check the live setup.** This checkout *is* the live config (`~/.config/hypr`, `~/.zshrc`, wallpapers… are symlinks into it), and git briefly deletes files while rewriting them, so Hyprland can catch a missing `hyprland.lua`. On NixOS, always run `hyprctl reload`, then `hyprctl configerrors` (must be empty) and `nixos-sync -n` (should report nothing to change), and say the result. Prefer a git worktree for side branches so the live checkout doesn't switch.
