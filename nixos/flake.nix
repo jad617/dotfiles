@@ -30,7 +30,16 @@
           neovim-nightly-overlay.overlays.default
           hyprmod.overlays.default
           (final: prev: let system = prev.stdenv.hostPlatform.system; in {
-            caelestia-shell = caelestia-shell.packages.${system}.with-cli;
+            # Bar's active window: the app's name (WezTerm, Google Chrome), not
+            # the window title, which changes with every split / tab / page
+            caelestia-shell = caelestia-shell.packages.${system}.with-cli.overrideAttrs (old: {
+              postPatch = (old.postPatch or "") + ''
+                substituteInPlace modules/bar/components/ActiveWindow.qml \
+                  --replace-fail 'import QtQuick' $'import QtQuick\nimport Quickshell' \
+                  --replace-fail 'const title = Hypr.activeToplevel?.title;' \
+                    'const cls = Hypr.activeToplevel?.lastIpcObject.class; const title = cls ? (DesktopEntries.heuristicLookup(cls)?.name || cls) : "";'
+              '';
+            });
             # with-cli only puts `caelestia` on the shell's own PATH; Hyprland binds need it too
             caelestia-cli   = caelestia-shell.inputs.caelestia-cli.packages.${system}.default;
 

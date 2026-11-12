@@ -194,6 +194,22 @@ end
 hl.bind("ALT + C", clipboard_key("c"), { description = "Clipboard: Copy" })
 hl.bind("ALT + V", clipboard_key("v"), { description = "Clipboard: Paste" })
 
+-- ── CTRL + D: WezTerm gets it unchanged (EOF, closes the shell); Chrome closes
+-- the tab (CTRL + W) instead of bookmarking; everything else closes the window
+-- (like SUPER + Q)
+local browsers = { ["google-chrome"] = true, ["chromium-browser"] = true, ["chromium"] = true }
+hl.bind("CTRL + D", function()
+    local w = hl.get_active_window()
+    if not w then return end
+    if w.class == "org.wezfurlong.wezterm" then
+        hl.dispatch(hl.dsp.send_shortcut({ mods = "CTRL", key = "d" }))
+    elseif browsers[w.class] then
+        hl.dispatch(hl.dsp.send_shortcut({ mods = "CTRL", key = "w" }))
+    else
+        hl.dispatch(hl.dsp.window.close())
+    end
+end, { description = "Windows: Close (CTRL + D; tab in Chrome, EOF in WezTerm)" })
+
 -- ── Caelestia ───────────────────────────────────────────────────────────────
 hl.bind("SUPER + N", hl.dsp.global("caelestia:sidebar"), { description = "Shell: Sidebar (notifications)" })
 -- Hover-to-open is off (config/caelestia/shell.json), so the dashboard is on a key
