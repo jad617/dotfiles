@@ -128,6 +128,7 @@ hl.config({
 
     dwindle = {
         preserve_split = true,
+        force_split    = 2,     -- new windows open right / below, wherever the mouse is
         smart_resizing = true,
     },
 
@@ -235,6 +236,16 @@ hl.bind("SUPER + SHIFT + F", hl.dsp.window.fullscreen({ mode = "maximized" }), {
 hl.bind("SUPER + V", hl.dsp.window.float({ action = "toggle" }), { description = "Windows: Float / tile" })
 hl.bind("SUPER + P", hl.dsp.window.pseudo(), { description = "Windows: Pseudo-tile" })
 hl.bind("SUPER + G", hl.dsp.group.toggle(), { description = "Windows: Group (tabs)" })
+hl.bind("SUPER + T", hl.dsp.layout("togglesplit"), { description = "Windows: Flip the split (side by side <-> stacked)" })
+
+-- Where the next window opens: by default it splits the focused window along
+-- its longer side, to the right or below (dwindle.force_split). SUPER + CTRL +
+-- direction picks the side for the next window only.
+local pre = { left = "l", right = "r", up = "u", down = "d" }
+for _, key in ipairs({ "left", "H", "down", "J", "up", "K", "right", "L" }) do
+    hl.bind("SUPER + CTRL + " .. key, hl.dsp.layout("preselect " .. pre[dirs[key]]),
+        { description = "Windows: Next window opens " .. ({ left = "left", right = "right", up = "above", down = "below" })[dirs[key]] })
+end
 
 -- ── Focus / move / resize: arrows and H J K L ───────────────────────────────
 -- SUPER + L is the lock screen, so focus-right is only on the arrow key
