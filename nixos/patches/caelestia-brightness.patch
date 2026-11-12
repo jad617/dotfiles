@@ -1,0 +1,93 @@
+--- a/services/Brightness.qml	2026-11-12 11:41:50.708051086 -0500
++++ b/services/Brightness.qml	2026-11-12 11:42:03.096565170 -0500
+@@ -51,13 +51,13 @@
+     function increaseBrightness(): void {
+         const monitor = getMonitor("active");
+         if (monitor)
+-            monitor.setBrightness(monitor.brightness + GlobalConfig.services.brightnessIncrement);
++            monitor.step(GlobalConfig.services.brightnessIncrement);
+     }
+ 
+     function decreaseBrightness(): void {
+         const monitor = getMonitor("active");
+         if (monitor)
+-            monitor.setBrightness(monitor.brightness - GlobalConfig.services.brightnessIncrement);
++            monitor.step(-GlobalConfig.services.brightnessIncrement);
+     }
+ 
+     onMonitorsChanged: {
+@@ -159,6 +159,15 @@
+             return `Set monitor ${monitor.modelData.name} brightness to ${+monitor.brightness.toFixed(2)}`;
+         }
+ 
++        // One brightness-key step ("up" / "down") on one screen, like the keys
++        function stepFor(query: string, direction: string): string {
++            const monitor = root.getMonitor(query);
++            if (!monitor)
++                return "Invalid monitor: " + query;
++            monitor.step((direction === "down" ? -1 : 1) * GlobalConfig.services.brightnessIncrement);
++            return "ok";
++        }
++
+         target: "brightness"
+     }
+ 
+@@ -172,6 +181,41 @@
+         readonly property bool isAppleDisplay: root.appleDisplayPresent && modelData.model.startsWith("StudioDisplay")
+         property real brightness
+         property real queuedBrightness: NaN
++        property real lastSet: 0          // ms; a step after 3 s of quiet re-reads the monitor first
++        property real pendingStep: NaN    // steps waiting for that read
++
++        // The brightness can change behind Caelestia's back (the monitor's own
++        // buttons, another tool), so a step after a quiet spell starts from
++        // the monitor's real value
++        readonly property Process syncProc: Process {
++            stdout: StdioCollector {
++                onStreamFinished: {
++                    const [, , , cur, max] = text.split(" ");
++                    const v = parseInt(cur) / parseInt(max);
++                    if (!isNaN(v))
++                        monitor.brightness = v;
++                    const d = monitor.pendingStep;
++                    monitor.pendingStep = NaN;
++                    if (!isNaN(d))
++                        monitor.setBrightness(monitor.brightness + d);
++                }
++            }
++        }
++
++        function step(d: real): void {
++            if (syncProc.running) {
++                pendingStep = (isNaN(pendingStep) ? 0 : pendingStep) + d;
++                return;
++            }
++            if (isDdc && !timer.running && isNaN(queuedBrightness) && Date.now() - lastSet > 3000) {
++                pendingStep = d;
++                syncProc.command = ["ddcutil", "-b", busNum, "getvcp", "10", "--brief"];
++                syncProc.running = true;
++                return;
++            }
++            // Quick presses add up: start from a change still waiting to be sent
++            setBrightness((isNaN(queuedBrightness) ? brightness : queuedBrightness) + d);
++        }
+ 
+         readonly property Process initProc: Process {
+             stdout: StdioCollector {
+@@ -199,6 +243,7 @@
+ 
+         function setBrightness(value: real): void {
+             value = Math.max(0, Math.min(1, value));
++            lastSet = Date.now();
+             const rounded = Math.round(value * 100);
+             if (Math.round(brightness * 100) === rounded)
+                 return;
+@@ -213,7 +258,7 @@
+             if (isAppleDisplay)
+                 Quickshell.execDetached(["asdbctl", "set", rounded]);
+             else if (isDdc)
+-                Quickshell.execDetached(["ddcutil", "-b", busNum, "setvcp", "10", rounded]);
++                Quickshell.execDetached(["ddcutil", "-b", busNum, "setvcp", "10", rounded, "--noverify", "--sleep-multiplier", "0.3"]);
+             else
+                 Quickshell.execDetached(["brightnessctl", "s", `${rounded}%`]);
+ 

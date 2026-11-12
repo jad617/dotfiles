@@ -2,7 +2,7 @@
 # =============================================================================
 # nixos-sync — apply this checkout to the running system, as it is right now
 # (whatever branch is checked out):
-#   1. writes flake.nix, configuration.nix, gpu.nix and hosts/ into /etc/nixos,
+#   1. writes flake.nix, configuration.nix, gpu.nix, hosts/ and patches/ into /etc/nixos,
 #      filling in the placeholders (user, timezone) like init.sh does; keeps
 #      /etc/nixos's own hardware-configuration.nix, gpu.json and flake.lock
 #   2. shows what changed, then rebuilds and switches (only if something did);
@@ -64,9 +64,10 @@ trap 'rm -rf "$work"' EXIT
 new=$work/new
 mkdir -p "$new"
 cp -r "$ETC/." "$new/"
-rm -rf "$new/hosts"
+rm -rf "$new/hosts" "$new/patches"
 cp "$NIXOS_DIR/flake.nix" "$NIXOS_DIR/configuration.nix" "$NIXOS_DIR/gpu.nix" "$new/"
 cp -r "$NIXOS_DIR/hosts" "$new/hosts"
+cp -r "$NIXOS_DIR/patches" "$new/patches" # source patches the flake applies (e.g. Caelestia)
 sed -i "s/YOUR_USERNAME/$user/g" "$new/configuration.nix" "$new/hosts/"*.nix
 sed -i "s|YOUR_TIMEZONE|$tz|g" "$new/configuration.nix"
 if grep -rn 'YOUR_[A-Z]*' "$new" --include='*.nix'; then

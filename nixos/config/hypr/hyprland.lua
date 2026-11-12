@@ -474,15 +474,15 @@ hl.bind("XF86AudioNext", exec("playerctl next"), { description = "Media: Next tr
 hl.bind("XF86MonBrightnessUp", hl.dsp.global("caelestia:brightnessUp"), { description = "Media: Brightness up (F2)", locked = true, repeating = true })
 hl.bind("XF86MonBrightnessDown", hl.dsp.global("caelestia:brightnessDown"), { description = "Media: Brightness down (F1)", locked = true, repeating = true })
 -- SHIFT + F1 / F2: every screen at once (Caelestia's brightness IPC, per screen)
-local function all_screens_brightness(step)
+local function all_screens_brightness(direction)
     return function()
         for _, m in ipairs(hl.get_monitors()) do
-            hl.dispatch(hl.dsp.exec_cmd("caelestia shell brightness setFor " .. m.name .. " " .. step))
+            hl.dispatch(hl.dsp.exec_cmd("caelestia shell brightness stepFor " .. m.name .. " " .. direction))
         end
     end
 end
-hl.bind("SHIFT + XF86MonBrightnessUp", all_screens_brightness("+10%"), { description = "Media: Brightness up, all screens (SHIFT + F2)", locked = true, repeating = true })
-hl.bind("SHIFT + XF86MonBrightnessDown", all_screens_brightness("10%-"), { description = "Media: Brightness down, all screens (SHIFT + F1)", locked = true, repeating = true })
+hl.bind("SHIFT + XF86MonBrightnessUp", all_screens_brightness("up"), { description = "Media: Brightness up, all screens (SHIFT + F2)", locked = true, repeating = true })
+hl.bind("SHIFT + XF86MonBrightnessDown", all_screens_brightness("down"), { description = "Media: Brightness down, all screens (SHIFT + F1)", locked = true, repeating = true })
 
 -- ── Mouse: drag to move, right-drag to resize ───────────────────────────────
 hl.bind("SUPER + mouse:272", hl.dsp.window.drag(), { description = "Mouse: Move a window", mouse = true })

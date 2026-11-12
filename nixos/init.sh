@@ -110,8 +110,9 @@ fi
 
 echo "  Copying flake.nix + hosts/"
 sudo cp "$NIXOS_DIR/flake.nix" /etc/nixos/flake.nix
-sudo rm -rf /etc/nixos/hosts
+sudo rm -rf /etc/nixos/hosts /etc/nixos/patches
 sudo cp -r "$NIXOS_DIR/hosts" /etc/nixos/hosts
+sudo cp -r "$NIXOS_DIR/patches" /etc/nixos/patches
 sudo cp "$NIXOS_DIR/gpu.nix" /etc/nixos/gpu.nix
 # GPU drivers: gpu.nix reads the detected cards from gpu.json
 bash "$NIXOS_DIR/lib/detect-gpu.sh" | sudo tee /etc/nixos/gpu.json >/dev/null
