@@ -7,14 +7,15 @@
 #   nixos-update               update all inputs, rebuild, switch
 #   nixos-update nixpkgs ...   update only the named inputs
 #
-# The old generation stays in the boot menu; undo with
+# The new flake.lock is copied back to the checkout (nixos/flake.lock) to
+# commit. The old generation stays in the boot menu; undo with
 # `sudo nixos-rebuild switch --rollback`.
 # Linked to ~/.local/bin by nixos/lib/link-dotfiles.sh.
 # =============================================================================
 set -euo pipefail
 
 case ${1:-} in
--h | --help) sed -n '3,12p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
+-h | --help) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//' && exit 0 ;;
 esac
 
 # Same host choice as init.sh: NIXOS_HOST, else the one named like this
@@ -31,3 +32,11 @@ echo "==> Updating flake inputs${*:+: $*}"
 sudo nix flake update "$@" --flake /etc/nixos
 echo "==> Rebuilding /etc/nixos#$host"
 sudo nixos-rebuild switch --impure --flake "/etc/nixos#$host"
+
+# Copy the new lock back to the checkout, so a fresh install (or nixos-sync
+# on another machine) gets the versions that were just tested here
+repo_lock="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)/flake.lock"
+if ! cmp -s /etc/nixos/flake.lock "$repo_lock"; then
+    cp /etc/nixos/flake.lock "$repo_lock"
+    echo "==> Copied the new flake.lock to ${repo_lock/#$HOME/\~}: commit it"
+fi

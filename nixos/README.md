@@ -122,7 +122,9 @@ nixos-update
 
 The `apt update && apt upgrade -y` of this setup: bumps every flake input in
 `/etc/nixos/flake.lock` to its latest commit, then rebuilds and switches.
-`nixos-update nixpkgs` updates only the named inputs. (`nixos-rebuild --upgrade`
+`nixos-update nixpkgs` updates only the named inputs. After a successful
+rebuild the new `flake.lock` is copied back to `nixos/flake.lock`: commit it, so
+a fresh install gets the same versions. (`nixos-rebuild --upgrade`
 only refreshes channels, so it fetches nothing new on a flake system.) The
 script is `bin/nixos-update`, linked to `~/.local/bin` by `lib/link-dotfiles.sh`.
 
