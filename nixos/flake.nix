@@ -54,6 +54,12 @@
                 substituteInPlace modules/bar/Bar.qml \
                   --replace-fail '} else if (id === "activeWindow"' \
                     '} else if (id === "clock") { popouts.hasCurrent = false; root.screenState.dashboard = !root.screenState.dashboard; } else if (id === "activeWindow"'
+                # DDC/CI brightness about twice as fast: no read-back after
+                # each change, shorter waits between I2C messages (0.3 was the
+                # fastest the LG takes without retries; 0.1 made it slower)
+                substituteInPlace services/Brightness.qml \
+                  --replace-fail '["ddcutil", "-b", busNum, "setvcp", "10", rounded]' \
+                    '["ddcutil", "-b", busNum, "setvcp", "10", rounded, "--noverify", "--sleep-multiplier", "0.3"]'
               '';
             });
             # with-cli only puts `caelestia` on the shell's own PATH; Hyprland binds need it too
