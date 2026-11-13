@@ -21,6 +21,8 @@ M.lsp = {
   tflint = {
     filetypes = { "terraform" },
     pattern = { "*.tf" },
+    -- our config turns off the provider/terraform version-constraint warnings
+    cmd = { "tflint", "--langserver", "--config", vim.fn.stdpath("config") .. "/tflint.hcl" },
   }, -- terraform docs
   terraformls = {
     filetypes = { "terraform" },
