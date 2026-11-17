@@ -119,6 +119,16 @@ tolower() { echo "$1" | awk '{print tolower($0)}'; }
 toupper() { echo "$1" | awk '{print toupper($0)}'; }
 gitjpush() { git add -A && git commit -m "$1" && git push; }
 
+# Kubernetes nodes table: system nodes, then nodegroups, then Karpenter, then the rest,
+# with readiness, owner, role, instance type, zone and kubelet version. Extra args go to kubectl.
+kn() {
+  {
+    printf 'NAME\tREADY\tMANAGED-BY\tGROUP\tROLE\tINSTANCE\tZONE\tVERSION\n'
+    kubectl get nodes "$@" -o go-template='{{range .items}}{{$l := .metadata.labels}}{{if eq (or (index $l "node-role") "") "system"}}1{{else if index $l "karpenter.sh/nodepool"}}3{{else if index $l "eks.amazonaws.com/nodegroup"}}2{{else}}4{{end}}{{"\t"}}{{.metadata.name}}{{"\t"}}{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}{{"\t"}}{{if index $l "karpenter.sh/nodepool"}}karpenter{{"\t"}}{{index $l "karpenter.sh/nodepool"}}{{else if index $l "eks.amazonaws.com/nodegroup"}}nodegroup{{"\t"}}{{index $l "eks.amazonaws.com/nodegroup"}}{{else}}other{{"\t"}}-{{end}}{{"\t"}}{{or (index $l "node-role") "-"}}{{"\t"}}{{index $l "node.kubernetes.io/instance-type"}}{{"\t"}}{{index $l "topology.kubernetes.io/zone"}}{{"\t"}}{{.status.nodeInfo.kubeletVersion}}{{"\n"}}{{end}}' \
+      | sort -t $'\t' -k1,1n -k5,5 -k8,8 | cut -f2-
+  } | column -t -s $'\t'
+}
+
 ##################################
 # Git aliases
 ##################################
