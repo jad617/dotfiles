@@ -606,9 +606,11 @@ config.key_tables = {
 		-- Exit
 		{ key = "q",      mods = "NONE", action = close_copy_mode },
 		{ key = "Escape", mods = "NONE", action = close_copy_mode },
+		{ key = "c",      mods = "CTRL", action = close_copy_mode },
 	},
 	search_mode = {
 		{ key = "Escape",    mods = "NONE", action = close_copy_mode },
+		{ key = "c",         mods = "CTRL", action = close_copy_mode },
 		{ key = "Enter",     mods = "NONE", action = action.ActivateCopyMode },
 		{ key = "/",         mods = "NONE", action = action.CopyMode("ClearPattern") },
 		{ key = "UpArrow",   mods = "NONE", action = action.CopyMode("PriorMatch") },
