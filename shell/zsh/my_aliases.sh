@@ -120,13 +120,64 @@ toupper() { echo "$1" | awk '{print toupper($0)}'; }
 gitjpush() { git add -A && git commit -m "$1" && git push; }
 
 # Kubernetes nodes table: system nodes, then nodegroups, then Karpenter, then the rest,
-# with readiness, owner, role, instance type, zone and kubelet version. Extra args go to kubectl.
+# with status, age, owner, role, instance type, zone, kubelet version and AMI version. Extra args go to kubectl.
+# The AMI ID comes from the managed nodegroup label, or from the Karpenter NodeClaim for Karpenter nodes;
+# its version (1.35-v20261112) from the AMI name, read with the cluster's AWS profile. The ID shows if that fails.
 kn() {
+  # Only the cluster-selection args apply to the NodeClaims and kubeconfig lookups, not node selectors.
+  local -a args conn ids
+  local i rows amis profile region names
+  args=("$@")
+  for (( i = 1; i <= ${#args}; i++ )); do
+    case "${args[i]}" in
+      --context=*|--kubeconfig=*|--cluster=*|--user=*) conn+=("${args[i]}") ;;
+      --context|--kubeconfig|--cluster|--user) conn+=("${args[i]}" "${args[i+1]}") ;;
+    esac
+  done
+  rows=$(kubectl get nodes "$@" -o go-template='{{range .items}}{{$l := .metadata.labels}}{{if eq (or (index $l "node-role") "") "system"}}1{{else if index $l "karpenter.sh/nodepool"}}3{{else if index $l "eks.amazonaws.com/nodegroup"}}2{{else}}4{{end}}{{"\t"}}{{.metadata.name}}{{"\t"}}{{range .status.conditions}}{{if eq .type "Ready"}}{{if eq .status "True"}}Ready{{else if eq .status "False"}}NotReady{{else}}Unknown{{end}}{{end}}{{end}}{{if .spec.unschedulable}},SchedulingDisabled{{end}}{{"\t"}}{{.metadata.creationTimestamp}}{{"\t"}}{{if index $l "karpenter.sh/nodepool"}}karpenter{{"\t"}}{{index $l "karpenter.sh/nodepool"}}{{else if index $l "eks.amazonaws.com/nodegroup"}}nodegroup{{"\t"}}{{index $l "eks.amazonaws.com/nodegroup"}}{{else}}other{{"\t"}}-{{end}}{{"\t"}}{{or (index $l "node-role") "-"}}{{"\t"}}{{index $l "node.kubernetes.io/instance-type"}}{{"\t"}}{{index $l "topology.kubernetes.io/zone"}}{{"\t"}}{{.status.nodeInfo.kubeletVersion}}{{"\t"}}{{or (index $l "eks.amazonaws.com/nodegroup-image") "-"}}{{"\n"}}{{end}}' \
+    | sort -t $'\t' -k1,1n -k6,6 -k9,9 | cut -f2-) || return
+  amis=$(kubectl get nodeclaims "${conn[@]}" -o go-template='{{range .items}}{{.status.nodeName}}{{"\t"}}{{.status.imageID}}{{"\n"}}{{end}}' 2>/dev/null)
+  ids=(${(u)$(print -r -- "$rows" | cut -f10; print -r -- "$amis" | cut -f2)})
+  ids=(${(M)ids:#ami-*})
+  if (( ${#ids} )); then
+    profile=$(kubectl config view --minify "${conn[@]}" -o jsonpath='{.users[0].user.exec.env[?(@.name=="AWS_PROFILE")].value}' 2>/dev/null)
+    region=$(print -r -- "$rows" | head -1 | cut -f8 | sed 's/[a-z]$//')
+    names=$(env ${profile:+AWS_PROFILE=$profile} aws ec2 describe-images --region "$region" --image-ids "${ids[@]}" \
+      --query 'Images[].[ImageId,Name]' --output text 2>/dev/null)
+  fi
   {
-    printf 'NAME\tREADY\tMANAGED-BY\tGROUP\tROLE\tINSTANCE\tZONE\tVERSION\n'
-    kubectl get nodes "$@" -o go-template='{{range .items}}{{$l := .metadata.labels}}{{if eq (or (index $l "node-role") "") "system"}}1{{else if index $l "karpenter.sh/nodepool"}}3{{else if index $l "eks.amazonaws.com/nodegroup"}}2{{else}}4{{end}}{{"\t"}}{{.metadata.name}}{{"\t"}}{{range .status.conditions}}{{if eq .type "Ready"}}{{.status}}{{end}}{{end}}{{"\t"}}{{if index $l "karpenter.sh/nodepool"}}karpenter{{"\t"}}{{index $l "karpenter.sh/nodepool"}}{{else if index $l "eks.amazonaws.com/nodegroup"}}nodegroup{{"\t"}}{{index $l "eks.amazonaws.com/nodegroup"}}{{else}}other{{"\t"}}-{{end}}{{"\t"}}{{or (index $l "node-role") "-"}}{{"\t"}}{{index $l "node.kubernetes.io/instance-type"}}{{"\t"}}{{index $l "topology.kubernetes.io/zone"}}{{"\t"}}{{.status.nodeInfo.kubeletVersion}}{{"\n"}}{{end}}' \
-      | sort -t $'\t' -k1,1n -k5,5 -k8,8 | cut -f2-
+    printf 'NAME\tSTATUS\tAGE\tMANAGED-BY\tGROUP\tROLE\tINSTANCE\tZONE\tVERSION\tAMI\n'
+    print -r -- "$rows" | KN_AMIS="$amis" KN_NAMES="$names" _kn_format
   } | column -t -s $'\t'
+}
+
+# Turns the creation timestamp in the 3rd column into an age formatted like kubectl's AGE,
+# fills a missing AMI ID (10th column) from the "node<TAB>ami" lines in $KN_AMIS, then replaces it with
+# the version in its name, from the "ami<TAB>name" lines in $KN_NAMES.
+_kn_format() {
+  perl -MTime::Local -F'\t' -lane '
+    BEGIN {
+      %ami  = map { split /\t/ } grep { /\t./ } split /\n/, $ENV{KN_AMIS}  // "";
+      %name = map { split /\t/ } grep { /\t./ } split /\n/, $ENV{KN_NAMES} // "";
+    }
+    if ($F[2] =~ /^(\d+)-(\d+)-(\d+)T(\d+):(\d+):(\d+)Z$/) {
+      my $s = time - timegm($6, $5, $4, $3, $2 - 1, $1);
+      my ($m, $h, $d) = (int($s / 60), int($s / 3600), int($s / 86400));
+      my $y = int($d / 365);
+      sub part { my ($a, $ua, $b, $ub) = @_; $b ? "$a$ua$b$ub" : "$a$ua" }
+      $F[2] = $s < 120     ? "${s}s"
+            : $m < 10      ? part($m, "m", $s % 60, "s")
+            : $h < 3       ? "${m}m"
+            : $h < 8       ? part($h, "h", $m % 60, "m")
+            : $h < 48      ? "${h}h"
+            : $d < 8       ? part($d, "d", $h % 24, "h")
+            : $d < 365 * 2 ? "${d}d"
+            : $d < 365 * 8 ? part($y, "y", $d % 365, "d")
+            :                "${y}y";
+    }
+    $F[9] = $ami{$F[0]} if $F[9] eq "-" && $ami{$F[0]};
+    $F[9] = $1 if ($name{$F[9]} // "") =~ /-(\d+\.\d+-v\d+)$/;
+    print join "\t", @F'
 }
 
 ##################################
