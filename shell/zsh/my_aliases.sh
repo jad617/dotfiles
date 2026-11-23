@@ -119,10 +119,6 @@ tolower() { echo "$1" | awk '{print tolower($0)}'; }
 toupper() { echo "$1" | awk '{print toupper($0)}'; }
 gitjpush() { git add -A && git commit -m "$1" && git push; }
 
-# kls: Kubernetes nodes and pods tables (kls --help), in kls.zsh next to this file.
-# :A resolves the ~/.my_aliases.sh symlink to the repo.
-[[ -f "${${(%):-%x}:A:h}/kls.zsh" ]] && source "${${(%):-%x}:A:h}/kls.zsh"
-
 ##################################
 # Git aliases
 ##################################

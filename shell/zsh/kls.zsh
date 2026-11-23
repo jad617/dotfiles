@@ -1,5 +1,5 @@
 # kls: Kubernetes nodes and pods tables, with what is requested next to what is really used.
-# kls --help for the options; tab completion at the bottom. Sourced by my_aliases.sh.
+# kls --help for the options; tab completion at the bottom. Sourced by zshrc.
 
 # Every pod as one tab-separated line: namespace, name, phase, "T" when terminating, node ("-" when not scheduled),
 # creation time, QoS class, owner (kind/name), pod-template-hash label, then the containers' requests and limits
@@ -22,7 +22,7 @@ _kls_sort_nodes() {
 
 # Perl helpers shared by the formatters (put first in their code, so BEGIN blocks can use them):
 # qty("250m"), qty("512Mi") to numbers; age(timestamp) like kubectl's AGE; pct(part, whole);
-# fmt_cpu(cores) and fmt_mem(bytes) back to 250m / 1.5 and 512Mi / 1.2Gi;
+# fmt_cpu(cores) and fmt_mem(bytes) back to 250m / 1500m (always millicores, easier to compare) and 512Mi / 1.2Gi;
 # requests(containers, init containers) as the scheduler counts them: the larger of the containers plus sidecars
 # (init containers that keep running) and of each other init container plus the sidecars started before it.
 # It also returns the limits, undef when a container has none.
@@ -34,7 +34,7 @@ _KLS_PERL='
   }
   sub has_qty { ($_[0] // "") =~ /^[0-9]/ }
   sub pct { $_[1] ? int(100 * $_[0] / $_[1]) . "%" : "-" }
-  sub fmt_cpu { $_[0] < 1 ? int($_[0] * 1000 + 0.5) . "m" : sprintf("%.2f", $_[0]) =~ s/\.?0+$//r }
+  sub fmt_cpu { int($_[0] * 1000 + 0.5) . "m" }
   sub fmt_mem {
     my $b = shift;
     $b >= 2**30 ? (sprintf("%.1f", $b / 2**30) =~ s/\.0$//r) . "Gi"
@@ -93,7 +93,7 @@ _KLS_PERL='
 
 kls() {
   local -a args
-  local i mode=nodes interval= summary= out color=${KLS_COLOR:-0}
+  local i mode=nodes interval= summary= optimize= wide= out color=${KLS_COLOR:-0}
   [[ -z "$KLS_COLOR" && -t 1 && -z "$NO_COLOR" ]] && color=1
   for (( i = 1; i <= $#; i++ )); do
     case "${@[i]}" in
@@ -101,6 +101,11 @@ kls() {
       --nodes) mode=nodes ;;
       --pods) mode=pods ;;
       --summary) summary=--summary ;;
+      --wide) wide=--wide ;;
+      --optimize)
+        mode=pods
+        optimize=--optimize
+        ;;
       --watch=*) interval=${@[i]#--watch=} ;;
       --watch)
         interval=2
@@ -119,19 +124,19 @@ kls() {
     fi
     while true; do
       # Build the table before clearing, so the screen doesn't flash empty while kubectl runs.
-      out=$(KLS_COLOR=$color kls --$mode $summary "${args[@]}" 2>&1)
+      out=$(KLS_COLOR=$color kls --$mode $summary $optimize $wide "${args[@]}" 2>&1)
       printf '\e[H\e[2J'
       if (( color )); then
-        print -r -- $'\e[1m'"Every ${interval}s: kls --$mode ${summary:+$summary }${args[*]}"$'\e[0m    \e[2m'"$(date '+%H:%M:%S')"$'\e[0m'
+        print -r -- $'\e[1m'"Every ${interval}s: kls --$mode ${summary:+$summary }${optimize:+$optimize }${wide:+$wide }${args[*]}"$'\e[0m    \e[2m'"$(date '+%H:%M:%S')"$'\e[0m'
       else
-        print -r -- "Every ${interval}s: kls --$mode ${summary:+$summary }${args[*]}    $(date '+%H:%M:%S')"
+        print -r -- "Every ${interval}s: kls --$mode ${summary:+$summary }${optimize:+$optimize }${wide:+$wide }${args[*]}    $(date '+%H:%M:%S')"
       fi
       print
       print -r -- "$out"
       sleep "$interval" || return
     done
   fi
-  KLS_SUMMARY=$summary "_kls_$mode" "$color" "${args[@]}"
+  KLS_SUMMARY=$summary KLS_OPTIMIZE=${optimize:+1} KLS_WIDE=${wide:+1} "_kls_$mode" "$color" "${args[@]}"
 }
 
 _kls_help() {
@@ -140,7 +145,7 @@ kls - Kubernetes nodes and pods, with what is requested next to what is really u
 
 Usage:
   kls [--nodes] [--watch [N]] [kubectl options]
-  kls --pods [--node [NODE]] [--watch [N]] [kubectl options]
+  kls --pods [--node [NODE]] [--optimize] [--wide] [--watch [N]] [kubectl options]
 
 Views:
   --nodes        Nodes, system first, then nodegroups, Karpenter and the rest (the default): status, pods
@@ -149,8 +154,8 @@ Views:
                  kubelet and AMI versions, and a summary per group with --summary.
   --pods         Pods in the namespaces developers can read (see below): ready, HPA replicas (current/max), PDB
                  (disruptions allowed and its rule), status, restarts with the last exit reason, CPU and
-                 memory request/limit and used (with % of the request/limit), QoS, age and node, a summary
-                 per namespace with --summary, and the HPAs at their max and PDBs blocking drains.
+                 memory request/limit and used (with % of the request/limit), age (QoS and node with --wide), a
+                 summary per namespace with --summary, and the HPAs at their max and PDBs blocking drains.
 
 Options:
   --summary      Add the summary table: per group with --nodes, per namespace with --pods.
@@ -158,6 +163,14 @@ Options:
   --node         With --pods: group the pods by node, under a line with the node name.
   --node NODE    With --pods: only the pods on that node. Also --node=NODE.
   --all          With --pods: also the namespaces hidden from developers (see below), like -A.
+  --wide         With --pods: also the QOS and NODE columns.
+  --optimize     Pods view, with the best request/limit next to each CPU and MEM REQ/LIM (BEST, in orange): the
+                 highest usage now among the running pods of the same owner (Deployment, StatefulSet...), plus
+                 50% for CPU and 30% for memory, rounded up (10m, 16Mi) and at least 10m and 32Mi. The limit is the
+                 current one raised to 1.5x that request when below; a memory limit is also lowered to 4x it
+                 when above, a CPU one never is (a low CPU limit throttles the start of the app). No limit stays
+                 none. Per pod, all containers together; from a single kubectl top sample, so check a busy
+                 hour before applying.
   -h, --help     Show this help.
   Anything else goes to kubectl: --context NAME, -n NAMESPACE, -A, -l SELECTOR, --field-selector...
 
@@ -171,6 +184,7 @@ Examples:
   kls --watch 5
   kls --summary
   kls --pods --summary
+  kls --optimize -n booking
   kls --pods -n kube-system
   kls --pods --all
   kls --pods --node
@@ -418,9 +432,16 @@ _kls_pods() {
   fi
   # kubectl has already said why when there are no pods (an error, or "No resources found").
   [[ -n "$rows" ]] || return 1
-  (( by_node )) && header=${header/$'\tNODE'/}
+  [[ -n $KLS_WIDE ]] || header=${header%$'\tQOS\tNODE'}
+  (( by_node )) && header=${header%$'\tNODE'}
+  if [[ -n $KLS_OPTIMIZE ]]; then
+    # In variables, as the "/" of REQ/LIM would end the pattern.
+    local cpu=$'\tCPU REQ/LIM\t' mem=$'\tMEM REQ/LIM\t'
+    header=${header/$cpu/$'\tCPU REQ/LIM BEST\t'}
+    header=${header/$mem/$'\tMEM REQ/LIM BEST\t'}
+  fi
   print -r -- "$rows" | KLS_USAGE="$usage" KLS_HPAS="$hpas" KLS_PDBS="$pdbs" KLS_VISIBLE="$visible" KLS_NODES="$nodes" \
-    KLS_BY_NODE=$by_node _kls_pods_format \
+    KLS_BY_NODE=$by_node KLS_OPTIMIZE=$KLS_OPTIMIZE KLS_WIDE=$KLS_WIDE _kls_pods_format \
     | _kls_print "$color" "$header"
 }
 
@@ -431,7 +452,8 @@ _kls_pods() {
 # last exit reason and when, and request/limit and used with % of the request and of the limit. The owner (a ReplicaSet as its
 # Deployment) is only used to find the HPA. With KLS_BY_NODE=1 the rows are grouped by node instead, under a
 # "## node (N pods, MANAGED-BY: GROUP)" line, from the "node<TAB>managed-by<TAB>group" lines in $KLS_NODES, in their
-# order, with no NODE column.
+# order, with no NODE column. QOS and NODE are only there with KLS_WIDE=1.
+# With KLS_OPTIMIZE=1, the CPU and MEM REQ/LIM cells get the request/limit to suggest after a space (see best).
 # Pods in a namespace missing from the lines of $KLS_VISIBLE ("*" for all) are left out and counted in a note.
 # Then a summary row per namespace plus a TOTAL row (pods Succeeded or Failed only count in PODS),
 # and notes: the pods not Running or Completed by status, HPAs at their max and PDBs allowing no disruption
@@ -470,6 +492,23 @@ _kls_pods_format() {
     # A namespace usage with its % of the requests.
     sub used_req { my ($u, $req, $fmt) = @_; $fmt->($u) . ($req ? " " . pct($u, $req) : "") }
     sub req_lim { my ($req, $lim, $fmt) = @_; ($req ? $fmt->($req) : "-") . "/" . (defined $lim ? $fmt->($lim) : "-") }
+    # The request/limit to suggest for the usage $u ("-" without it): $u plus $margin, rounded up to $step, at least
+    # $min; the current limit $lim raised to 1.5 times that request when below, lowered to $most times it when
+    # above (never without $most), and none without a limit.
+    sub best {
+      my ($u, $lim, $margin, $step, $min, $most, $fmt) = @_;
+      return "-" unless defined $u;
+      my $up = sub { my $n = int($_[0] / $step); $n++ if $n * $step < $_[0] - 1e-9; $n * $step };
+      my $r = $up->($u * (1 + $margin));
+      $r = $min if $r < $min;
+      my $l = $lim;
+      if (defined $l) {
+        $l = 1.5 * $r if $l < 1.5 * $r;
+        $l = $most * $r if $most && $l > $most * $r;
+        $l = $up->($l);
+      }
+      req_lim($r, $l, $fmt);
+    }
     # Whether a PDB selects a pod with these labels (a hash ref), like a label selector does.
     sub selects {
       my ($p, $l) = @_;
@@ -529,11 +568,25 @@ _kls_pods_format() {
       $p ? "$p->{allowed} allowed ($p->{rule})" : "-", $status, age($created), $restart_cell,
       req_lim($cpu, $lim_cpu, \&fmt_cpu), used($u && $u->[0], $cpu, $lim_cpu, \&fmt_cpu),
       req_lim($mem, $lim_mem, \&fmt_mem), used($u && $u->[1], $mem, $lim_mem, \&fmt_mem),
-      $qos);
+      $ENV{KLS_WIDE} ? $qos : ());
+    my @node = $ENV{KLS_WIDE} ? ($node) : ();
+    if ($ENV{KLS_OPTIMIZE}) {
+      # Pods of one owner share their spec: the highest usage among them makes the suggestion for each. CPU limits
+      # are never lowered: they reserve nothing on the node, and a low one throttles the start of the app.
+      my $key = $owner ? "$ns/$kind/$name" : "$ns/pod/$pod";
+      if ($u) {
+        my $peak = $peak{$key} //= [0, 0];
+        $peak->[0] = $u->[0] if $u->[0] > $peak->[0];
+        $peak->[1] = $u->[1] if $u->[1] > $peak->[1];
+      }
+      push @optimize, [\@row, $key, $lim_cpu, $lim_mem];
+    }
     if ($ENV{KLS_BY_NODE}) {
-      push @by_node, [$node, @row];
+      push @by_node, [$node, \@row];
+    } elsif ($ENV{KLS_OPTIMIZE}) {
+      push @plain, [\@row, \@node];
     } else {
-      print join "\t", @row, $node;
+      print join "\t", @row, @node;
     }
     push @namespaces, $ns unless $sum{$ns};
     my $active = $phase ne "Succeeded" && $phase ne "Failed";
@@ -552,6 +605,13 @@ _kls_pods_format() {
     }
     $not_running{$status}++ unless $status eq "Running" || $status eq "Completed";
     END {
+      for (@optimize) {
+        my ($row, $key, $lim_cpu, $lim_mem) = @$_;
+        my $peak = $peak{$key};
+        $row->[8] .= " " . best($peak && $peak->[0], $lim_cpu, 0.5, 0.01, 0.01, undef, \&fmt_cpu);
+        $row->[10] .= " " . best($peak && $peak->[1], $lim_mem, 0.3, 16 * 2**20, 32 * 2**20, 4, \&fmt_mem);
+      }
+      print join "\t", @{ $_->[0] }, @{ $_->[1] } for @plain;
       # By node: a "## node (N pods, MANAGED-BY: GROUP)" section line per node (pods not scheduled yet last), then its pods by
       # namespace and name.
       # KLS_NODES is in the nodes view order; nodes missing from it come after, pods not scheduled yet last.
@@ -562,7 +622,7 @@ _kls_pods_format() {
         $rank{$n} = keys %rank;
       }
       my %on;
-      push @{ $on{ $_->[0] } }, [@$_[1 .. $#$_]] for @by_node;
+      push @{ $on{ $_->[0] } }, $_->[1] for @by_node;
       for my $node (sort { ($a eq "-") <=> ($b eq "-") || ($rank{$a} // 1e9) <=> ($rank{$b} // 1e9) || $a cmp $b } keys %on) {
         my @pods = sort { $a->[0] cmp $b->[0] || $a->[1] cmp $b->[1] } @{ $on{$node} };
         my $owner = $owners{$node} ? ", $owners{$node}[0]: $owners{$node}[1]" : "";
@@ -578,6 +638,8 @@ _kls_pods_format() {
           $t->{mem} ? fmt_mem($t->{mem}) : "-", $t->{metered} ? used_req($t->{used_mem}, $t->{mem}, \&fmt_mem) : "-";
       }
       print "--notes--";
+      print "BEST: highest usage now among the pods of an owner, +50% CPU, +30% memory; limits at least 1.5x the request, memory ones at most 4x"
+        if $ENV{KLS_OPTIMIZE};
       print "Not running: " . join ", ", map { "$not_running{$_} $_" } sort keys %not_running if %not_running;
       print "HPAs at max replicas: " . join ", ", map { "$_ $hpa_at_max{$_}" } sort keys %hpa_at_max if %hpa_at_max;
       print "PDBs allowing no disruption (they block drains): " . join ", ", map { "$_ ($pdb_blocking{$_})" } sort keys %pdb_blocking
@@ -596,7 +658,7 @@ _kls_pods_format() {
 # STATUS (Ready and Running green, cordoned and starting or stopping yellow, Completed dimmed, anything else red),
 # READY when not all containers are, PODS and REQ/USED % at 70% yellow and 90% red, HPA replicas at 80% of the max
 # yellow and at the max red, a PDB allowing no disruption red, USED % of the request yellow from 100% and of the
-# limit yellow from 75% and red from 90%, RESTARTS (OOMKilled red), BestEffort QoS, MANAGED-BY, system nodes, an AMI version
+# limit yellow from 75% and red from 90%, the BEST request/limit orange, RESTARTS (OOMKilled red), BestEffort QoS, MANAGED-BY, system nodes, an AMI version
 # older than the newest one listed, nonzero CORDONED and NOT READY, TOTAL in bold, and "-" dimmed.
 _kls_table() {
   perl -F'\t' -lane '
@@ -613,6 +675,10 @@ _kls_table() {
             : /^(SchedulingDisabled|Pending|ContainerCreating|PodInitializing|Terminating)$/ ? 33 : 31)
         } split /,/, $v;
       }
+      if ($name =~ /REQ\/LIM BEST/ && $v =~ /^(\S+ +)(\S+)$/) {
+        # The orange of the WezTerm split lines (#ff5f1f).
+        return $1 . paint($2, $2 eq "-" ? 2 : "38;2;255;95;31");
+      }
       if ($name =~ /REQ\/USED/) {
         $v =~ s{(\d+)%}{paint("$1%", level($1))}ge;
         $v =~ s{/-$}{"/" . paint("-", 2)}e;
@@ -620,11 +686,11 @@ _kls_table() {
       }
       if ($name =~ / USED/) {
         # "133Mi 266%/44%": % of the request yellow from 100%, % of the limit yellow from 75% and red from 90%.
-        if ($v =~ m{^(\S+) (\S+)/(\S+)$}) {
+        if ($v =~ m{^(\S+ +)(\S+)/(\S+)$}) {
           my ($used, $req, $lim) = ($1, $2, $3);
           $req = $req eq "-" ? paint($req, 2) : paint($req, ($req =~ /(\d+)/)[0] >= 100 ? 33 : "");
           $lim = $lim eq "-" ? paint($lim, 2) : paint($lim, ($lim =~ /(\d+)/)[0] >= 90 ? 31 : ($lim =~ /(\d+)/)[0] >= 75 ? 33 : "");
-          return "$used $req/$lim";
+          return "$used$req/$lim";
         }
         # A summary "6.5Gi 57%": % of the requests yellow from 100%.
         $v =~ s{(\d+)%}{paint("$1%", $1 >= 100 ? 33 : "")}ge;
@@ -646,9 +712,19 @@ _kls_table() {
       return $v;
     }
     END {
-      my @head = @{ $rows[0] };
       my @width;
       my @cells = grep { $_->[0] !~ /^## / } @rows;
+      # Two-part cells ("118m 47%/11%", "6.5Gi 57%", "100m/500m 20m/100m" with --optimize): the first part padded
+      # to one width, so the second parts line up, under the second word of the header ("%REQ/LIM", "BEST") when
+      # it has one.
+      for my $j (grep { $rows[0][$_] =~ / USED| REQ\/LIM/ && $rows[0][$_] !~ /REQ\/USED/ } 0 .. $#{ $rows[0] }) {
+        my ($title, $rest) = $rows[0][$j] =~ /^(.* (?:USED|REQ\/LIM))(?: (.+))?$/;
+        my $w = defined $rest ? length $title : 0;
+        for (@cells[1 .. $#cells]) { $w = length $1 if $_->[$j] =~ /^(\S+) / && length $1 > $w }
+        for (@cells[1 .. $#cells]) { $_->[$j] = sprintf "%-*s %s", $w, $1, $2 if $_->[$j] =~ /^(\S+) (.+)$/ }
+        $rows[0][$j] = sprintf "%-*s %s", $w, $title, $rest if defined $rest;
+      }
+      my @head = @{ $rows[0] };
       for my $r (@cells) {
         for (0 .. $#$r) {
           $width[$_] = length $r->[$_] if length $r->[$_] > ($width[$_] // 0);
@@ -699,8 +775,10 @@ _kls() {
   }
   _arguments -s \
     '(- *)'{-h,--help}'[show the help]' \
-    '(--pods --node)--nodes[nodes table (the default)]' \
+    '(--pods --node --optimize --wide)--nodes[nodes table (the default)]' \
     '(--nodes)--pods[pods table]' \
+    '(--nodes)--wide[with --pods: also the QOS and NODE columns]' \
+    '(--nodes)--optimize[pods table with the best CPU and memory request/limit from the usage]' \
     '(--nodes)--all[with --pods: also the namespaces hidden from developers]' \
     '--summary[add the summary table: per group with --nodes, per namespace with --pods]' \
     '--watch[redraw every N seconds until Ctrl+C]::seconds (2 by default):(1 2 5 10 30 60)' \

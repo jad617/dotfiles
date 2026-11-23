@@ -88,5 +88,5 @@ dotfiles/
 - **Capslock → `a`**: keyd on Linux, hidutil launchd on macOS
 - **Gaming (Pop!_OS, NixOS)**: Steam, plus the NVIDIA driver picked from the detected card (580 for GTX 9xx / 10xx, current for newer); AMD uses Mesa
 - **Prompt**: Oh-My-Posh with session-scoped Azure segment
-- **Shell**: unified zshrc + aliases for both platforms, lazy-loaded kubectl/pyenv/zoxide; `kls` shows Kubernetes nodes and pods with requests next to real usage (`kls --help`)
+- **Shell**: unified zshrc + aliases for both platforms, lazy-loaded kubectl/pyenv/zoxide; `kls` shows Kubernetes nodes and pods with requests next to real usage, with `--optimize` the request/limit to set from it, and QoS and node with `--wide` (`kls --help`); zshrc also sources every `~/.config/zsh/local/*.zsh` (functions kept out of git)
 - **Copy/paste**: Alt+C / Alt+V mapped to Ctrl+C / Ctrl+V via COSMIC shortcuts + wtype

@@ -189,6 +189,13 @@ compdef _cd_parent cd
 ##################################
 [[ -f "$HOME/.my_aliases.sh" ]] && source "$HOME/.my_aliases.sh"
 [[ -f "$HOME/.my_aliases_non_git.sh" ]] && source "$HOME/.my_aliases_non_git.sh"
+# kls (Kubernetes nodes and pods tables, kls --help), next to this file: :A resolves the ~/.zshrc symlink to the repo.
+[[ -f "${${(%):-%x}:A:h}/kls.zsh" ]] && source "${${(%):-%x}:A:h}/kls.zsh"
+# Functions kept out of git, one *.zsh per tool.
+for _zfile in "$HOME"/.config/zsh/local/*.zsh(N); do
+  source "$_zfile"
+done
+unset _zfile
 # fzf shell integration — manual install (~/.fzf.zsh) or system package.
 # Keep the literal ~/.fzf.zsh on the source line: fzf's installer greps for it
 # and, finding only comments, appends its own line despite --no-update-rc.
